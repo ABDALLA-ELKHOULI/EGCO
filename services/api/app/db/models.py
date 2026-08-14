@@ -68,6 +68,8 @@ class Invoice(TimestampMixin, Base):
     manual_due_date: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
     #: 'statement' | 'manual' | 'csv_statement'
     source: Mapped[str] = mapped_column(String(20), default='statement')
+    #: which ImportLog created this row — null for manual/pre-feature rows
+    import_log_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
 
     supplier: Mapped[Supplier] = relationship(back_populates='invoices')
 
@@ -85,6 +87,8 @@ class Payment(TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, default='')
     #: 'statement' | 'manual' | 'csv_statement'
     source: Mapped[str] = mapped_column(String(20), default='statement')
+    #: which ImportLog created this row — null for manual/pre-feature rows
+    import_log_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
 
     supplier: Mapped[Supplier] = relationship(back_populates='payments')
 
@@ -105,6 +109,8 @@ class Receivable(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), default='open')
     source: Mapped[str] = mapped_column(String(40), default='')
     notes: Mapped[str] = mapped_column(Text, default='')
+    #: which ImportLog created this row — null for manual/pre-feature rows
+    import_log_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
 
 
 class Contractor(TimestampMixin, Base):
@@ -154,6 +160,8 @@ class ContractorEntry(TimestampMixin, Base):
     project: Mapped[str] = mapped_column(String(120), default='')
     #: 'statement' | 'manual'
     source: Mapped[str] = mapped_column(String(20), default='statement')
+    #: which ImportLog created this row — null for manual/pre-feature rows
+    import_log_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
 
     contractor: Mapped[Contractor] = relationship(back_populates='entries')
 

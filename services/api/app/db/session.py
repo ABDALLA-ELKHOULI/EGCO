@@ -31,6 +31,13 @@ def init_db() -> None:
         # fresh installs; for DBs created before this table existed, create it here too
         # (create_all is a no-op if it already exists, so this is always safe to run).
         Base.metadata.tables['receivables'].create(bind=conn, checkfirst=True)
+        # `import_log_id` is new as of the uploaded-files management feature — links
+        # rows back to the ImportLog that created them, so a re-import can resurrect
+        # soft-deleted rows and a delete can remove exactly what one import added.
+        _migrate_add_column(conn, 'invoices', 'import_log_id', 'TEXT', 'NULL')
+        _migrate_add_column(conn, 'payments', 'import_log_id', 'TEXT', 'NULL')
+        _migrate_add_column(conn, 'contractor_entries', 'import_log_id', 'TEXT', 'NULL')
+        _migrate_add_column(conn, 'receivables', 'import_log_id', 'TEXT', 'NULL')
 
 
 def get_session() -> Iterator[Session]:

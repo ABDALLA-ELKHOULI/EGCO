@@ -36,9 +36,16 @@ def known_projects(db: Session) -> List[str]:
 
 # ---------------------------------------------------------------- statement upsert
 
-def upsert_from_statement(db: Session, parsed: dict, path: str) -> dict:
+def upsert_from_statement(db: Session, parsed: dict, path: str,
+                          import_log_id: Optional[str] = None) -> dict:
     """حفظ كشف مقاول — creates the contractor when the code is new, inserts ledger
-    rows idempotently (duplicate identity rows are skipped, so re-import adds 0)."""
+    rows idempotently (duplicate identity rows are skipped, so re-import adds 0).
+
+    `import_log_id` stamps every row this call creates or resurrects so the
+    uploaded-files screen can later delete exactly this import's rows. A soft-deleted
+    row matching an incoming row's identity is resurrected (un-deleted, re-stamped)
+    rather than skipped — otherwise upload -> delete -> re-upload adds 0 rows.
+    """
     code = parsed['account']
     row = db.query(models.Contractor).filter_by(code=code).one_or_none()
     if row is None:
@@ -60,13 +67,19 @@ def upsert_from_statement(db: Session, parsed: dict, path: str) -> dict:
             contractor_id=row.id, doc=r.get('doc') or '', date=r['date'],
             debit=r['debit'], credit=r['credit'], description=desc).one_or_none()
         if exists is not None:
-            skipped += 1
+            if exists.deleted_at is not None:
+                exists.deleted_at = None
+                exists.import_log_id = import_log_id
+                added += 1
+            else:
+                skipped += 1
             continue
         db.add(models.ContractorEntry(
             contractor_id=row.id, date=r['date'], debit=r['debit'], credit=r['credit'],
             doc=r.get('doc') or '', description=desc, kind=kind,
             claim_no=C.extract_claim_no(desc),
-            project=C.detect_project(desc, projects), source='statement'))
+            project=C.detect_project(desc, projects), source='statement',
+            import_log_id=import_log_id))
         added += 1
 
     db.commit()

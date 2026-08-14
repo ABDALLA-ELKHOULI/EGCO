@@ -99,6 +99,10 @@ export const api = {
     post<any>('/api/v1/import/preview', { path, source }),
   runImport: (path: string, source: string, allow_unreconciled = false) =>
     post<any>('/api/v1/import', { path, source, allow_unreconciled }),
+  /** الملفات المرفوعة — لعرضها وحذف حركاتها */
+  importHistory: () => call<ImportHistoryResponse>('/api/v1/import/history'),
+  deleteImport: (id: string, force = false) =>
+    del<ImportDeleteResult>(`/api/v1/import/history/${id}` + (force ? '?force=true' : '')),
 
   /* ---- التقارير ---- */
   report: (account?: string, p: Period & Omit<ReportScopeParams, 'account'> = {}) =>
@@ -308,3 +312,29 @@ export interface BudgetProject {
 }
 
 export interface BudgetResponse { projects: BudgetProject[] }
+
+/* ---------------- الملفات المرفوعة ---------------- */
+
+export interface ImportHistoryRow {
+  id: string;
+  date: string;          // ISO — created_at
+  fileName: string;
+  path: string;
+  source: string;
+  detected: string;      // تصنيف عربي
+  account: string | null;
+  partyName: string | null;
+  added: number;
+  skipped: number;
+  reconciled: boolean;
+  linkedRows: number;
+  canDelete: boolean;
+  legacy: boolean;
+}
+
+export interface ImportHistoryResponse { rows: ImportHistoryRow[] }
+
+export interface ImportDeleteResult {
+  deleted: { invoices: number; payments: number; entries: number; receivables: number };
+  approximate?: boolean;
+}

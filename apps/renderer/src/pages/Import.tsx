@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
-import { ar, sar } from '@/lib/format';
-import { Card, Pill, State } from '@/components/ui';
+import type { ImportHistoryRow } from '@/lib/api';
+import { ar, arDate, sar } from '@/lib/format';
+import { Card, EmptyState, Pill, State } from '@/components/ui';
+import { Modal } from '@/components/Modal';
 import type { PickedFile } from '@/types/global';
 
 const LABEL: Record<string, string> = {
@@ -122,6 +124,25 @@ export function ImportPage() {
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null);
 
+  // ---- الملفات المرفوعة ----
+  const [history, setHistory] = useState<ImportHistoryRow[] | null>(null);
+  const [historyErr, setHistoryErr] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  async function loadHistory() {
+    setHistoryLoading(true); setHistoryErr(null);
+    try {
+      const res = await api.importHistory();
+      setHistory(res.rows);
+    } catch (e: any) {
+      setHistoryErr(e?.message ?? String(e));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  useEffect(() => { loadHistory(); }, []);
+
   function reset() {
     setQueue([]); setErr(null); setDone(false);
     setFolderErr(null); setScanning(false); setScanResult(null);
@@ -162,6 +183,7 @@ export function ImportPage() {
       const paths = scanResult.files.map((f) => f.path);
       const res = await api.batchImport(paths);
       setBatchResult(res);
+      loadHistory();
     } catch (e: any) {
       setFolderErr(e?.message ?? String(e));
     } finally {
@@ -243,6 +265,7 @@ export function ImportPage() {
         }
       }
       setDone(true);
+      loadHistory();
     } finally {
       setBusy(false);
     }
@@ -267,6 +290,14 @@ export function ImportPage() {
       </div>
 
       <div className="stack">
+        <UploadedFilesSection
+          rows={history}
+          loading={historyLoading}
+          error={historyErr}
+          onDeleted={loadHistory}
+          onPickFiles={pick}
+        />
+
         {nothingPickedYet && (
           <div style={{ display: 'flex', gap: 10 }}>
             <button className="btn primary" onClick={pick}>اختيار ملفات</button>
@@ -472,4 +503,164 @@ const CHIP: Record<QueueStatus, { text: string; kind: string }> = {
 function StatusChip({ status }: { status: QueueStatus }) {
   const c = CHIP[status];
   return <Pill kind={c.kind}>{c.text}</Pill>;
+}
+
+/**
+ * «الملفات المرفوعة» — كل استيراد سابق مع ما أضافه، وحذف واحد منها يحذف حركاته فقط
+ * (البيانات اليدوية لا تُمس). السجلات القديمة (قبل هذه الميزة) لا تحمل ربطاً مباشراً
+ * بحركاتها فتُحذف تقريبياً بموافقة إضافية.
+ */
+function UploadedFilesSection({ rows, loading, error, onDeleted, onPickFiles }: {
+  rows: ImportHistoryRow[] | null;
+  loading: boolean;
+  error: string | null;
+  onDeleted: () => void;
+  onPickFiles: () => void;
+}) {
+  const [target, setTarget] = useState<ImportHistoryRow | null>(null);
+  const [forceStep, setForceStep] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  const [lastDeleted, setLastDeleted] = useState<{ row: ImportHistoryRow; n: number } | null>(null);
+
+  function openConfirm(row: ImportHistoryRow) {
+    setDeleteErr(null); setForceStep(false); setTarget(row);
+  }
+
+  async function doDelete(force: boolean) {
+    if (!target) return;
+    setBusyId(target.id); setDeleteErr(null);
+    try {
+      const res = await api.deleteImport(target.id, force);
+      const n = res.deleted.invoices + res.deleted.payments
+        + res.deleted.entries + res.deleted.receivables;
+      setLastDeleted({ row: target, n });
+      setTarget(null); setForceStep(false);
+      onDeleted();
+    } catch (e: any) {
+      // سجل قديم بلا ربط مباشر — الخادم يرفض بـ409 ويطلب تأكيداً إضافياً بالحذف التقريبي
+      if (target.legacy && !force) {
+        setForceStep(true);
+      } else {
+        setDeleteErr(e?.message ?? String(e));
+      }
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (loading && rows === null) {
+    return (
+      <Card title="الملفات المرفوعة">
+        <State>جارٍ التحميل…</State>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card title="الملفات المرفوعة">
+        <div className="callout bad" style={{ margin: '14px 20px' }}>{error}</div>
+      </Card>
+    );
+  }
+
+  if (!rows || rows.length === 0) {
+    return (
+      <Card title="الملفات المرفوعة">
+        <EmptyState
+          kind="no-data"
+          title="لا ملفات مرفوعة بعد"
+          body="ابدأ برفع كشف حساب أو ملف مدد الموردين لتظهر هنا."
+          ctaLabel="اختيار ملفات"
+          onCta={onPickFiles}
+        />
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <Card title="الملفات المرفوعة" sub={`${ar(rows.length)} ملفاً مستورداً`}>
+        {lastDeleted && (
+          <div className="callout ok" style={{ margin: '14px 20px 0' }}>
+            حُذف {ar(lastDeleted.n)} حركة من «{lastDeleted.row.fileName}» —
+            تحدّثت أرصدة {lastDeleted.row.partyName ?? lastDeleted.row.account ?? 'الطرف المرتبط'} فوراً.
+          </div>
+        )}
+        <div style={{ overflowX: 'auto' }}>
+          <table>
+            <thead>
+              <tr>
+                <th>التاريخ</th><th>الملف</th><th>النوع</th><th>الطرف</th>
+                <th>الحركات</th><th>مطابق</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} title={r.path}>
+                  <td className="muted">{arDate(r.date.slice(0, 10))}</td>
+                  <td title={r.path}>{r.fileName}</td>
+                  <td className="muted">{r.detected}</td>
+                  <td>{r.partyName ?? r.account ?? '—'}</td>
+                  <td>
+                    {r.legacy
+                      ? <>{ar(r.added)} <Pill kind="warn">قديم</Pill></>
+                      : ar(r.linkedRows)}
+                  </td>
+                  <td>
+                    <Pill kind={r.reconciled ? 'ok' : 'red'}>{r.reconciled ? '✓' : '✕'}</Pill>
+                  </td>
+                  <td>
+                    <button
+                      className="btn"
+                      disabled={!r.canDelete || busyId === r.id}
+                      title={r.canDelete ? 'حذف حركات هذا الملف' : 'يُدار من شاشته الخاصة'}
+                      onClick={() => openConfirm(r)}
+                    >
+                      {busyId === r.id ? '…' : 'حذف'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {target && !forceStep && (
+        <Modal title="تأكيد حذف ملف مستورد" onClose={() => setTarget(null)}>
+          <p>
+            سيُحذف {ar(target.linkedRows || target.added)} حركة مستوردة من ملف
+            «{target.fileName}» لحساب {target.partyName ?? target.account ?? '—'}
+            {' '}— البيانات اليدوية لا تُمس.
+          </p>
+          {deleteErr && <div className="callout bad">{deleteErr}</div>}
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <button className="btn primary" onClick={() => doDelete(false)} disabled={busyId === target.id}>
+              {busyId === target.id ? 'جارٍ الحذف…' : 'حذف'}
+            </button>
+            <button className="btn" onClick={() => setTarget(null)}>إلغاء</button>
+          </div>
+        </Modal>
+      )}
+
+      {target && forceStep && (
+        <Modal title="ملف قديم — الحذف تقريبي" onClose={() => { setTarget(null); setForceStep(false); }}>
+          <p>
+            هذا الملف رُفع قبل توفر هذه الميزة، فحركاته غير مربوطة به مباشرة.
+            سيُحذف تقريبياً كل حركة لحساب {target.partyName ?? target.account ?? '—'}
+            {' '}أُنشئت خلال ٣ دقائق من وقت رفع «{target.fileName}» — قد يشمل ذلك حركات لا علاقة لها بهذا الملف تحديداً.
+          </p>
+          {deleteErr && <div className="callout bad">{deleteErr}</div>}
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <button className="btn primary" onClick={() => doDelete(true)} disabled={busyId === target.id}>
+              {busyId === target.id ? 'جارٍ الحذف…' : 'حذف تقريبي — متابعة'}
+            </button>
+            <button className="btn" onClick={() => { setTarget(null); setForceStep(false); }}>إلغاء</button>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
 }

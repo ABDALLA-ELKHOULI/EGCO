@@ -235,17 +235,33 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
     if backup:
         backup_db()
 
+    # ImportLog is created FIRST (flushed for its id) so every row this import creates
+    # or resurrects can be stamped with import_log_id — that stamp is what lets the
+    # uploaded-files screen delete exactly this import's rows later.
+    log = models.ImportLog(source=source, path=path, account=account or '',
+                           imported=0, skipped=0, reconciled=1 if pre['reconciled'] else 0,
+                           issues=json.dumps(pre['issues'], ensure_ascii=False))
+    db.add(log)
+    db.flush()
+
     added = skipped = 0
     for inv in parsed['invoices']:
         exists = db.query(models.Invoice).filter_by(
             supplier_id=supplier.id, number=inv.number, date=inv.date,
             amount=inv.amount).one_or_none()
         if exists:
-            skipped += 1
+            # a soft-deleted row matching this identity is resurrected, not skipped —
+            # otherwise upload -> delete -> re-upload silently imports 0 rows.
+            if exists.deleted_at is not None:
+                exists.deleted_at = None
+                exists.import_log_id = log.id
+                added += 1
+            else:
+                skipped += 1
             continue
         db.add(models.Invoice(supplier_id=supplier.id, number=inv.number, date=inv.date,
                               amount=inv.amount, doc=inv.doc, description=inv.description,
-                              source=source))
+                              source=source, import_log_id=log.id))
         added += 1
 
     for pay in parsed['payments']:
@@ -253,16 +269,20 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
             supplier_id=supplier.id, doc=pay.doc, date=pay.date,
             amount=pay.amount).one_or_none()
         if exists:
-            skipped += 1
+            if exists.deleted_at is not None:
+                exists.deleted_at = None
+                exists.import_log_id = log.id
+                added += 1
+            else:
+                skipped += 1
             continue
         db.add(models.Payment(supplier_id=supplier.id, date=pay.date, amount=pay.amount,
-                              doc=pay.doc, description=pay.description, source=source))
+                              doc=pay.doc, description=pay.description, source=source,
+                              import_log_id=log.id))
         added += 1
 
-    db.add(models.ImportLog(source=source, path=path,
-                            account=account or '', imported=added,
-                            skipped=skipped, reconciled=1 if pre['reconciled'] else 0,
-                            issues=json.dumps(pre['issues'], ensure_ascii=False)))
+    log.imported = added
+    log.skipped = skipped
     db.commit()
     out = dict(pre)
     out.update(saved=True, added=added, skipped=skipped,
@@ -285,14 +305,17 @@ def _commit_contractor(db: Session, parsed: dict, path: str,
     if backup:
         backup_db()
 
-    from app.services import contractors_service
-    res = contractors_service.upsert_from_statement(db, parsed, path)
+    log = models.ImportLog(source='pdf_statement', path=path, account=parsed['account'],
+                           imported=0, skipped=0, reconciled=1 if pre['reconciled'] else 0,
+                           issues=json.dumps(pre['issues'], ensure_ascii=False))
+    db.add(log)
+    db.flush()
 
-    db.add(models.ImportLog(source='pdf_statement', path=path,
-                            account=parsed['account'], imported=res['added'],
-                            skipped=res['skipped'],
-                            reconciled=1 if pre['reconciled'] else 0,
-                            issues=json.dumps(pre['issues'], ensure_ascii=False)))
+    from app.services import contractors_service
+    res = contractors_service.upsert_from_statement(db, parsed, path, import_log_id=log.id)
+
+    log.imported = res['added']
+    log.skipped = res['skipped']
     db.commit()
     out = dict(pre)
     out.update(saved=True, added=res['added'], skipped=res['skipped'],
