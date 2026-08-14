@@ -12,7 +12,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import Dict, List, Optional, Sequence
 
-from app.domain.payables import Invoice, Payment, money
+from app.domain.payables import Invoice, Payment, money, D
 
 AR_DIGITS = str.maketrans('0123456789', '٠١٢٣٤٥٦٧٨٩')
 QUARTER_NAMES = ['الأول', 'الثاني', 'الثالث', 'الرابع']
@@ -93,9 +93,9 @@ def allocate_payments_fifo(invoices: Sequence[Invoice],
     """
     allocs: List[Allocation] = []
     sorted_invoices = sorted(invoices, key=lambda i: (i.date, i.number or ''))
-    remaining = {id(i): Decimal(i.amount) for i in sorted_invoices}
+    remaining = {id(i): D(i.amount) for i in sorted_invoices}
     for pay in sorted(payments, key=lambda p: p.date):
-        pool = Decimal(pay.amount)
+        pool = D(pay.amount)
         for inv in sorted_invoices:
             if pool <= 0:
                 break
@@ -131,11 +131,11 @@ def avg_settlement_days(allocs: Sequence[Allocation], period_from: dt.date,
 def period_totals(invoices: Sequence[Invoice], payments: Sequence[Payment],
                   period_from: dt.date, period_to: dt.date) -> dict:
     zero = Decimal('0')
-    opening = (sum((Decimal(i.amount) for i in invoices if i.date < period_from), zero) -
-               sum((Decimal(p.amount) for p in payments if p.date < period_from), zero))
-    invoiced = sum((Decimal(i.amount) for i in invoices
+    opening = (sum((D(i.amount) for i in invoices if i.date < period_from), zero) -
+               sum((D(p.amount) for p in payments if p.date < period_from), zero))
+    invoiced = sum((D(i.amount) for i in invoices
                     if period_from <= i.date <= period_to), zero)
-    paid = sum((Decimal(p.amount) for p in payments
+    paid = sum((D(p.amount) for p in payments
                 if period_from <= p.date <= period_to), zero)
     closing = opening + invoiced - paid
     return dict(opening=opening, invoiced=invoiced, paid=paid, closing=closing)

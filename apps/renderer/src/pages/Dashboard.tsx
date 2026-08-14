@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { ar, arDate, dueLabel, dueTone, invoiceCount, k, pct, sar } from '@/lib/format';
-import { Card, EmptyState, Kpi, Money, Pill, State } from '@/components/ui';
+import { Card, EmptyState, ErrorState, Kpi, Money, Pill, State } from '@/components/ui';
 import { ExplainDot } from '@/components/Explain';
 
 const STATUS_VALUES = ['overdue', 'soon'] as const;
@@ -20,8 +20,13 @@ export function Dashboard() {
   const status: StatusFilter = (STATUS_VALUES as readonly string[]).includes(statusParam)
     ? (statusParam as StatusFilter) : '';
 
+  const load = () => {
+    api.dashboard({ project: project || undefined }).then((r) => { setD(r); setErr(null); }).catch((e) => setErr(e.message));
+  };
+
   useEffect(() => {
-    api.dashboard({ project: project || undefined }).then(setD).catch((e) => setErr(e.message));
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project]);
 
   // project options come from the always-unfiltered /projects list, fetched once.
@@ -33,10 +38,10 @@ export function Dashboard() {
     setParams(p, { replace: true });
   }
 
-  if (err) return <State>تعذّر تحميل البيانات: {err}</State>;
+  if (err) return <ErrorState message={`تعذّر تحميل البيانات: ${err}`} onRetry={load} />;
   if (!d) return <State>جارٍ التحميل…</State>;
 
-  const s = d.summary;
+  const s = d.summary ?? {};
   if (!s.supplierCount) {
     return (
       <>
@@ -49,7 +54,8 @@ export function Dashboard() {
     );
   }
 
-  const maxBar = Math.max(1, ...d.schedule.map((x: any) => x.amount));
+  const schedule = d.schedule ?? [];
+  const maxBar = Math.max(1, ...schedule.map((x: any) => x.amount));
   const payToday = (d.payToday ?? []).filter((r: any) => {
     if (status === 'overdue') return r.daysToDue < 0;
     if (status === 'soon') return r.daysToDue >= 0;
@@ -101,6 +107,7 @@ export function Dashboard() {
             <EmptyState kind="all-clear" title="لا توجد مستحقات قريبة"
               body="لا فواتير مستحقة خلال الأيام السبعة القادمة — لا إجراء مطلوب الآن." />
           ) : (
+            <div className="table-scroll">
             <table>
               <thead>
                 <tr>
@@ -127,13 +134,14 @@ export function Dashboard() {
                 </tr>
               </tfoot>
             </table>
+            </div>
           )}
         </Card>
 
         <div className="two">
           <Card title="الاستحقاقات القادمة — ٩٠ يوماً">
             <div className="bars">
-              {d.schedule.slice(0, 8).reverse().map((b: any) => (
+              {schedule.slice(0, 8).reverse().map((b: any) => (
                 <div className="col" key={b.date}>
                   <span className="num" style={{ fontSize: 12 }}>{k(b.amount)}</span>
                   <div className="bar"
@@ -148,11 +156,11 @@ export function Dashboard() {
 
           <Card title="أعمار الديون">
             <div className="card-body">
-              {[['لم يحن موعدها', d.ageing.current, ''],
-                ['متأخر ١–٣٠', d.ageing.d1_30, 'red'],
-                ['متأخر ٣١–٦٠', d.ageing.d31_60, 'red'],
-                ['متأخر ٦١–٩٠', d.ageing.d61_90, 'red'],
-                ['أكثر من ٩٠', d.ageing.d90_plus, 'red']].map(([label, v, cls]: any) => (
+              {(() => { const ageing = d.ageing ?? {}; return [['لم يحن موعدها', ageing.current, ''],
+                ['متأخر ١–٣٠', ageing.d1_30, 'red'],
+                ['متأخر ٣١–٦٠', ageing.d31_60, 'red'],
+                ['متأخر ٦١–٩٠', ageing.d61_90, 'red'],
+                ['أكثر من ٩٠', ageing.d90_plus, 'red']]; })().map(([label, v, cls]: any) => (
                 <div className="age-row" key={label}>
                   <span className="muted">{label}</span>
                   {v > 0 ? <Money v={v} cls={cls} /> : <span className="muted">—</span>}

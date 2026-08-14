@@ -55,7 +55,12 @@ class Supplier(TimestampMixin, Base):
 class Invoice(TimestampMixin, Base):
     """فاتورة — a credit line on the statement."""
     __tablename__ = 'invoices'
+    # الوصف والمستند جزء من الهوية — كشوف حقيقية تحمل فاتورتين بنفس الرقم والتاريخ
+    # والمبلغ وتختلفان في المستند/الوصف (سامي سويد: فاتورة ٨٥٠٠٦ بسندين مختلفين).
+    # بدونهما ترفض القاعدة الصف الثاني فيفشل الملف كله — وهو ما حدث فعلاً.
+    # جدول حركات المقاولين يضم الوصف في هويته منذ البداية؛ هذان الجدولان تأخّرا.
     __table_args__ = (UniqueConstraint('supplier_id', 'number', 'date', 'amount',
+                                       'doc', 'description',
                                        name='uq_invoice_identity'),)
 
     supplier_id: Mapped[str] = mapped_column(ForeignKey('suppliers.id'), index=True)
@@ -77,7 +82,10 @@ class Invoice(TimestampMixin, Base):
 class Payment(TimestampMixin, Base):
     """دفعة — a debit line on the statement."""
     __tablename__ = 'payments'
+    # نفس السبب: دفعتان بنفس السند والتاريخ والمبلغ تختلفان في الوصف
+    # (انظمة الطلاء: مرتجعان لفاتورتين مختلفتين على سند واحد).
     __table_args__ = (UniqueConstraint('supplier_id', 'doc', 'date', 'amount',
+                                       'description',
                                        name='uq_payment_identity'),)
 
     supplier_id: Mapped[str] = mapped_column(ForeignKey('suppliers.id'), index=True)
@@ -284,6 +292,29 @@ class GuaranteeEntry(TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, default='')
     source: Mapped[str] = mapped_column(String(20), default='statement')
     import_log_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+
+
+class LearnedLayout(TimestampMixin, Base):
+    """نمط تخطيط ملف مُتعلَّم — قاعدة استخراج حتمية قابلة لإعادة الاستخدام، لا بيانات.
+
+    يُخزَّن هنا شكل الملف (بنيته) لا محتواه: كشفان من نفس نظام المحاسبة بأسماء
+    وأرقام مختلفة يجب أن يحملا نفس fingerprint؛ انظر ai_service.compute_fingerprint
+    للطريقة وحدودها الصادقة. rulesJson يحمل الأنماط (تعابير نمطية + ترتيب حقول)
+    التي استنتجها الكود من أول استخراج بالذكاء الاصطناعي لهذا التخطيط — وليس أي
+    استدعاء نموذج إضافي.
+    """
+    __tablename__ = 'learned_layouts'
+    fingerprint: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    #: 'pdf' | 'xlsx' | 'other'
+    source_kind: Mapped[str] = mapped_column(String(20))
+    sample_account: Mapped[str] = mapped_column(String(32), default='')
+    sample_name: Mapped[str] = mapped_column(String(300), default='')
+    #: JSON — انظر ai_service.learn_rules_from_extraction للشكل الدقيق
+    rules_json: Mapped[str] = mapped_column(Text, default='{}')
+    hit_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_used_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    #: طول النص (حرف) الذي أُرسل للنموذج عند التعلّم — أساس تقدير tokensSaved لاحقاً
+    learned_from_chars: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class ImportLog(TimestampMixin, Base):

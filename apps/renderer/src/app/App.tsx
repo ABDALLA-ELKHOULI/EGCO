@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { HashRouter, Route, Routes } from 'react-router-dom';
+import { HashRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/Sidebar';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { initApi, api } from '@/lib/api';
 import { CommandCentre } from '@/pages/CommandCentre';
 import { Dashboard } from '@/pages/Dashboard';
@@ -9,6 +10,7 @@ import { SupplierDetail } from '@/pages/SupplierDetail';
 import { Projects } from '@/pages/Projects';
 import { Contractors } from '@/pages/Contractors';
 import { ContractorDetail } from '@/pages/ContractorDetail';
+import { Guarantees } from '@/pages/Guarantees';
 import { Budget } from '@/pages/Budget';
 import { ProjectDetail } from '@/pages/ProjectDetail';
 import { CashFlow } from '@/pages/CashFlow';
@@ -73,13 +75,31 @@ export function App() {
       <div className="app">
         <Sidebar />
         <main className="main">
-          <Routes>
+          <RoutedPages />
+        </main>
+      </div>
+    </HashRouter>
+  );
+}
+
+/**
+ * الصفحات داخل حاجز أخطاء — خطأ في شاشة لا يُفرغ التطبيق كله.
+ *
+ * `resetKey` is the current path: navigating away from a broken screen clears
+ * the error instead of leaving the boundary latched for the rest of the session.
+ */
+function RoutedPages() {
+  const location = useLocation();
+  return (
+    <ErrorBoundary resetKey={location.pathname}>
+      <Routes>
             <Route path="/" element={<CommandCentre />} />
             <Route path="/payables" element={<Dashboard />} />
             <Route path="/suppliers" element={<Suppliers />} />
             <Route path="/suppliers/:account" element={<SupplierDetail />} />
             <Route path="/contractors" element={<Contractors />} />
             <Route path="/contractors/:code" element={<ContractorDetail />} />
+            <Route path="/guarantees" element={<Guarantees />} />
             <Route path="/budget" element={<Budget />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:project" element={<ProjectDetail />} />
@@ -90,9 +110,7 @@ export function App() {
             <Route path="/import" element={<ImportPage />} />
             <Route path="/report" element={<ReportPage />} />
             <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </main>
-      </div>
-    </HashRouter>
+      </Routes>
+    </ErrorBoundary>
   );
 }

@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.db import models
 from app.domain.payables import D, money
+from app.services.contractors_service import guarantee_json
 
 _NAME_PATTERN = re.compile(r'ضمان\s+اعمال\s+(.+)')
 
@@ -85,12 +86,17 @@ def commit(db: Session, parsed: dict, path: str, import_log_id: str) -> dict:
     name = extract_contractor_name(parsed['name'])
     kind, matched = find_match(db, name)
 
+    # Look up including soft-deleted rows (the `account` column is unique, so an
+    # insert would collide with a soft-deleted match) — resurrect it in place if
+    # deleted, mirroring the pattern used for GuaranteeEntry/ContractorGuarantee
+    # below and for Supplier/Contractor elsewhere in this codebase.
     ga = db.query(models.GuaranteeAccount).filter_by(account=account).one_or_none()
     if ga is None:
         ga = models.GuaranteeAccount(account=account, name=name)
         db.add(ga)
         db.flush()
     else:
+        ga.deleted_at = None
         ga.name = name
     if kind == 'contractor':
         ga.linked_contractor_code = matched.code
@@ -136,3 +142,122 @@ def commit(db: Session, parsed: dict, path: str, import_log_id: str) -> dict:
                                       linkedContractorCode=ga.linked_contractor_code,
                                       balance=ga.balance),
                 matchedContractor=contractor_row)
+
+
+# ---------------------------------------------------------------- صفحة الضمانات
+
+def _entry_json(e: models.GuaranteeEntry) -> dict:
+    return dict(id=e.id, date=e.date.isoformat(), debit=money(e.debit or 0),
+                credit=money(e.credit or 0), doc=e.doc or '', description=e.description or '',
+                source=e.source or 'statement')
+
+
+def account_row(db: Session, ga: models.GuaranteeAccount) -> dict:
+    """صف حساب ضمان للائحة — بلا تفاصيل الحركات."""
+    entries = db.query(models.GuaranteeEntry).filter_by(
+        guarantee_account_id=ga.id).filter(models.GuaranteeEntry.deleted_at.is_(None)).all()
+    last = max((e.date for e in entries), default=None)
+    contractor_name = None
+    if ga.linked_contractor_code:
+        c = db.query(models.Contractor).filter_by(
+            code=ga.linked_contractor_code).filter(models.Contractor.deleted_at.is_(None)).one_or_none()
+        contractor_name = c.name if c else None
+    return dict(id=ga.id, account=ga.account, name=ga.name,
+                linkedContractorCode=ga.linked_contractor_code,
+                linkedContractorName=contractor_name,
+                balance=money(ga.balance or 0), entryCount=len(entries),
+                lastActivity=last.isoformat() if last else None)
+
+
+def _tracked_amount_for(db: Session, contractor: models.Contractor) -> Decimal:
+    total = Decimal('0')
+    for g in contractor.guarantees:
+        if g.deleted_at is not None or g.released_on is not None:
+            continue
+        total += D(g.amount or 0)
+    return total
+
+
+def reconcile(balance: float, tracked: Decimal) -> dict:
+    diff = D(balance) - tracked
+    return dict(difference=money(diff), matches=bool(abs(diff) <= Decimal('0.01')))
+
+
+def list_page(db: Session) -> dict:
+    """GET /guarantees — الحسابات + الضمانات المتتبَّعة + المطابقة والإجماليات."""
+    accounts = db.query(models.GuaranteeAccount).filter(
+        models.GuaranteeAccount.deleted_at.is_(None)).order_by(models.GuaranteeAccount.account).all()
+    account_rows = []
+    statements_held = Decimal('0')
+    for ga in accounts:
+        row = account_row(db, ga)
+        account_rows.append(row)
+        statements_held += D(ga.balance or 0)
+
+    contractors = db.query(models.Contractor).filter(
+        models.Contractor.deleted_at.is_(None)).order_by(models.Contractor.name).all()
+    contractor_guarantees = []
+    tracked_held = Decimal('0')
+    due_soon = overdue = 0
+    for c in contractors:
+        for g in c.guarantees:
+            if g.deleted_at is not None:
+                continue
+            gj = guarantee_json(g)
+            gj['contractorCode'] = c.code
+            gj['contractorName'] = c.name
+            contractor_guarantees.append(gj)
+            if g.released_on is None:
+                tracked_held += D(g.amount or 0)
+                if gj['dueStatus'] == 'due':
+                    overdue += 1
+                elif gj['dueStatus'] == 'upcoming':
+                    due_soon += 1
+
+    # attach reconciliation info to each linked account row
+    for row in account_rows:
+        code = row['linkedContractorCode']
+        if not code:
+            row['matches'] = None
+            row['difference'] = None
+            continue
+        c = next((c for c in contractors if c.code == code), None)
+        tracked = _tracked_amount_for(db, c) if c else Decimal('0')
+        rec = reconcile(row['balance'], tracked)
+        row.update(rec)
+
+    return dict(
+        accounts=account_rows,
+        contractorGuarantees=contractor_guarantees,
+        totals=dict(
+            statementsHeld=money(statements_held),
+            trackedHeld=money(tracked_held),
+            dueSoonCount=due_soon,
+            overdueCount=overdue,
+        ),
+    )
+
+
+def account_detail(db: Session, account: str) -> dict:
+    """GET /guarantees/{account} — سجل حركات الحساب + مقارنة بالمقاول المرتبط."""
+    ga = db.query(models.GuaranteeAccount).filter_by(account=account).filter(
+        models.GuaranteeAccount.deleted_at.is_(None)).one_or_none()
+    if ga is None:
+        return None
+    entries = db.query(models.GuaranteeEntry).filter_by(
+        guarantee_account_id=ga.id).filter(models.GuaranteeEntry.deleted_at.is_(None)).order_by(
+        models.GuaranteeEntry.date.desc()).all()
+    row = account_row(db, ga)
+    linked_guarantees = []
+    if ga.linked_contractor_code:
+        c = db.query(models.Contractor).filter_by(
+            code=ga.linked_contractor_code).filter(models.Contractor.deleted_at.is_(None)).one_or_none()
+        if c is not None:
+            tracked = _tracked_amount_for(db, c)
+            row.update(reconcile(row['balance'], tracked))
+            linked_guarantees = [guarantee_json(g) for g in c.guarantees if g.deleted_at is None]
+    else:
+        row['matches'] = None
+        row['difference'] = None
+    return dict(account=row, entries=[_entry_json(e) for e in entries],
+                linkedGuarantees=linked_guarantees)

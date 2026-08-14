@@ -105,6 +105,7 @@ def position(entries: Iterable[dict]) -> dict:
     zero = Decimal('0')
     debit_total = credit_total = zero
     claims_total = payments_total = retention_total = deductions_total = zero
+    other_debits = other_credits = zero
     for e in entries:
         debit, credit = D(e.get('debit') or 0), D(e.get('credit') or 0)
         debit_total += debit
@@ -112,13 +113,25 @@ def position(entries: Iterable[dict]) -> dict:
         kind = e.get('kind') or 'other'
         if kind == 'claim':
             claims_total += credit
+            other_debits += debit          # a claim line rarely carries a debit; keep it visible
         elif kind == 'payment':
             payments_total += debit
+            other_credits += credit
         elif kind == 'retention':
             retention_total += debit - credit
         elif kind == 'deduction':
             deductions_total += debit - credit
+        else:
+            # فاتورة محمّلة عليه · رصيد افتتاحي · أخرى — كانت تُحتسب في الرصيد
+            # ولا تظهر في أي بند معروض، فتختفي مبالغ حقيقية عن عين المستخدم
+            # (٧٤٣٬٨٤٠.٨٩ ر.س في بيانات حقيقية). كل حركة الآن تسقط في بند ظاهر.
+            other_debits += debit
+            other_credits += credit
+    # الثابت الذي يجعل الأرقام قابلة للتدقيق: بنود المدين تجمع إلى إجمالي المدين،
+    # وبنود الدائن إلى إجمالي الدائن — بلا بقايا مخفية.
+    #   payments + deductions(+debit part) + retention(+debit part) + other_debits == debit_total
     return dict(debit_total=debit_total, credit_total=credit_total,
                 balance=debit_total - credit_total,
                 claims_total=claims_total, payments_total=payments_total,
-                retention_total=retention_total, deductions_total=deductions_total)
+                retention_total=retention_total, deductions_total=deductions_total,
+                other_debits=other_debits, other_credits=other_credits)

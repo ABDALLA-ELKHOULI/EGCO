@@ -18,6 +18,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.api.deps import parse_date as _parse_date_or_422
 from app.db import models
 from app.db.session import get_session
 from app.domain.payables import D, money
@@ -26,10 +27,8 @@ from app.schemas.common import RevenueIn, RevenueUpdate
 router = APIRouter()
 
 
-def _parse_date(s: Optional[str]) -> Optional[dt.date]:
-    if not s:
-        return None
-    return dt.date.fromisoformat(s)
+def _parse_date(s: Optional[str], label: str = 'تاريخ') -> Optional[dt.date]:
+    return _parse_date_or_422(s, label)
 
 
 def _out(row: models.Receivable) -> dict:
@@ -43,10 +42,30 @@ def _out(row: models.Receivable) -> dict:
     )
 
 
+_VALID_DATE_FIELDS = ('due', 'collected')
+
+
 @router.get('')
 def list_revenues(q: Optional[str] = Query(None), project: Optional[str] = Query(None),
                   status: Optional[str] = Query(None),
+                  date_from: Optional[str] = Query(None),
+                  date_to: Optional[str] = Query(None),
+                  date_field: str = Query('due'),
+                  min_amount: Optional[float] = Query(None),
+                  max_amount: Optional[float] = Query(None),
                   db: Session = Depends(get_session)) -> dict:
+    """date_field selects which date date_from/date_to filter on: 'due' (default) uses
+    due_date, 'collected' uses collected_on. Undated rows never match a date window."""
+    if date_field not in _VALID_DATE_FIELDS:
+        raise HTTPException(422, detail=f'قيمة date_field غير صالحة: {date_field} — '
+                                        f'المسموح: {", ".join(_VALID_DATE_FIELDS)}')
+    df = _parse_date(date_from, 'تاريخ البداية')
+    dtt = _parse_date(date_to, 'تاريخ النهاية')
+    if df is not None and dtt is not None and df > dtt:
+        raise HTTPException(422, detail='تاريخ البداية يجب أن يسبق تاريخ النهاية')
+    if min_amount is not None and max_amount is not None and min_amount > max_amount:
+        raise HTTPException(422, detail='الحد الأدنى للمبلغ يجب ألا يتجاوز الحد الأقصى')
+
     base_q = db.query(models.Receivable).filter(models.Receivable.deleted_at.is_(None))
     if project:
         base_q = base_q.filter(models.Receivable.project == project)
@@ -54,7 +73,28 @@ def list_revenues(q: Optional[str] = Query(None), project: Optional[str] = Query
     # strip and selector stay stable while the user flips between statuses
     scoped_rows = base_q.all()
 
-    rows = scoped_rows
+    def _date_of(r):
+        return r.collected_on if date_field == 'collected' else r.due_date
+
+    def _in_window(r) -> bool:
+        if df is None and dtt is None:
+            return True
+        d = _date_of(r)
+        if d is None:
+            return False
+        if df is not None and d < df:
+            return False
+        if dtt is not None and d > dtt:
+            return False
+        return True
+
+    filtered = [r for r in scoped_rows if _in_window(r)]
+    if min_amount is not None:
+        filtered = [r for r in filtered if (r.amount or 0) >= min_amount]
+    if max_amount is not None:
+        filtered = [r for r in filtered if (r.amount or 0) <= max_amount]
+
+    rows = filtered
     if status:
         rows = [r for r in rows if r.status == status]
     if q:
@@ -74,13 +114,24 @@ def list_revenues(q: Optional[str] = Query(None), project: Optional[str] = Query
     # Sum via Decimal, not raw float columns — a plain float sum can drift by
     # fractions of a piaster from the exact total (same rule as payables/projects).
     zero = Decimal('0')
+    today = dt.date.today()
+    open_rows = [r for r in filtered if r.status == 'open']
     totals = dict(
-        open=money(sum((D(r.amount) for r in scoped_rows if r.status == 'open'), zero)),
-        collected=money(sum((D(r.amount) for r in scoped_rows if r.status == 'collected'), zero)),
-        all=money(sum((D(r.amount) for r in scoped_rows), zero)),
+        count=len(filtered),
+        open=money(sum((D(r.amount) for r in open_rows), zero)),
+        collected=money(sum((D(r.amount) for r in filtered if r.status == 'collected'), zero)),
+        all=money(sum((D(r.amount) for r in filtered), zero)),
+        overdueOpen=money(sum((D(r.amount) for r in open_rows
+                              if r.due_date is not None and r.due_date < today), zero)),
+        datedOpen=len([r for r in open_rows if r.due_date is not None]),
+        undatedOpen=len([r for r in open_rows if r.due_date is None]),
     )
 
-    return dict(count=len(rows), rows=[_out(r) for r in rows], totals=totals, projects=projects, clients=clients)
+    filters_applied = dict(q=q, project=project, status=status, dateFrom=date_from,
+                           dateTo=date_to, dateField=date_field, minAmount=min_amount,
+                           maxAmount=max_amount)
+    return dict(count=len(rows), rows=[_out(r) for r in rows], totals=totals, projects=projects,
+               clients=clients, filtersApplied=filters_applied)
 
 
 def _validate_status_coherence(status: str, collected_on: Optional[dt.date]) -> None:

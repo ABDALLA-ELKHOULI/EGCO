@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { ar, arDate, arRange, sar, STATUS } from '@/lib/format';
-import { Card, EmptyState, Money, Pill, State } from '@/components/ui';
+import { Card, EmptyState, ErrorState, Money, Pill, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
 import { SupplierForm, type SupplierFormValues } from '@/components/SupplierForm';
 import { AiBlock } from '@/components/Ai';
@@ -24,11 +24,22 @@ export function Suppliers() {
   const [prioritiesOpen, setPrioritiesOpen] = useState(false);
   const { enabled: aiEnabled, loading: aiLoading } = useAiEnabled();
 
-  const reload = () => api.suppliers({ q, project, status }).then(setD).catch((e) => setErr(e.message));
+  const seq = useRef(0);
+  const reload = () => {
+    const my = ++seq.current;
+    api.suppliers({ q, project, status }).then((r) => {
+      if (my !== seq.current) return; // استجابة متأخرة لطلب سابق — تُهمل
+      setD(r); setErr(null);
+    }).catch((e) => { if (my === seq.current) setErr(e.message); });
+  };
 
   useEffect(() => {
+    const my = ++seq.current;
     const t = setTimeout(() => {
-      api.suppliers({ q, project, status }).then(setD).catch((e) => setErr(e.message));
+      api.suppliers({ q, project, status }).then((r) => {
+        if (my !== seq.current) return;
+        setD(r); setErr(null);
+      }).catch((e) => { if (my === seq.current) setErr(e.message); });
     }, 200);
     return () => clearTimeout(t);
   }, [q, project, status]);
@@ -36,7 +47,7 @@ export function Suppliers() {
   const projects = useMemo(() => d?.projects ?? [], [d]);
   const filtering = Boolean(q || project || status);
 
-  if (err) return <State>تعذّر التحميل: {err}</State>;
+  if (err) return <ErrorState message={`تعذّر التحميل: ${err}`} onRetry={reload} />;
 
   async function handleAdd(values: SupplierFormValues) {
     setBusy(true); setFormErr(null);

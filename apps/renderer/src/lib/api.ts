@@ -18,10 +18,15 @@ export const apiBase = () => base;
 export class ApiError extends Error {}
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(base + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  });
+  let res: Response;
+  try {
+    res = await fetch(base + path, {
+      headers: { 'Content-Type': 'application/json' },
+      ...init,
+    });
+  } catch {
+    throw new ApiError('تعذّر الاتصال بالخدمة المحلية — تأكد أنها تعمل ثم أعد المحاولة');
+  }
   if (!res.ok) {
     let msg = `خطأ ${res.status}`;
     try {
@@ -30,7 +35,11 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     } catch { /* keep the status message */ }
     throw new ApiError(msg);
   }
-  return res.json() as Promise<T>;
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new ApiError('استجابة غير سليمة من الخدمة المحلية — أعد المحاولة');
+  }
 }
 
 const post = <T>(p: string, body: unknown) =>
@@ -179,6 +188,11 @@ export const api = {
   deleteContractorClaim: (code: string, id: string) =>
     del<{ deleted: boolean }>(`/api/v1/contractors/${encodeURIComponent(code)}/claims/${id}`),
 
+  /* ---- v0.6: ضمانات المقاولين ---- */
+  guarantees: () => call<GuaranteesResponse>('/api/v1/guarantees'),
+  guaranteeAccount: (account: string) =>
+    call<GuaranteeAccountDetail>(`/api/v1/guarantees/${encodeURIComponent(account)}`),
+
   createContractorGuarantee: (code: string, b: ContractorGuaranteeBody) =>
     post<any>(`/api/v1/contractors/${encodeURIComponent(code)}/guarantees`, b),
   updateContractorGuarantee: (code: string, id: string, b: Partial<ContractorGuaranteeBody>) =>
@@ -195,6 +209,8 @@ export const api = {
   saveAiSettings: (b: Partial<AiSettings>) => put<AiSettings>('/api/v1/ai/settings', b),
   aiTest: () => post<{ ok: boolean; message: string; model?: string }>('/api/v1/ai/test', {}),
   aiExtract: (path: string) => post<any>('/api/v1/ai/extract', { path }),
+  /** أنماط تخطيط ملفات تعلّمها التطبيق — استخراج لاحق لملف مشابه بلا رموز ذكاء اصطناعي */
+  aiLearnedLayouts: () => call<{ items: LearnedLayout[] }>('/api/v1/ai/learned-layouts'),
   /** اعتماد سطور مُستخرَجة آلياً بعد مراجعة المستخدم — للمقاولين فقط */
   aiCommitExtract: (b: {
     partyKind: 'contractor';
@@ -252,6 +268,18 @@ export interface AiSettings {
   model: string;
   /** أقصى عدد لرموز الإخراج — يُبقي الاستهلاك خفيفاً */
   maxTokens: number;
+}
+
+/** نمط تخطيط ملف متعلَّم — قاعدة استخراج حتمية، لا بيانات مالية. */
+export interface LearnedLayout {
+  id: string;
+  sourceKind: string;
+  sampleAccount: string;
+  sampleName: string;
+  hitCount: number;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+  approxTokensSaved: number;
 }
 
 /* ---------------- أنواع المقاولين والموازنة ---------------- */
@@ -314,11 +342,46 @@ export interface ContractorGuarantee {
   releasedOn: string | null; notes: string | null; dueStatus: GuaranteeDueStatus;
 }
 
+export interface GuaranteeAccountRow {
+  id: string; account: string; name: string;
+  linkedContractorCode: string | null; linkedContractorName: string | null;
+  balance: number; entryCount: number; lastActivity: string | null;
+  matches: boolean | null; difference: number | null;
+}
+
+export interface ContractorGuaranteeTracked {
+  id: string; contractorCode: string; contractorName: string;
+  project: string; amount: number | null; retentionRate: number | null;
+  finishedOn: string | null; guaranteeDays: number | null; releaseDue: string | null;
+  releasedOn: string | null; notes: string | null; dueStatus: GuaranteeDueStatus;
+}
+
+export interface GuaranteesResponse {
+  accounts: GuaranteeAccountRow[];
+  contractorGuarantees: ContractorGuaranteeTracked[];
+  totals: { statementsHeld: number; trackedHeld: number; dueSoonCount: number; overdueCount: number };
+}
+
+export interface GuaranteeEntry {
+  id: string; date: string; debit: number; credit: number; doc: string;
+  description: string; source: string;
+}
+
+export interface GuaranteeAccountDetail {
+  account: GuaranteeAccountRow;
+  entries: GuaranteeEntry[];
+  linkedGuarantees: ContractorGuarantee[];
+}
+
 export interface ContractorDetailResponse {
   code: string; name: string; phone: string | null; notes: string | null;
   defaultRetentionRate: number | null; defaultGuaranteeDays: number | null;
   balance: number;
   duesTotal: number; paidTotal: number;
+  /** بنود تكمل جانب المدين: خصومات وتأمينات وفواتير محمّلة ورصيد افتتاحي */
+  retentionTotal?: number; deductionsTotal?: number;
+  otherDebits?: number; otherCredits?: number;
+  debitTotal?: number; creditTotal?: number;
   lastPayment: { date: string; amount: number } | null;
   perProject: { project: string; debit: number; credit: number; balance: number; entryCount: number }[];
   entries: ContractorEntry[];

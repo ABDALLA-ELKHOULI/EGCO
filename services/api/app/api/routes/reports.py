@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.api.deps import parse_date
 from app.db import models
 from app.db.session import get_session
 from app.services import (contractor_report_service, export_service, payables_service,
@@ -137,9 +138,8 @@ def analysis(account: Optional[str] = Query(None),
              db: Session = Depends(get_session)) -> dict:
     today = dt.date.today()
     ps, scope = _scoped(db, today, account, project, _parties(parties), contractor)
-    start = dt.date.fromisoformat(date_from) if date_from else (
-        dt.date.fromisoformat(period_from) if period_from else None)
-    end = dt.date.fromisoformat(date_to) if date_to else None
+    start = parse_date(date_from, 'تاريخ البداية') or parse_date(period_from, 'الفترة')
+    end = parse_date(date_to, 'تاريخ النهاية')
     return _payload(db, today, ps, scope, start, end)
 
 
@@ -182,8 +182,8 @@ def export_xlsx(granularity: Optional[str] = Query(None),
                 db: Session = Depends(get_session)):
     today = dt.date.today()
     ps, scope = _scoped(db, today, account, project, _parties(parties), contractor)
-    start = dt.date.fromisoformat(date_from) if date_from else None
-    end = dt.date.fromisoformat(date_to) if date_to else None
+    start = parse_date(date_from, 'تاريخ البداية')
+    end = parse_date(date_to, 'تاريخ النهاية')
     analysis_payload = _payload(db, today, ps, scope, start, end)
 
     periodic_payload = None

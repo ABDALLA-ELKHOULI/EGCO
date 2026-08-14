@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError, type BudgetMonth, type BudgetProject, type BudgetResponse } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
-import { Card, EmptyState, Kpi, Money, Pill, State } from '@/components/ui';
+import { Card, EmptyState, ErrorState, Kpi, Money, Pill, State } from '@/components/ui';
 import { ExplainDot } from '@/components/Explain';
 import { useAiEnabled } from '@/lib/useAi';
 import type { PickedFile } from '@/types/global';
@@ -24,6 +24,7 @@ export function Budget() {
   const [docMode, setDocMode] = useState(false);
 
   const load = useCallback(() => {
+    setErr(null);
     api.budget().then(setD).catch((e) => setErr(e.message));
   }, []);
 
@@ -96,7 +97,7 @@ export function Budget() {
     load(); // تحديث بيانات الشاشة بعد الاستيراد
   }
 
-  if (err) return <State>تعذّر التحميل: {err}</State>;
+  if (err) return <ErrorState message={err} onRetry={load} />;
 
   if (docMode && d) {
     return <BudgetDoc d={d} onBack={() => setDocMode(false)} />;
@@ -129,7 +130,7 @@ export function Budget() {
       )}
 
       {!d ? <State>جارٍ التحميل…</State>
-        : d.projects.length === 0 ? (
+        : (d.projects ?? []).length === 0 ? (
           <Card>
             <EmptyState kind="no-data" title="لم تُرفع بيانات الموازنة بعد"
               body="ارفع ملف تقرير الانحراف الشهري لتظهر هنا مقارنة الفعلي بالمخطط لكل مشروع."
@@ -137,7 +138,7 @@ export function Budget() {
           </Card>
         ) : (
           <div className="stack">
-            {d.projects.map((p) => <ProjectBudget key={p.project} p={p} />)}
+            {(d.projects ?? []).map((p) => <ProjectBudget key={p.project} p={p} />)}
           </div>
         )}
     </>
@@ -263,7 +264,7 @@ function ProjectDocSection({ p, index }: { p: BudgetProject; index: number }) {
           <b style={{ fontSize: 12, display: 'block', margin: '10px 0 6px' }}>مستخلصات الشهر الأخير</b>
           <table className="rpt-table">
             <thead>
-              <tr><th>المستخلص</th><th className="ltr">المبلغ</th><th>التاريخ</th></tr>
+              <tr><th>المستخلص</th><th className="ltr">المبلغ (ر.س)</th><th>التاريخ</th></tr>
             </thead>
             <tbody>
               {latest.claims.map((c, i) => {
@@ -337,9 +338,9 @@ function MonthsTable({ months }: { months: BudgetMonth[] }) {
       <thead>
         <tr>
           <th>الشهر</th>
-          <th className="ltr">الفعلي</th>
-          <th className="ltr">المخطط</th>
-          <th className="ltr">الانحراف</th>
+          <th className="ltr">الفعلي (ر.س)</th>
+          <th className="ltr">المخطط (ر.س)</th>
+          <th className="ltr">الانحراف (ر.س)</th>
           <th className="ltr">نسبة التأخر</th>
           <th className="ltr">نسبة الإنجاز</th>
         </tr>
@@ -380,7 +381,7 @@ function DocBar({ label, value, max, gold }:
         <div className={'fill' + (gold ? ' gold' : '')}
              style={{ width: `${Math.max((value / max) * 100, 0)}%` }} />
       </div>
-      <span className="num amount">{sar(value)}</span>
+      <span className="num amount">{sar(value)} ر.س</span>
     </div>
   );
 }
@@ -441,9 +442,9 @@ function ProjectBudget({ p }: { p: BudgetProject }) {
               <thead>
                 <tr>
                   <th>الشهر</th>
-                  <th className="ltr">الفعلي</th>
-                  <th className="ltr">المخطط</th>
-                  <th className="ltr">الانحراف</th>
+                  <th className="ltr">الفعلي (ر.س)</th>
+                  <th className="ltr">المخطط (ر.س)</th>
+                  <th className="ltr">الانحراف (ر.س)</th>
                   <th className="ltr">نسبة التأخر</th>
                   <th className="ltr">نسبة الإنجاز</th>
                 </tr>
@@ -470,7 +471,7 @@ function ProjectBudget({ p }: { p: BudgetProject }) {
               <b style={{ fontSize: 13 }}>مستخلصات الشهر</b>
               <table style={{ marginTop: 6 }}>
                 <thead>
-                  <tr><th>المستخلص</th><th className="ltr">المبلغ</th><th>التاريخ</th></tr>
+                  <tr><th>المستخلص</th><th className="ltr">المبلغ (ر.س)</th><th>التاريخ</th></tr>
                 </thead>
                 <tbody>
                   {latest.claims.map((c, i) => {
@@ -522,7 +523,7 @@ function HBar({ label, value, max, color }: { label: string; value: number; max:
           height: '100%', background: color, borderRadius: 4,
         }} />
       </div>
-      <span className="num" style={{ width: 110, flex: '0 0 110px', textAlign: 'left' }}>{sar(value)}</span>
+      <span className="num" style={{ width: 110, flex: '0 0 110px', textAlign: 'left' }}>{sar(value)} ر.س</span>
     </div>
   );
 }

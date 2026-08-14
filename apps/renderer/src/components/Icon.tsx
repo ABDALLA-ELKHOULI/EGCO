@@ -7,7 +7,7 @@
 export type IconName =
   | 'dashboard' | 'payables' | 'cashflow' | 'projects' | 'reports'
   | 'calendar' | 'suppliers' | 'coverage' | 'upload' | 'settings'
-  | 'contractors' | 'budget'
+  | 'contractors' | 'budget' | 'guarantee'
   | 'collapse' | 'expand' | 'revenue';
 
 const PATHS: Record<IconName, JSX.Element> = {
@@ -86,6 +86,13 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M2 14h20v3H2z" />
       <path d="M10 6.5V4h4v2.5" />
       <path d="M12 21a4 4 0 0 0 4-4H8a4 4 0 0 0 4 4z" />
+    </>
+  ),
+  /* درع مفرغ — ضمانات المقاولين */
+  guarantee: (
+    <>
+      <path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5z" />
+      <path d="M9 12l2 2 4-4" />
     </>
   ),
   /* مستند بداخله أعمدة — الموازنة */

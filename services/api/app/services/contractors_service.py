@@ -197,6 +197,7 @@ def contractor_row_json(row: models.Contractor, today: Optional[dt.date] = None)
         balance=money(pos['balance']),
         duesTotal=money(pos['claims_total']),
         paidTotal=money(pos['payments_total']),
+        deductionsTotal=money(pos['deductions_total']),
         retentionHeld=money(retention_held),
         entryCount=len(entries),
         lastActivity=max(e.date for e in entries).isoformat() if entries else None,
@@ -214,20 +215,59 @@ def _last_payment(entries) -> object:
     return dict(date=last.date.isoformat(), amount=money(D(last.debit)))
 
 
-def contractors_list_json(db: Session, today: Optional[dt.date] = None) -> dict:
-    rows = [contractor_row_json(r, today) for r in
-            db.query(models.Contractor).filter(
-                models.Contractor.deleted_at.is_(None)).all()]
+def _direction_of(balance: float) -> str:
+    if balance < 0:
+        return 'owed_to_them'
+    if balance > 0:
+        return 'owed_to_us'
+    return 'balanced'
+
+
+def contractors_list_json(db: Session, today: Optional[dt.date] = None,
+                          q: Optional[str] = None, project: Optional[str] = None,
+                          direction: Optional[str] = None,
+                          has_guarantees: Optional[bool] = None) -> dict:
+    all_rows = [contractor_row_json(r, today) for r in
+               db.query(models.Contractor).filter(
+                   models.Contractor.deleted_at.is_(None)).all()]
+
+    rows = []
+    for r in all_rows:
+        if q:
+            needle = q.strip()
+            if needle not in r['name'] and needle not in r['code']:
+                continue
+        if project and project not in r['projects']:
+            continue
+        if direction and _direction_of(r['balance']) != direction:
+            continue
+        if has_guarantees is not None:
+            row_has = r['retentionHeld'] > 0
+            if row_has != has_guarantees:
+                continue
+        rows.append(r)
+
     # الأشد سالبية أولاً — the contractors we owe the most come first.
     rows.sort(key=lambda r: r['balance'])
     zero = Decimal('0')
+    claims_total = sum((D(r['duesTotal']) for r in rows), zero)
+    paid_total = sum((D(r['paidTotal']) for r in rows), zero)
+    deductions_total = sum((D(r['deductionsTotal']) for r in rows), zero)
     owed_to_contractors = sum((abs(D(r['balance'])) for r in rows if r['balance'] < 0), zero)
     owed_to_us = sum((D(r['balance']) for r in rows if r['balance'] > 0), zero)
+    balance = sum((D(r['balance']) for r in rows), zero)
     retention = sum((D(r['retentionHeld']) for r in rows), zero)
-    return dict(count=len(rows), rows=rows,
-                totals=dict(owedToContractors=money(owed_to_contractors),
-                            owedToUs=money(owed_to_us),
-                            retentionHeld=money(retention)))
+    totals = dict(count=len(rows),
+                 claimsTotal=money(claims_total),
+                 paidTotal=money(paid_total),
+                 deductionsTotal=money(deductions_total),
+                 balance=money(balance),
+                 owedToContractors=money(owed_to_contractors),
+                 owedToUs=money(owed_to_us),
+                 retentionHeld=money(retention))
+    filters_applied = dict(q=q, project=project, direction=direction,
+                           hasGuarantees=has_guarantees)
+    return dict(count=len(rows), rows=rows, totals=totals, filtersApplied=filters_applied)
 
 
 def contractor_detail_json(row: models.Contractor, today: Optional[dt.date] = None) -> dict:
@@ -255,6 +295,10 @@ def contractor_detail_json(row: models.Contractor, today: Optional[dt.date] = No
         duesTotal=money(pos['claims_total']), paidTotal=money(pos['payments_total']),
         retentionTotal=money(pos['retention_total']),
         deductionsTotal=money(pos['deductions_total']),
+        # حركات لا تندرج تحت البنود أعلاه (فواتير محمّلة · رصيد افتتاحي · أخرى).
+        # كانت تُحتسب في الرصيد وتختفي من العرض، فتبدو الأرقام غير متسقة.
+        otherDebits=money(pos['other_debits']),
+        otherCredits=money(pos['other_credits']),
         lastPayment=_last_payment(entries),
         perProject=per_project,
         entries=[entry_json(e) for e in

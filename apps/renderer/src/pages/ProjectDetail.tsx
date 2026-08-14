@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { ar, arDate, invoiceCount, k, sar } from '@/lib/format';
-import { Card, Kpi, Money, State } from '@/components/ui';
+import { Card, ErrorState, Kpi, Money, State } from '@/components/ui';
 import { ExplainDot } from '@/components/Explain';
 
 /** تفاصيل مشروع — الموردون واستحقاقاته القادمة. */
@@ -10,12 +10,20 @@ export function ProjectDetail() {
   const { project } = useParams();
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
+  const seq = useRef(0);
 
-  useEffect(() => {
-    if (project) api.project(project).then(setD).catch((e) => setErr(e.message));
-  }, [project]);
+  const load = () => {
+    if (!project) return;
+    const my = ++seq.current;
+    setErr(null);
+    api.project(project)
+      .then((r) => { if (my === seq.current) setD(r); })
+      .catch((e) => { if (my === seq.current) setErr(e.message); });
+  };
 
-  if (err) return <State>تعذّر التحميل: {err}</State>;
+  useEffect(() => { load(); }, [project]);
+
+  if (err) return <ErrorState message={err} onRetry={load} />;
   if (!d) return <State>جارٍ التحميل…</State>;
 
   const suppliers = d.suppliers ?? [];

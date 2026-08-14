@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
-import { Card, Money, Kpi, State } from '@/components/ui';
+import { Card, ErrorState, Money, Kpi, State } from '@/components/ui';
 import { AiBlock, AiDisabledHint, CopyButton } from '@/components/Ai';
 import { useAiEnabled } from '@/lib/useAi';
 import { ExplainDot } from '@/components/Explain';
@@ -14,9 +14,14 @@ export function CommandCentre() {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => { api.overview().then(setD).catch((e) => setErr(e.message)); }, []);
+  const load = () => {
+    setErr(null);
+    api.overview().then(setD).catch((e) => setErr(e.message));
+  };
 
-  if (err) return <State>تعذّر تحميل البيانات: {err}</State>;
+  useEffect(() => { load(); }, []);
+
+  if (err) return <ErrorState message={err} onRetry={load} />;
   if (!d) return <State>جارٍ التحميل…</State>;
 
   const payables = d.payables ?? {};
@@ -117,7 +122,7 @@ export function CommandCentre() {
               </>
             ) : (
               <>
-                <div className="muted" style={{ fontSize: 13 }}>أدنى رصيد</div>
+                <div className="muted" style={{ fontSize: 13 }}>أدنى رصيد (ر.س)</div>
                 <div className="value num" style={{ fontSize: 24, marginBottom: 8 }}>
                   <Money v={cash.minBalance ?? 0} cls={(cash.minBalance ?? 0) < 0 ? 'red' : undefined} />
                 </div>
@@ -133,7 +138,7 @@ export function CommandCentre() {
       </div>
 
       <div className="stack" style={{ marginTop: 18 }}>
-        <Card title="أعلى المشاريع مديونية">
+        <Card title="أعلى المشاريع مديونية (ر.س)">
           {projects.length === 0 ? (
             <State>لا توجد بيانات مشاريع بعد.</State>
           ) : (

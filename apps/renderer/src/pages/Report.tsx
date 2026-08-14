@@ -1,8 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, ApiError, type PartyScope } from '@/lib/api';
 import { ar, arDate, invoiceCount, sar } from '@/lib/format';
-import { Kpi, Money, State } from '@/components/ui';
+import { ErrorState, Kpi, Money, State } from '@/components/ui';
 import { ExplainDot } from '@/components/Explain';
 import { PeriodBar } from '@/components/PeriodBar';
 import { ScopeBar, scopeParams, type Scope } from '@/components/ScopeBar';
@@ -80,13 +80,21 @@ function PeriodTab() {
   }
 
   const sp = scopeParams(scope);
+  const seq = useRef(0);
 
-  useEffect(() => {
+  const loadReport = () => {
+    const my = ++seq.current;
     setD(null); setErr(null);
     api.report(sp.account, {
       date_from: from, date_to: to,
       project: sp.project, contractor: sp.contractor, parties,
-    }).then(setD).catch((e) => setErr(e.message));
+    }).then((r) => { if (my === seq.current) { setD(r); setErr(null); } })
+      .catch((e) => { if (my === seq.current) setErr(e.message); });
+  };
+
+  useEffect(() => {
+    loadReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sp.account, sp.project, sp.contractor, parties, from, to]);
 
   const exportParams = { ...sp, parties: parties === 'suppliers' ? undefined : parties };
@@ -96,7 +104,7 @@ function PeriodTab() {
       <ScopeBar scope={scope} onChange={(s) => writeParams({ scope: s })}
                 parties={parties} onPartiesChange={(p) => writeParams({ parties: p })} />
       <PeriodBar from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t); }} />
-      {err && <State>{err}</State>}
+      {err && <ErrorState message={err} onRetry={loadReport} />}
       {!err && !d && <State>جارٍ إعداد التقرير…</State>}
       {d && <PeriodSheet d={d} from={from} to={to} scopeP={exportParams} parties={parties} />}
     </>
@@ -286,7 +294,7 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
                      explain={<ExplainDot metric="reportAgeing" values={{}} />} />
             <div className="table-scroll">
               <table className="rpt-table">
-                <thead><tr><th>الفئة</th><th>عدد الفواتير</th><th className="ltr">المبلغ</th><th className="ltr">النسبة</th></tr></thead>
+                <thead><tr><th>الفئة</th><th>عدد الفواتير</th><th className="ltr">المبلغ (ر.س)</th><th className="ltr">النسبة</th></tr></thead>
                 <tbody>
                   {d.ageing.map((a: any) => (
                     <tr key={a.label}>
@@ -306,7 +314,7 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
             <Section num={sn(3)} title="جدول السداد القادم" sub="ما يجب دفعه ومتى — مرتباً بتاريخ الاستحقاق ومنسوباً لصاحبه" />
             <div className="table-scroll">
               <table className="rpt-table">
-                <thead><tr><th>تاريخ الاستحقاق</th><th>الطرف</th><th>الفواتير</th><th>الحالة</th><th className="ltr">المبلغ</th></tr></thead>
+                <thead><tr><th>تاريخ الاستحقاق</th><th>الطرف</th><th>الفواتير</th><th>الحالة</th><th className="ltr">المبلغ (ر.س)</th></tr></thead>
                 <tbody>
                   {d.schedule.map((x: any) => (
                     <tr key={x.date}>
@@ -330,8 +338,8 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
               <table className="rpt-table">
                 <thead><tr>
                   <th>المقاول</th><th>الرمز</th><th>المشاريع</th>
-                  <th className="ltr">المستخلص</th><th className="ltr">المسدد</th>
-                  <th className="ltr">الرصيد</th><th>آخر دفعة</th>
+                  <th className="ltr">المستخلص (ر.س)</th><th className="ltr">المسدد (ر.س)</th>
+                  <th className="ltr">الرصيد (ر.س)</th><th>آخر دفعة</th>
                 </tr></thead>
                 <tbody>
                   {con.rows.map((c: any) => {
@@ -506,10 +514,19 @@ function PeriodicTab({ account }: { account?: string }) {
   const [year, setYear] = useState(2026);
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
+  const seq = useRef(0);
+
+  const loadPeriodic = () => {
+    const my = ++seq.current;
+    setD(null); setErr(null);
+    api.periodic(granularity, year, account)
+      .then((r) => { if (my === seq.current) { setD(r); setErr(null); } })
+      .catch((e) => { if (my === seq.current) setErr(e.message); });
+  };
 
   useEffect(() => {
-    setD(null);
-    api.periodic(granularity, year, account).then(setD).catch((e) => setErr(e.message));
+    loadPeriodic();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [granularity, year, account]);
 
   return (
@@ -530,7 +547,7 @@ function PeriodicTab({ account }: { account?: string }) {
         <a className="btn" href={api.exportExcelUrl({ granularity, year, account })} download>تصدير Excel</a>
       </div>
 
-      {err && <State>{err}</State>}
+      {err && <ErrorState message={err} onRetry={loadPeriodic} />}
       {!err && !d && <State>جارٍ التحميل…</State>}
       {d && <PeriodicBody d={d} />}
     </>
@@ -563,11 +580,11 @@ function PeriodicBody({ d }: { d: any }) {
             <thead>
               <tr>
                 <th>الفترة</th>
-                <th className="ltr">الرصيد الافتتاحي</th>
-                <th className="ltr">المفوتر</th>
-                <th className="ltr">المسدد</th>
-                <th className="ltr">صافي الحركة</th>
-                <th className="ltr">الرصيد الختامي</th>
+                <th className="ltr">الرصيد الافتتاحي (ر.س)</th>
+                <th className="ltr">المفوتر (ر.س)</th>
+                <th className="ltr">المسدد (ر.س)</th>
+                <th className="ltr">صافي الحركة (ر.س)</th>
+                <th className="ltr">الرصيد الختامي (ر.س)</th>
                 <th className="ltr">متوسط عمر السداد</th>
               </tr>
             </thead>
@@ -602,10 +619,10 @@ function PeriodicBody({ d }: { d: any }) {
             <thead>
               <tr>
                 <th>الفترة</th>
-                <th className="ltr">المسدد</th>
-                <th className="ltr">الفترة السابقة</th>
+                <th className="ltr">المسدد (ر.س)</th>
+                <th className="ltr">الفترة السابقة (ر.س)</th>
                 <th className="ltr">التغيّر ٪</th>
-                <th className="ltr">نفس الفترة العام الماضي</th>
+                <th className="ltr">نفس الفترة العام الماضي (ر.س)</th>
                 <th className="ltr">التغيّر ٪</th>
               </tr>
             </thead>
@@ -636,7 +653,7 @@ function PeriodicBody({ d }: { d: any }) {
           <div className="card">
             <div className="cap"><h2>أعلى الموردين سداداً</h2><p>{lastPeriod.label}</p></div>
             <table>
-              <thead><tr><th>المورد</th><th className="ltr">المسدد</th></tr></thead>
+              <thead><tr><th>المورد</th><th className="ltr">المسدد (ر.س)</th></tr></thead>
               <tbody>
                 {(lastPeriod.topSuppliers ?? []).slice(0, 5).map((sup: any) => (
                   <tr key={sup.account}>

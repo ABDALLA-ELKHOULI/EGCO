@@ -43,6 +43,19 @@ export function State({ children }: { children: ReactNode }) {
 }
 
 /**
+ * حالة خطأ قابلة للتعافي — رسالة الخطأ مع زر «إعادة المحاولة» يعيد الجلب.
+ * يمنع خطأً عابراً (انقطاع اتصال مؤقت مثلاً) من تجميد الشاشة لبقية الجلسة.
+ */
+export function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="state" role="alert">
+      <div style={{ marginBottom: 12 }}>{message}</div>
+      <button className="btn primary" onClick={onRetry}>إعادة المحاولة</button>
+    </div>
+  );
+}
+
+/**
  * حالة فراغ — ثلاث حالات لا تُخلط (تطابق Empty/State في Figma):
  *   no-data    لم تُرفع بيانات أصلاً        → إجراء: رفع
  *   no-results الفلتر لم يطابق شيئاً        → إجراء: مسح التصفية

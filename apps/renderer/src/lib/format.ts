@@ -13,12 +13,14 @@ export const sar = (v: number, d = 2) =>
 
 export const sar0 = (v: number) => sar(v, 0);
 export const k = (v: number) => (v / 1000).toLocaleString('en-US', { maximumFractionDigits: 0 }) + 'k';
-export const pct = (v: number, d = 1) => `${v.toFixed(d)}٪`;
+export const pct = (v: number | null | undefined, d = 1) =>
+  v == null || !Number.isFinite(v) ? '—' : `${v.toFixed(d)}٪`;
 
-/** 2026-08-13 → ١٣ أغسطس ٢٠٢٦ */
+/** 2026-08-13 → ١٣ أغسطس ٢٠٢٦ — تتحمل تاريخ/وقت ISO كاملاً وقيماً غير سليمة. */
 export function arDate(iso: string | null | undefined, withYear = true): string {
-  if (!iso) return '—';
-  const [y, m, d] = iso.split('-').map(Number);
+  if (!iso || typeof iso !== 'string') return '—';
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d) || m < 1 || m > 12) return '—';
   return withYear ? `${ar(d)} ${MONTHS[m - 1]} ${ar(y)}` : `${ar(d)} ${MONTHS[m - 1]}`;
 }
 
@@ -48,16 +50,16 @@ export const invoiceCount = (n: number) =>
   arCount(n, { zero: 'لا فواتير', one: 'فاتورة واحدة', two: 'فاتورتان', few: 'فواتير', many: 'فاتورة' });
 
 /** نص الحالة حسب عدد الأيام حتى الاستحقاق. */
-export function dueLabel(days: number | null): string {
-  if (days === null) return 'بانتظار تاريخ';
+export function dueLabel(days: number | null | undefined): string {
+  if (days == null || !Number.isFinite(days)) return 'بانتظار تاريخ';
   if (days < 0) return `متأخر ${ar(Math.abs(days))} يوماً`;
   if (days === 0) return 'مستحق اليوم';
   if (days <= 7) return `خلال ${ar(days)} أيام`;
   return `بعد ${ar(days)} يوماً`;
 }
 
-export function dueTone(days: number | null): 'red' | 'gold' | 'muted' {
-  if (days === null) return 'muted';
+export function dueTone(days: number | null | undefined): 'red' | 'gold' | 'muted' {
+  if (days == null || !Number.isFinite(days)) return 'muted';
   if (days < 0) return 'red';
   if (days <= 7) return 'gold';
   return 'muted';

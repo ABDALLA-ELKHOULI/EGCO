@@ -23,6 +23,7 @@ const GROUPS: { section: string; items: NavItem[] }[] = [
       { to: '/cashflow', icon: 'cashflow', label: 'التدفق النقدي', alert: 'dueSoon' },
       { to: '/projects', icon: 'projects', label: 'المشاريع' },
       { to: '/contractors', icon: 'contractors', label: 'المقاولون' },
+      { to: '/guarantees', icon: 'guarantee', label: 'ضمانات المقاولين' },
     ],
   },
   {

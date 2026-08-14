@@ -21,8 +21,8 @@ PAST_RECEIVABLES_WARNING = (
     'كل التحصيلات المفتوحة تواريخها قبل بداية المدى المعروض — لا يوجد داخل متوقّع فيه، '
     'وهي معروضة في سطر «متأخر الآن» بالمطابقة أسفل الجدول')
 ALL_COLLECTED_WARNING = (
-    'كل التحصيلات المرفوعة ({n} سجلاً) محصَّلة بالفعل — التحصيل تاريخٌ لا توقّع، '
-    'فالتدفق الداخل أدناه صفر لهذا السبب')
+    'لا يوجد داخل متوقّع — كل التحصيلات المسجّلة محصَّلة بالفعل ({amount} ر.س خلال '
+    'هذا المدى)')
 
 OVERDUE_OUTFLOW_WARNING = (
     'متأخر الآن {amount} ر.س — استحقاقه مضى قبل بداية الجدول فلا دلو له، وهو غير محسوب '
@@ -32,6 +32,7 @@ UNDATED_OUTFLOW_WARNING = (
     'المطابقة أسفل جدول الفترات لا في أعمدته')
 
 ZERO = Decimal('0')
+MAX_BREAKDOWN_ROWS = 500
 
 
 def _ar_money(x: Decimal) -> str:
@@ -71,6 +72,47 @@ def _receivable_items(db: Session, project: Optional[str] = None):
         items.append(C.CashItem(date=r.due_date, amount=D(r.amount)))
     return items, dict(total=len(open_rows), dated=len(items), undated=undated,
                        collected=len(rows) - len(open_rows))
+
+
+def _collections(db: Session, project: Optional[str], from_date: dt.date,
+                 horizon_end: dt.date) -> dict:
+    """التحصيل الفعلي — منفصل تماماً عن التوقع أعلاه.
+
+    `_receivable_items` يستبعد عمداً كل سجل status='collected' من التوقع (المال الذي
+    دخل فعلاً ليس توقعاً)، فيختفي من شاشة التدفق النقدي بالكامل ويقرأه المستخدم بصيغة
+    «لماذا لا يُحتسب التحصيل؟». هذه الدالة تحسب ما حُصِّل فعلاً — تاريخ لا توقّع —
+    ليُعرض صراحة إلى جانب التوقع لا بدلاً منه.
+    """
+    q = db.query(models.Receivable).filter(
+        models.Receivable.deleted_at.is_(None), models.Receivable.status == 'collected')
+    if project:
+        q = q.filter(models.Receivable.project == project)
+    rows = [r for r in q.all() if r.collected_on is not None]
+    total = sum((D(r.amount) for r in rows), ZERO)
+    in_window = sum((D(r.amount) for r in rows
+                     if from_date <= r.collected_on <= horizon_end), ZERO)
+    rows_sorted = sorted(rows, key=lambda r: r.collected_on, reverse=True)
+    truncated = len(rows_sorted) > MAX_BREAKDOWN_ROWS
+    return dict(
+        inWindow=money(in_window), total=money(total), count=len(rows),
+        truncated=truncated,
+        rows=[dict(date=r.collected_on.isoformat(), client=r.client, project=r.project,
+                   amount=money(r.amount)) for r in rows_sorted[:MAX_BREAKDOWN_ROWS]],
+    )
+
+
+def _collected_by_bucket(db: Session, project: Optional[str], periods) -> list:
+    """مبلغ التحصيل الفعلي داخل كل فترة من فترات الجدول — لعرضه بجانب الداخل المتوقع."""
+    q = db.query(models.Receivable).filter(
+        models.Receivable.deleted_at.is_(None), models.Receivable.status == 'collected')
+    if project:
+        q = q.filter(models.Receivable.project == project)
+    rows = [r for r in q.all() if r.collected_on is not None]
+    out = []
+    for p in periods:
+        amt = sum((D(r.amount) for r in rows if p.from_date <= r.collected_on <= p.to_date), ZERO)
+        out.append(money(amt))
+    return out
 
 
 def _split(items, from_date: dt.date, horizon_end: dt.date) -> dict:
@@ -270,6 +312,168 @@ def _known_projects(db: Session) -> list:
     return sorted(supplier_projects | receivable_projects)
 
 
+# ============================================================== breakdown
+
+_TERMS = ('scheduled', 'overdue', 'undated', 'beyond', 'collected', 'forecast')
+
+
+def _supplier_term_rows(db, today, project, term, from_date, horizon_end,
+                        win_from, win_to) -> list:
+    ps = PS.positions(db, today=today, project=project, include_empty=True)
+    rows = []
+    for p in ps:
+        for inv in p.invoices:
+            if inv.remaining <= 0:
+                continue
+            d = inv.due_date
+            if term == 'undated':
+                match = d is None
+            elif d is None:
+                match = False
+            elif term == 'overdue':
+                match = d < from_date
+            elif term == 'beyond':
+                match = d > horizon_end
+            else:  # scheduled
+                match = from_date <= d <= horizon_end and win_from <= d <= win_to
+            if not match:
+                continue
+            days_overdue = (today - d).days if d is not None and d < today else None
+            rows.append(dict(
+                account=p.supplier.account, supplierName=p.supplier.name,
+                invoiceNumber=inv.number, invoiceDate=inv.date.isoformat(),
+                dueDate=d.isoformat() if d else None, amount=money(inv.remaining),
+                daysOverdue=days_overdue,
+            ))
+    return rows
+
+
+def _contractor_term_rows(db, today, project, term, from_date, horizon_end,
+                          win_from, win_to) -> list:
+    contractors = _scoped_contractors(db, project=project)
+    ids = [c.id for c in contractors]
+    by_id = {c.id: c for c in contractors}
+    if not ids:
+        return []
+    ledger = db.query(models.ContractorEntry.contractor_id,
+                      models.ContractorEntry.debit, models.ContractorEntry.credit) \
+        .filter(models.ContractorEntry.contractor_id.in_(ids)) \
+        .filter(models.ContractorEntry.deleted_at.is_(None)).all()
+    bal = {}
+    for cid, debit, credit in ledger:
+        bal[cid] = bal.get(cid, ZERO) + D(debit or 0) - D(credit or 0)
+    owed = {cid: -b for cid, b in bal.items() if b < 0}
+
+    per = {}
+    gq = db.query(models.ContractorGuarantee) \
+        .filter(models.ContractorGuarantee.released_on.is_(None)) \
+        .filter(models.ContractorGuarantee.deleted_at.is_(None)) \
+        .filter(models.ContractorGuarantee.contractor_id.in_(ids))
+    guarantees = list(gq.all())
+    for g in guarantees:
+        amount = D(g.amount or 0)
+        due = _guarantee_due(g)
+        if amount <= 0 or due is None:
+            continue
+        per.setdefault(g.contractor_id, []).append((g, due, amount))
+
+    rows = []
+    if term in ('scheduled', 'overdue', 'beyond'):
+        for g in guarantees:
+            amount = D(g.amount or 0)
+            due = _guarantee_due(g)
+            if amount <= 0 or due is None:
+                continue
+            if term == 'overdue':
+                match = due < from_date
+            elif term == 'beyond':
+                match = due > horizon_end
+            else:
+                match = from_date <= due <= horizon_end and win_from <= due <= win_to
+            if not match:
+                continue
+            c = by_id.get(g.contractor_id)
+            if c is None:
+                continue
+            rows.append(dict(
+                contractorCode=c.code, contractorName=c.name, project=g.project,
+                releaseDue=due.isoformat(), amount=money(amount),
+            ))
+    elif term == 'undated':
+        # Same rule as _contractor_flow: whatever of a contractor's owed balance is not
+        # covered by their dated guarantees (in-horizon or out) counts as "بلا تواريخ".
+        for cid in set(list(per.keys()) + list(owed.keys())):
+            dated_items = [C.CashItem(date=due, amount=amt) for (_g, due, amt) in per.get(cid, [])]
+            parts = _split(dated_items, from_date, horizon_end)
+            covered = parts['scheduled'] + parts['overdue'] + parts['beyond']
+            due_i = owed.get(cid, ZERO)
+            if covered < due_i:
+                c = by_id.get(cid)
+                if c is None:
+                    continue
+                rows.append(dict(
+                    contractorCode=c.code, contractorName=c.name, project=None,
+                    releaseDue=None, amount=money(due_i - covered),
+                ))
+    return rows
+
+
+def _collected_term_rows(db, project, win_from, win_to) -> list:
+    q = db.query(models.Receivable).filter(
+        models.Receivable.deleted_at.is_(None), models.Receivable.status == 'collected')
+    if project:
+        q = q.filter(models.Receivable.project == project)
+    rows = [r for r in q.all() if r.collected_on is not None and win_from <= r.collected_on <= win_to]
+    rows.sort(key=lambda r: r.collected_on, reverse=True)
+    return [dict(date=r.collected_on.isoformat(), client=r.client, project=r.project,
+                amount=money(r.amount)) for r in rows]
+
+
+def _forecast_term_rows(db, project, win_from, win_to) -> list:
+    q = db.query(models.Receivable).filter(models.Receivable.deleted_at.is_(None))
+    if project:
+        q = q.filter(models.Receivable.project == project)
+    rows = [r for r in q.all() if r.status != 'collected' and r.due_date is not None
+            and win_from <= r.due_date <= win_to]
+    rows.sort(key=lambda r: r.due_date)
+    return [dict(date=r.due_date.isoformat(), client=r.client, project=r.project,
+                amount=money(r.amount)) for r in rows]
+
+
+def breakdown(db: Session, term: str, project: Optional[str] = None, parties: str = 'suppliers',
+             weeks: int = 26, from_date: Optional[dt.date] = None, today: Optional[dt.date] = None,
+             period_days: int = C.PERIOD_DAYS, period: Optional[dt.date] = None) -> dict:
+    """صفوف المصدر الفعلية وراء أي رقم في /cashflow — بلا كتلة سوداء، كل رقم قابل للتتبع."""
+    if term not in _TERMS:
+        raise ValueError('unknown term')
+    today = today or dt.date.today()
+    from_date = from_date or today
+    horizon_end = C.horizon_end(from_date, weeks, period_days)
+
+    if period is not None:
+        win_from, win_to = period, period + dt.timedelta(days=period_days - 1)
+    else:
+        win_from, win_to = from_date, horizon_end
+
+    if term == 'collected':
+        rows = _collected_term_rows(db, project, win_from, win_to)
+    elif term == 'forecast':
+        rows = _forecast_term_rows(db, project, win_from, win_to)
+    else:
+        rows = []
+        if parties in ('suppliers', 'both'):
+            rows += _supplier_term_rows(db, today, project, term, from_date, horizon_end,
+                                        win_from, win_to)
+        if parties in ('contractors', 'both'):
+            rows += _contractor_term_rows(db, today, project, term, from_date, horizon_end,
+                                          win_from, win_to)
+
+    total = sum((D(r['amount']) for r in rows), ZERO)
+    truncated = len(rows) > MAX_BREAKDOWN_ROWS
+    return dict(term=term, total=money(total), truncated=truncated,
+               rows=rows[:MAX_BREAKDOWN_ROWS])
+
+
 def cashflow(db: Session, weeks: int = 26, from_date: Optional[dt.date] = None,
             opening_balance: float = 0.0, today: Optional[dt.date] = None,
             project: Optional[str] = None, parties: str = 'suppliers',
@@ -288,6 +492,7 @@ def cashflow(db: Session, weeks: int = 26, from_date: Optional[dt.date] = None,
 
     recv_items, recv_stats = _receivable_items(db, project=project)
     recv_recon = _receivable_reconciliation(db, project, from_date, horizon_end)
+    collections = _collections(db, project, from_date, horizon_end)
 
     pay_items = []
     supplier_recon = None
@@ -304,6 +509,7 @@ def cashflow(db: Session, weeks: int = 26, from_date: Optional[dt.date] = None,
 
     periods = C.build_periods(recv_items, pay_items, from_date, weeks, D(opening_balance),
                               period_days=period_days)
+    collected_by_bucket = _collected_by_bucket(db, project, periods)
 
     total_inflow = sum((p.inflow for p in periods), Decimal('0'))
     # "Do we have usable income data?" — not "do rows exist?". A green flag over a zero
@@ -315,7 +521,7 @@ def cashflow(db: Session, weeks: int = 26, from_date: Optional[dt.date] = None,
     # كل رسالة تحت هذا السطر يجب أن تصف الأرقام المعادة في نفس الحمولة — لا رسالة
     # «لا توجد بيانات» فوق ملف فيه صفوف، ولا العكس.
     if recv_stats['total'] == 0:
-        warnings.append(ALL_COLLECTED_WARNING.format(n=recv_stats['collected'])
+        warnings.append(ALL_COLLECTED_WARNING.format(amount=_ar_money(D(collections['inWindow'])))
                         if recv_stats['collected'] > 0 else NO_RECEIVABLES_WARNING)
     elif recv_stats['dated'] == 0:
         warnings.append(UNDATED_RECEIVABLES_WARNING.format(n=recv_stats['total']))
@@ -345,7 +551,8 @@ def cashflow(db: Session, weeks: int = 26, from_date: Optional[dt.date] = None,
             'inflow': money(p.inflow), 'outflow': money(p.outflow), 'net': money(p.net),
             'balance': money(p.balance), 'inflowCount': p.inflow_count,
             'outflowCount': p.outflow_count, 'deficit': p.deficit,
-        } for p in periods],
+            'collected': collected_by_bucket[i],
+        } for i, p in enumerate(periods)],
         summary=dict(
             totalInflow=money(summary['total_inflow']), totalOutflow=money(summary['total_outflow']),
             netTotal=money(summary['net_total']), minBalance=money(summary['min_balance']),
@@ -353,6 +560,7 @@ def cashflow(db: Session, weeks: int = 26, from_date: Optional[dt.date] = None,
                      receivablesStats=recv_stats,
         ),
         warnings=warnings,
+        collections=collections,
         projects=_known_projects(db),
         parties=parties,
         undatedContractorDues=money(undated_contractor_dues),

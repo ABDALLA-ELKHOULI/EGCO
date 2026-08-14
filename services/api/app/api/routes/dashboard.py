@@ -5,6 +5,7 @@ import datetime as dt
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.api.deps import parse_date
 from app.db.session import get_session
 from app.services import payables_service
 
@@ -17,8 +18,8 @@ def dashboard(date_from: Optional[str] = Query(None),
              project: Optional[str] = Query(None),
              db: Session = Depends(get_session)) -> dict:
     """لوحة اليوم."""
-    df = dt.date.fromisoformat(date_from) if date_from else None
-    dtt = dt.date.fromisoformat(date_to) if date_to else None
+    df = parse_date(date_from, 'تاريخ البداية')
+    dtt = parse_date(date_to, 'تاريخ النهاية')
     return payables_service.dashboard(db, date_from=df, date_to=dtt, project=project)
 
 
@@ -34,7 +35,7 @@ def day_detail(date: str = Query(...), project: Optional[str] = Query(None),
     from app.domain.payables import money, payment_schedule
     from app.services import contractors_service
 
-    day = dt.date.fromisoformat(date)
+    day = parse_date(date, 'تاريخ', required=True)
     today = dt.date.today()
 
     suppliers = []

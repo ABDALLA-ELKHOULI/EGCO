@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
-import { Card, EmptyState, Kpi, Money, Pill, State } from '@/components/ui';
+import { Card, EmptyState, ErrorState, Kpi, Money, Pill, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
 import { ExplainDot } from '@/components/Explain';
 
@@ -25,11 +25,22 @@ export function Revenues() {
   const [busy, setBusy] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
 
-  const reload = () => api.revenues({ q, project, status }).then(setD).catch((e) => setErr(e.message));
+  const seq = useRef(0);
+  const reload = () => {
+    const my = ++seq.current;
+    api.revenues({ q, project, status }).then((r) => {
+      if (my !== seq.current) return;
+      setD(r); setErr(null);
+    }).catch((e) => { if (my === seq.current) setErr(e.message); });
+  };
 
   useEffect(() => {
+    const my = ++seq.current;
     const t = setTimeout(() => {
-      api.revenues({ q, project, status }).then(setD).catch((e) => setErr(e.message));
+      api.revenues({ q, project, status }).then((r) => {
+        if (my !== seq.current) return;
+        setD(r); setErr(null);
+      }).catch((e) => { if (my === seq.current) setErr(e.message); });
     }, 200);
     return () => clearTimeout(t);
   }, [q, project, status]);
@@ -39,7 +50,7 @@ export function Revenues() {
   const allRows = useMemo(() => d?.rows ?? [], [d]);
   const filtering = Boolean(q || project || status);
 
-  if (err) return <State>تعذّر التحميل: {err}</State>;
+  if (err) return <ErrorState message={`تعذّر التحميل: ${err}`} onRetry={reload} />;
 
   async function handleAdd(values: RevenueFormValues) {
     setBusy(true); setFormErr(null);

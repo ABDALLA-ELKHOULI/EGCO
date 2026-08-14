@@ -25,12 +25,67 @@ def _migrate_add_column(conn, table: str, column: str, ddl_type: str, default_sq
             f'ALTER TABLE {table} ADD COLUMN {column} {ddl_type} DEFAULT {default_sql}'))
 
 
+
+def _rebuild_identity_constraints(conn) -> None:
+    """يوسّع هوية الفواتير والدفعات لتشمل الوصف/المستند — بإعادة بناء الجدولين.
+
+    SQLite cannot ALTER a UNIQUE constraint, so the table is rebuilt: rename aside,
+    recreate from the (new) model, copy every row, drop the old one. Real statements
+    carry two genuinely different lines that match on the old identity — the second
+    insert hit `UNIQUE constraint failed` and the WHOLE file failed to import. Widening
+    the identity is what lets both lines coexist while a true re-import still dedupes.
+
+    Runs at most once, guarded by `schema_flags`; a failure rolls the rename back so a
+    half-migrated database can never be left behind.
+    """
+    conn.execute(text('CREATE TABLE IF NOT EXISTS schema_flags '
+                      '(key TEXT PRIMARY KEY, applied_at TEXT)'))
+    flag = 'widen_invoice_payment_identity_v1'
+    done = conn.execute(text('SELECT 1 FROM schema_flags WHERE key = :k'),
+                        {'k': flag}).fetchone()
+    if done:
+        return
+
+    for table in ('invoices', 'payments'):
+        sql = conn.execute(
+            text("SELECT sql FROM sqlite_master WHERE type='table' AND name=:n"),
+            {'n': table}).scalar()
+        if not sql:
+            continue
+        cols = [row[1] for row in conn.execute(text(f'PRAGMA table_info({table})')).fetchall()]
+        col_list = ', '.join(f'"{c}"' for c in cols)
+        # فهارس الجدول تبقى بأسمائها بعد إعادة التسمية وتتبع الجدول القديم، فتصطدم
+        # بفهارس الجدول الجديد — تُحذف أولاً (يُعيد create() إنشاءها).
+        idx = [r[0] for r in conn.execute(text(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=:n "
+            "AND name NOT LIKE 'sqlite_autoindex%'"), {'n': table}).fetchall()]
+        conn.execute(text(f'ALTER TABLE {table} RENAME TO {table}_old_identity'))
+        try:
+            for name in idx:
+                conn.execute(text(f'DROP INDEX IF EXISTS "{name}"'))
+            Base.metadata.tables[table].create(bind=conn)
+            # نسخ كل الصفوف كما هي — لا صف يُفقد ولا يُعدَّل
+            conn.execute(text(
+                f'INSERT INTO {table} ({col_list}) SELECT {col_list} FROM {table}_old_identity'))
+            conn.execute(text(f'DROP TABLE {table}_old_identity'))
+        except Exception:
+            conn.execute(text(f'DROP TABLE IF EXISTS {table}'))
+            conn.execute(text(f'ALTER TABLE {table}_old_identity RENAME TO {table}'))
+            raise
+        logger.info('rebuilt %s with the widened identity constraint', table)
+
+    conn.execute(text('INSERT OR REPLACE INTO schema_flags (key, applied_at) '
+                      'VALUES (:k, :t)'),
+                 {'k': flag, 't': dt.datetime.now(dt.timezone.utc).isoformat()})
+
+
 def init_db() -> None:
     """Create tables on first run. Swap for Alembic once the schema starts changing."""
     Base.metadata.create_all(engine)
     # Lightweight migration for installs created before the `source` column existed —
     # create_all() never alters existing tables, so existing DBs need a manual ALTER.
     with engine.begin() as conn:
+        _rebuild_identity_constraints(conn)
         _migrate_add_column(conn, 'invoices', 'source', 'TEXT', "'statement'")
         _migrate_add_column(conn, 'payments', 'source', 'TEXT', "'statement'")
         # `receivables` is new as of v0.3 — create_all() above already creates it for
@@ -51,6 +106,10 @@ def init_db() -> None:
         Base.metadata.tables['account_classifications'].create(bind=conn, checkfirst=True)
         Base.metadata.tables['guarantee_accounts'].create(bind=conn, checkfirst=True)
         Base.metadata.tables['guarantee_entries'].create(bind=conn, checkfirst=True)
+        # `learned_layouts` is new as of the AI-rescue token-saving cache — additive
+        # table only (no ALTER on existing tables), create_all() above already makes it
+        # for fresh installs; explicit checkfirst=True create() here covers existing DBs.
+        Base.metadata.tables['learned_layouts'].create(bind=conn, checkfirst=True)
     _migrate_211_contractors_to_suppliers()
 
 

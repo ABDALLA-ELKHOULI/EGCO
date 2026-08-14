@@ -1,11 +1,39 @@
-import { CSSProperties, useEffect, useState } from 'react';
+import { CSSProperties, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, ApiError } from '@/lib/api';
+import { api, apiBase, ApiError } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
-import { Card, EmptyState, Kpi, Money, Pill, State } from '@/components/ui';
+import { Card, EmptyState, ErrorState, Kpi, Money, Pill, State } from '@/components/ui';
 import { AiBlock } from '@/components/Ai';
 import { useAiEnabled } from '@/lib/useAi';
 import { ExplainDot } from '@/components/Explain';
+
+type BreakdownTerm = 'scheduled' | 'overdue' | 'undated' | 'beyond' | 'collected' | 'forecast';
+
+/** رأس تفصيل رقم مسحوب من /cashflow/breakdown — يحمل السياق اللازم لعرضه في نافذة. */
+interface BreakdownRequest {
+  term: BreakdownTerm;
+  titleLabel: string;
+  amount: number;
+  period?: string; // period[i].from — يقصر المصطلح على فترة واحدة
+  rule: string; // شرح القاعدة التي اختارت هذه الصفوف — عربي مباشر
+}
+
+/** يجلب صفوف المصدر وراء رقم واحد — لا تعديل على lib/api.ts المملوك لوكيل آخر،
+ * فنبني الرابط مباشرة عبر apiBase() تماماً كما تفعل روابط تصدير Excel. */
+async function fetchBreakdown(req: BreakdownRequest, opts: {
+  project: string; parties: PartiesFilter; weeks: number; periodDays: number;
+}): Promise<{ term: string; total: number; truncated: boolean; rows: any[] }> {
+  const params = new URLSearchParams();
+  params.set('term', req.term);
+  if (req.period) params.set('period', req.period);
+  params.set('weeks', String(opts.weeks));
+  params.set('period_days', String(opts.periodDays));
+  if (opts.project) params.set('project', opts.project);
+  params.set('parties', opts.parties);
+  const res = await fetch(apiBase() + '/api/v1/cashflow/breakdown?' + params.toString());
+  if (!res.ok) throw new Error('تعذّر جلب تفاصيل هذا الرقم');
+  return res.json();
+}
 
 type PartiesFilter = 'suppliers' | 'contractors' | 'both';
 
@@ -20,6 +48,16 @@ function periodDaysLabel(n: number): string {
   if (n === 1) return 'يوم واحد';
   if (n === 2) return 'يومان';
   return `${ar(n)} أيام`;
+}
+
+/** رقم قابل للنقر يفتح نافذة تُبيّن الصفوف التي كوّنته — جوهر ميزة «من أين جاء هذا الرقم؟». */
+function AmountCell({ amount, cls, onClick }: { amount: number; cls?: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} title="اضغط لرؤية الصفوف التي كوّنت هذا الرقم"
+            style={{ all: 'unset', cursor: 'pointer', borderBottom: '1px dashed var(--muted)' }}>
+      <Money v={amount} cls={cls} />
+    </button>
+  );
 }
 
 /** التدفق النقدي — الداخل مقابل الخارج، بالفترات. */
@@ -43,12 +81,21 @@ export function CashFlow() {
       ? rawPeriodDays : PERIOD_DAYS_DEFAULT;
   const [customPeriodDays, setCustomPeriodDays] = useState(String(periodDays));
   const [applied, setApplied] = useState<{ weeks: 13 | 26; opening: number }>({ weeks: 26, opening: 0 });
+  const [breakdownReq, setBreakdownReq] = useState<BreakdownRequest | null>(null);
 
+  function openBreakdown(req: BreakdownRequest) {
+    setBreakdownReq(req);
+  }
+
+  const seq = useRef(0);
   const load = (weeks: number, opening_balance: number, projectFilter: string, partiesFilter: PartiesFilter,
                 periodDaysFilter: number) => {
+    const my = ++seq.current;
+    setErr(null);
     api.cashflow({ weeks, opening_balance, project: projectFilter || undefined, parties: partiesFilter,
                   period_days: periodDaysFilter })
-      .then(setD).catch((e) => setErr(e.message));
+      .then((r) => { if (my === seq.current) setD(r); })
+      .catch((e) => { if (my === seq.current) setErr(e.message); });
   };
 
   useEffect(() => { load(applied.weeks, applied.opening, project, parties, periodDays); },
@@ -88,7 +135,7 @@ export function CashFlow() {
 
   const isCustomPeriodDays = !PERIOD_PRESETS.includes(periodDays);
 
-  if (err) return <State>تعذّر التحميل: {err}</State>;
+  if (err) return <ErrorState message={err} onRetry={() => load(applied.weeks, applied.opening, project, parties, periodDays)} />;
   if (!d) return <State>جارٍ التحميل…</State>;
 
   const periods = d.periods ?? [];
@@ -172,13 +219,34 @@ export function CashFlow() {
       </div>
 
       <div className="kpi-row">
-        <Kpi label="إجمالي الداخل" value={sar(summary.totalInflow ?? 0)} unit="ر.س" tone="ok" />
-        <Kpi label="إجمالي الخارج" value={sar(summary.totalOutflow ?? 0)} unit="ر.س" />
+        <button style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }} onClick={() => openBreakdown({
+          term: 'forecast', titleLabel: 'إجمالي الداخل (متوقّع)', amount: summary.totalInflow ?? 0,
+          rule: 'كل تحصيل مفتوح (لم يُحصَّل بعد) له تاريخ استحقاق ضمن الأفق المعروض — هذا توقّع لا تاريخ.',
+        })}>
+          <Kpi label="إجمالي الداخل (متوقّع)" value={sar(summary.totalInflow ?? 0)} unit="ر.س" tone="ok" />
+        </button>
+        <button style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }} onClick={() => openBreakdown({
+          term: 'collected', titleLabel: 'إجمالي المحصّل خلال المدى', amount: d.collections?.inWindow ?? 0,
+          rule: 'كل تحصيل بحالة «محصَّل» وتاريخ تحصيله الفعلي يقع داخل الأفق المعروض — هذا تاريخ فعلي لا توقّع.',
+        })}>
+          <Kpi label="إجمالي المحصّل خلال المدى" value={sar(d.collections?.inWindow ?? 0)} unit="ر.س" tone="ok" />
+        </button>
+        <button style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }} onClick={() => openBreakdown({
+          term: 'scheduled', titleLabel: 'إجمالي الخارج (مجدول)', amount: summary.totalOutflow ?? 0,
+          rule: 'كل فاتورة/ضمان مستحق داخل الأفق المعروض من الجدول الزمني.',
+        })}>
+          <Kpi label="إجمالي الخارج" value={sar(summary.totalOutflow ?? 0)} unit="ر.س" />
+        </button>
         <Kpi label="صافي الفترة" value={sar(summary.netTotal ?? 0)} unit="ر.س"
              tone={(summary.netTotal ?? 0) < 0 ? 'red' : 'ok'} />
         <Kpi label="أدنى رصيد" value={sar(summary.minBalance ?? 0)} unit="ر.س"
              tone={(summary.minBalance ?? 0) < 0 ? 'red' : ''} alert={(summary.minBalance ?? 0) < 0} />
       </div>
+      <p className="muted" style={{ fontSize: 11, margin: '0 0 14px', lineHeight: 1.7 }}>
+        «إجمالي الداخل» توقّعٌ لتحصيلات لم تُحصَّل بعد ولها تاريخ استحقاق، أما «إجمالي المحصّل خلال المدى»
+        فمبلغ حُصِّل فعلاً بتاريخ فعلي — الاثنان مختلفان ولا يُجمعان في رقم واحد. اضغط أي رقم أعلاه لرؤية
+        الصفوف التي كوّنته.
+      </p>
 
       {summary.firstDeficit && (
         <div className="callout bad" style={{ marginBottom: 14 }}>
@@ -254,7 +322,9 @@ export function CashFlow() {
                 <table>
                   <thead>
                     <tr>
-                      <th>الفترة</th><th className="ltr">الداخل</th><th className="ltr">الخارج</th>
+                      <th>الفترة</th><th className="ltr">الداخل (متوقّع)</th>
+                      <th className="ltr">التحصيل الفعلي</th>
+                      <th className="ltr">الخارج</th>
                       <th className="ltr">صافي الحركة</th><th className="ltr">الرصيد التراكمي</th><th></th>
                     </tr>
                   </thead>
@@ -262,8 +332,27 @@ export function CashFlow() {
                     {periods.slice(0, MAX_RENDERED_PERIOD_ROWS).map((p: any) => (
                       <tr key={p.label} style={p.deficit ? { background: 'var(--tint)' } : undefined}>
                         <td className="nowrap">{arDate(p.from)} — {arDate(p.to)}</td>
-                        <td className="ltr"><Money v={p.inflow ?? 0} cls="ok" /></td>
-                        <td className="ltr"><Money v={p.outflow ?? 0} /></td>
+                        <td className="ltr">
+                          <AmountCell amount={p.inflow ?? 0} cls="ok" onClick={() => openBreakdown({
+                            term: 'forecast', titleLabel: `الداخل المتوقّع — ${arDate(p.from)} — ${arDate(p.to)}`,
+                            amount: p.inflow ?? 0, period: p.from,
+                            rule: 'تحصيلات مفتوحة لها تاريخ استحقاق داخل هذه الفترة تحديداً.',
+                          })} />
+                        </td>
+                        <td className="ltr">
+                          <AmountCell amount={p.collected ?? 0} cls="ok" onClick={() => openBreakdown({
+                            term: 'collected', titleLabel: `التحصيل الفعلي — ${arDate(p.from)} — ${arDate(p.to)}`,
+                            amount: p.collected ?? 0, period: p.from,
+                            rule: 'تحصيلات بحالة «محصَّل» بتاريخ تحصيل فعلي داخل هذه الفترة تحديداً.',
+                          })} />
+                        </td>
+                        <td className="ltr">
+                          <AmountCell amount={p.outflow ?? 0} onClick={() => openBreakdown({
+                            term: 'scheduled', titleLabel: `الخارج المجدول — ${arDate(p.from)} — ${arDate(p.to)}`,
+                            amount: p.outflow ?? 0, period: p.from,
+                            rule: 'فواتير موردين/ضمانات مقاولين مستحقة داخل هذه الفترة تحديداً.',
+                          })} />
+                        </td>
                         <td className="ltr">
                           <Money v={p.net ?? 0} cls={(p.net ?? 0) < 0 ? 'red' : ''} />
                         </td>
@@ -281,13 +370,18 @@ export function CashFlow() {
                   عُرضت أول {ar(MAX_RENDERED_PERIOD_ROWS)} فترة — قصّر الأفق أو أطل الفترة
                 </p>
               )}
-              <ReconciliationFooter recon={d.reconciliation} parties={parties} />
+              <ReconciliationFooter recon={d.reconciliation} parties={parties} onTermClick={openBreakdown} />
             </>
           )}
         </Card>
 
         <WhatIfCard />
       </div>
+
+      {breakdownReq && (
+        <BreakdownModal req={breakdownReq} onClose={() => setBreakdownReq(null)}
+          project={project} parties={parties} weeks={applied.weeks} periodDays={periodDays} />
+      )}
     </>
   );
 }
@@ -295,15 +389,30 @@ export function CashFlow() {
 /** حدّ مقبول للفرق: أقل من نصف هللة — أي انحراف أكبر خطأ لا تقريب. */
 const RECON_EPSILON = 0.005;
 
-/** طرف واحد في المعادلة: علامة (+/−)، تسمية، مبلغ. */
-function ReconTerm({ sign, label, value, muted }: {
-  sign?: string; label: string; value: number; muted?: boolean;
+/** طرف واحد في المعادلة: علامة (+/−)، تسمية، مبلغ — قابل للنقر إن أعطي onClick. */
+function ReconTerm({ sign, label, value, muted, onClick }: {
+  sign?: string; label: string; value: number; muted?: boolean; onClick?: () => void;
 }) {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
+  const body = (
+    <>
       {sign && <span className="muted" style={{ fontSize: 13 }}>{sign}</span>}
       <span style={{ color: muted ? 'var(--muted)' : 'inherit' }}>{label}</span>
-      <b className="num ltr">{sar(value)}</b>
+      <b className="num ltr" style={onClick ? { borderBottom: '1px dashed var(--muted)' } : undefined}>
+        {sar(value)}
+      </b>
+    </>
+  );
+  if (onClick) {
+    return (
+      <button onClick={onClick} title="اضغط لرؤية الصفوف التي كوّنت هذا الرقم"
+              style={{ all: 'unset', cursor: 'pointer', display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
+        {body}
+      </button>
+    );
+  }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
+      {body}
     </span>
   );
 }
@@ -316,7 +425,9 @@ function ReconTerm({ sign, label, value, muted }: {
  * الأربعة تُعرض هنا صراحةً، ومجموعها يساوي رقم الشاشة الأخرى بالهللة — والفرق (المفترض
  * أن يكون صفراً) يُعرض بنفسه إن لم يكن كذلك، فلا انحراف صامت.
  */
-function ReconciliationFooter({ recon, parties }: { recon: any; parties: PartiesFilter }) {
+function ReconciliationFooter({ recon, parties, onTermClick }: {
+  recon: any; parties: PartiesFilter; onTermClick: (req: BreakdownRequest) => void;
+}) {
   if (!recon) return null;
   const o = recon.outflow;
   const inflow = recon.inflow;
@@ -346,10 +457,22 @@ function ReconciliationFooter({ recon, parties }: { recon: any; parties: Parties
       </div>
 
       <div style={row}>
-        <ReconTerm label="الخارج المجدول" value={o.scheduled ?? 0} />
-        <ReconTerm sign="+" label="متأخر الآن" value={o.overdueNow ?? 0} />
-        <ReconTerm sign="+" label="بعد نهاية الأفق" value={o.beyondHorizon ?? 0} />
-        <ReconTerm sign="+" label="بلا تواريخ" value={o.undated ?? 0} />
+        <ReconTerm label="الخارج المجدول" value={o.scheduled ?? 0} onClick={() => onTermClick({
+          term: 'scheduled', titleLabel: 'الخارج المجدول', amount: o.scheduled ?? 0,
+          rule: 'فواتير موردين/ضمانات مقاولين مستحقة داخل الأفق المعروض.',
+        })} />
+        <ReconTerm sign="+" label="متأخر الآن" value={o.overdueNow ?? 0} onClick={() => onTermClick({
+          term: 'overdue', titleLabel: 'متأخر الآن', amount: o.overdueNow ?? 0,
+          rule: 'فواتير موردين/ضمانات مقاولين مضى تاريخ استحقاقها قبل بداية الأفق المعروض ولم تُسدَّد بالكامل.',
+        })} />
+        <ReconTerm sign="+" label="بعد نهاية الأفق" value={o.beyondHorizon ?? 0} onClick={() => onTermClick({
+          term: 'beyond', titleLabel: 'بعد نهاية الأفق', amount: o.beyondHorizon ?? 0,
+          rule: 'فواتير موردين/ضمانات مقاولين تستحق بعد آخر يوم في الأفق المعروض.',
+        })} />
+        <ReconTerm sign="+" label="بلا تواريخ" value={o.undated ?? 0} onClick={() => onTermClick({
+          term: 'undated', titleLabel: 'بلا تواريخ', amount: o.undated ?? 0,
+          rule: 'فواتير موردين بلا تاريخ استحقاق، أو رصيد مقاولين مستحق يتجاوز ما لهم من ضمانات مؤرَّخة.',
+        })} />
         {(o.credits ?? 0) !== 0 && <ReconTerm sign="−" label="أرصدة دائنة" value={o.credits} muted />}
         {(o.excess ?? 0) !== 0 && <ReconTerm sign="−" label="ضمانات تتجاوز المستحق" value={o.excess} muted />}
         <span className="muted">=</span>
@@ -363,7 +486,10 @@ function ReconciliationFooter({ recon, parties }: { recon: any; parties: Parties
 
       {inflow && (
         <div style={row}>
-          <ReconTerm label="الداخل المجدول" value={inflow.scheduled ?? 0} />
+          <ReconTerm label="الداخل المجدول" value={inflow.scheduled ?? 0} onClick={() => onTermClick({
+            term: 'forecast', titleLabel: 'الداخل المجدول (متوقّع)', amount: inflow.scheduled ?? 0,
+            rule: 'تحصيلات مفتوحة لها تاريخ استحقاق داخل الأفق المعروض.',
+          })} />
           <ReconTerm sign="+" label="متأخر الآن" value={inflow.overdueNow ?? 0} />
           <ReconTerm sign="+" label="بعد نهاية الأفق" value={inflow.beyondHorizon ?? 0} />
           <ReconTerm sign="+" label="بلا تواريخ" value={inflow.undated ?? 0} />
@@ -384,6 +510,133 @@ function ReconciliationFooter({ recon, parties }: { recon: any; parties: Parties
         ودفاتر بلا تاريخ استحقاق لا يمكن وضعها في فترة بأمانة. لا شيء من هذه الثلاثة داخل
         الرصيد التراكمي أعلاه.
       </p>
+    </div>
+  );
+}
+
+/**
+ * نافذة «من أين جاء هذا الرقم؟» — الصفوف الفعلية وراء أي رقم في الشاشة، مع سطر
+ * إجمالي يثبت أن مجموعها يساوي الرقم المعروض، وجملة عربية تشرح القاعدة التي اختارتها.
+ */
+function BreakdownModal({ req, onClose, project, parties, weeks, periodDays }: {
+  req: BreakdownRequest; onClose: () => void;
+  project: string; parties: PartiesFilter; weeks: number; periodDays: number;
+}) {
+  const [state, setState] = useState<{ total: number; truncated: boolean; rows: any[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const seq = useRef(0);
+
+  const loadBreakdown = () => {
+    const my = ++seq.current;
+    setState(null); setError(null);
+    fetchBreakdown(req, { project, parties, weeks, periodDays })
+      .then((r) => { if (my === seq.current) setState(r); })
+      .catch((e) => { if (my === seq.current) setError(e.message); });
+  };
+  useEffect(() => { loadBreakdown(); },
+    [req.term, req.period, project, parties, weeks, periodDays]);
+
+  const isSupplierRow = (r: any) => 'invoiceNumber' in r;
+  const isContractorRow = (r: any) => 'contractorCode' in r;
+  const isReceivableRow = (r: any) => 'client' in r;
+
+  const overlay: CSSProperties = {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20,
+  };
+  const box: CSSProperties = {
+    background: 'var(--bg)', borderRadius: 'var(--r-card, 10px)', maxWidth: 720, width: '100%',
+    maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+    border: '1px solid var(--hair)',
+  };
+
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={box} onClick={(e) => e.stopPropagation()}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--hair)', display: 'flex',
+                     justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <b style={{ fontSize: 14 }}>{req.titleLabel}</b>
+            <div className="num ltr" style={{ fontSize: 18, marginTop: 4 }}>{sar(req.amount)} ر.س</div>
+          </div>
+          <button className="btn" onClick={onClose}>إغلاق</button>
+        </div>
+
+        <p className="muted" style={{ margin: '10px 20px 0', fontSize: 12, lineHeight: 1.7 }}>{req.rule}</p>
+
+        <div style={{ overflowY: 'auto', padding: '10px 0' }}>
+          {error && <ErrorState message={error} onRetry={loadBreakdown} />}
+          {!error && !state && <State>جارٍ التحميل…</State>}
+          {state && state.rows.length === 0 && <State>لا توجد صفوف لهذا الرقم.</State>}
+          {state && state.rows.length > 0 && (
+            <div className="table-scroll" style={{ padding: '0 20px' }}>
+              <table>
+                <thead>
+                  <tr>
+                    {isSupplierRow(state.rows[0]) && (
+                      <><th>المورد</th><th>الفاتورة</th><th>تاريخ الفاتورة</th><th>الاستحقاق</th>
+                        <th className="ltr">المبلغ</th><th>التأخر</th></>
+                    )}
+                    {isContractorRow(state.rows[0]) && (
+                      <><th>المقاول</th><th>المشروع</th><th>الإفراج المتوقع</th><th className="ltr">المبلغ</th></>
+                    )}
+                    {isReceivableRow(state.rows[0]) && (
+                      <><th>التاريخ</th><th>العميل</th><th>المشروع</th><th className="ltr">المبلغ</th></>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {state.rows.map((r: any, i: number) => (
+                    <tr key={i}>
+                      {isSupplierRow(r) && (
+                        <>
+                          <td><a href={`#/suppliers/${r.account}`}>{r.supplierName}</a></td>
+                          <td className="nowrap">{r.invoiceNumber}</td>
+                          <td className="nowrap">{arDate(r.invoiceDate)}</td>
+                          <td className="nowrap">{r.dueDate ? arDate(r.dueDate) : '—'}</td>
+                          <td className="ltr"><Money v={r.amount} /></td>
+                          <td>{r.daysOverdue ? `${ar(r.daysOverdue)} يوماً` : '—'}</td>
+                        </>
+                      )}
+                      {isContractorRow(r) && (
+                        <>
+                          <td><a href={`#/contractors/${r.contractorCode}`}>{r.contractorName}</a></td>
+                          <td>{r.project || '—'}</td>
+                          <td className="nowrap">{r.releaseDue ? arDate(r.releaseDue) : '—'}</td>
+                          <td className="ltr"><Money v={r.amount} /></td>
+                        </>
+                      )}
+                      {isReceivableRow(r) && (
+                        <>
+                          <td className="nowrap">{arDate(r.date)}</td>
+                          <td>{r.client}</td>
+                          <td>{r.project || '—'}</td>
+                          <td className="ltr"><Money v={r.amount} /></td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={isSupplierRow(state.rows[0]) ? 4 : isContractorRow(state.rows[0]) ? 3 : 3}>
+                      <b>الإجمالي</b>
+                    </td>
+                    <td className="ltr" colSpan={isSupplierRow(state.rows[0]) ? 2 : 1}>
+                      <b className="num ltr">{sar(state.total)}</b>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+          {state?.truncated && (
+            <p className="muted" style={{ fontSize: 11, margin: '8px 20px 0' }}>
+              عُرض أول 500 صف فقط — الإجمالي أعلاه يشمل كل الصفوف رغم ذلك.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

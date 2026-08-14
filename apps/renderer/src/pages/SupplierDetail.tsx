@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { ar, arDate, dueLabel, dueTone, sar } from '@/lib/format';
-import { Card, Kpi, Money, Pill, State } from '@/components/ui';
+import { Card, ErrorState, Kpi, Money, Pill, State } from '@/components/ui';
 import { ExplainDot } from '@/components/Explain';
 import { Modal } from '@/components/Modal';
 import { ManualEntryForm, type ManualEntryValues } from '@/components/ManualEntryForm';
@@ -30,7 +30,7 @@ export function SupplierDetail() {
   const { enabled: aiEnabled, loading: aiLoading } = useAiEnabled();
 
   const reload = () => {
-    if (account) api.supplier(account).then(setD).catch((e) => setErr(e.message));
+    if (account) api.supplier(account).then((r) => { setD(r); setErr(null); }).catch((e) => setErr(e.message));
   };
 
   useEffect(() => {
@@ -38,10 +38,10 @@ export function SupplierDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account]);
 
-  if (err) return <State>{err}</State>;
+  if (err) return <ErrorState message={err} onRetry={reload} />;
   if (!d) return <State>جارٍ التحميل…</State>;
 
-  const invoices = showPaid ? d.invoices : d.invoices.filter((i: any) => i.remaining > 0);
+  const invoices = showPaid ? (d.invoices ?? []) : (d.invoices ?? []).filter((i: any) => i.remaining > 0);
 
   async function handleAddInvoice(values: ManualEntryValues) {
     if (!account) return;
@@ -185,6 +185,7 @@ export function SupplierDetail() {
             </button>
           }
         >
+          <div className="table-scroll">
           <table>
             <thead>
               <tr>
@@ -234,13 +235,15 @@ export function SupplierDetail() {
               ))}
             </tbody>
           </table>
+          </div>
         </Card>
 
-        <Card title="الدفعات" sub={`${ar(d.payments.length)} دفعة`}>
+        <Card title="الدفعات" sub={`${ar((d.payments ?? []).length)} دفعة`}>
+          <div className="table-scroll">
           <table>
             <thead><tr><th>التاريخ</th><th>المستند</th><th>الوصف</th><th className="ltr">المبلغ</th><th></th></tr></thead>
             <tbody>
-              {d.payments.map((p: any, n: number) => (
+              {(d.payments ?? []).map((p: any, n: number) => (
                 <tr key={p.id ?? n}>
                   <td>{arDate(p.date)}</td>
                   <td className="num muted">{p.doc}</td>
@@ -256,6 +259,7 @@ export function SupplierDetail() {
               ))}
             </tbody>
           </table>
+          </div>
         </Card>
       </div>
 

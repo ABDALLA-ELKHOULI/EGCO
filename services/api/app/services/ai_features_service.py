@@ -30,6 +30,7 @@ from app.services import contractors_service as CS
 from app.services import payables_service as PS
 from app.services import budget_service as BS
 from app.services import cashflow_service as CFS
+from app.services.ai_service import ARABIC_CLAUSE
 
 ZERO = Decimal('0')
 
@@ -139,7 +140,7 @@ def ask(chat_fn, question: str) -> dict:
         {'role': 'system', 'content':
             'أنت مساعد استعلامات SQL للقراءة فقط. مخطط قاعدة البيانات:\n' + SCHEMA_DOC +
             '\nأعد JSON صارماً فقط بالشكل {"sql": "SELECT ..."} — جملة SELECT واحدة '
-            'فقط، بلا أي تعليق أو شرح خارج الـJSON.'},
+            'فقط، بلا أي تعليق أو شرح خارج الـJSON. ' + ARABIC_CLAUSE},
         {'role': 'user', 'content': question},
     ], json_mode=True)
     try:
@@ -164,7 +165,8 @@ def ask(chat_fn, question: str) -> dict:
         {'role': 'system', 'content':
             'أنت مساعد يجيب بالعربية عن سؤال المستخدم اعتماداً حصراً على الصفوف '
             'المُعطاة أدناه (نتائج استعلام حقيقي على قاعدة البيانات). لا تخترع أرقاماً '
-            'أو حقائق غير موجودة في هذه الصفوف. إن كانت الصفوف فارغة فقل ذلك بوضوح.'},
+            'أو حقائق غير موجودة في هذه الصفوف. إن كانت الصفوف فارغة فقل ذلك بوضوح. ' +
+            ARABIC_CLAUSE},
         {'role': 'user', 'content':
             'السؤال: {}\nالصفوف (JSON): {}'.format(question, rows_json)},
     ], json_mode=False)
@@ -240,7 +242,8 @@ def remind_message(chat_fn, facts: dict) -> str:
     reply = chat_fn([
         {'role': 'system', 'content':
             'اكتب رسالة متابعة/مطالبة عربية رسمية ومهذبة مناسبة لإرسالها عبر واتساب، '
-            'اعتماداً حصراً على الأرقام والحقائق المذكورة أدناه دون إضافة أي رقم جديد.'},
+            'اعتماداً حصراً على الأرقام والحقائق المذكورة أدناه دون إضافة أي رقم جديد. ' +
+            ARABIC_CLAUSE},
         {'role': 'user', 'content': '\n'.join(lines)},
     ], json_mode=False)
     return (reply or '').strip()
@@ -273,7 +276,8 @@ def budget_notes(chat_fn, deltas: dict) -> str:
     reply = chat_fn([
         {'role': 'system', 'content':
             'اكتب ملاحظات مالية عربية موجزة على شكل نقاط (سطر لكل نقطة يبدأ بـ«- ») '
-            'تصف فقط الأرقام والفروق المُعطاة أدناه دون اختراع أي رقم إضافي.'},
+            'تصف فقط الأرقام والفروق المُعطاة أدناه دون اختراع أي رقم إضافي. ' +
+            ARABIC_CLAUSE},
         {'role': 'user', 'content': json.dumps(deltas, ensure_ascii=False)},
     ], json_mode=False)
     return (reply or '').strip()
@@ -332,7 +336,7 @@ def executive_summary(chat_fn, numbers: dict) -> str:
     reply = chat_fn([
         {'role': 'system', 'content':
             'اكتب ملخصاً تنفيذياً بالعربية من 3 إلى 5 جمل رسمية، اعتماداً حصراً على '
-            'الأرقام المُعطاة أدناه دون اختراع أي رقم أو حقيقة إضافية.'},
+            'الأرقام المُعطاة أدناه دون اختراع أي رقم أو حقيقة إضافية. ' + ARABIC_CLAUSE},
         {'role': 'user', 'content': json.dumps(numbers, ensure_ascii=False)},
     ], json_mode=False)
     return (reply or '').strip()
@@ -385,7 +389,7 @@ def brief_text(chat_fn, digest: dict) -> str:
     reply = chat_fn([
         {'role': 'system', 'content':
             'اكتب موجزاً إخبارياً عربياً قصيراً (فقرة أو نقاط قصيرة) يصف فقط الأرقام '
-            'المُعطاة أدناه دون اختراع أي رقم إضافي.'},
+            'المُعطاة أدناه دون اختراع أي رقم إضافي. ' + ARABIC_CLAUSE},
         {'role': 'user', 'content': json.dumps(digest, ensure_ascii=False)},
     ], json_mode=False)
     return (reply or '').strip()
@@ -472,7 +476,8 @@ def phrase_anomalies(chat_fn, items: List[dict]) -> List[dict]:
             'عربياً واضحاً (detail) يصف الحالة باستخدام الأرقام والحقائق المُعطاة فقط '
             'دون اختراع أي رقم. أعد JSON فقط بالشكل '
             '{"items": [{"title": "...", "detail": "...", "link": "..."}]} '
-            'بنفس عدد وترتيب العناصر المُعطاة، مع إعادة قيمة link كما وردت في كل عنصر.'},
+            'بنفس عدد وترتيب العناصر المُعطاة، مع إعادة قيمة link كما وردت في كل عنصر. '
+            'قيمتا title وdetail يجب أن تكونا بالعربية الفصحى فقط. ' + ARABIC_CLAUSE},
         {'role': 'user', 'content': json.dumps(items, ensure_ascii=False)},
     ], json_mode=True)
     try:
@@ -503,7 +508,8 @@ def parse_text_proposal(chat_fn, db: Session, text: str) -> dict:
             '{"partyKind": "supplier|contractor|null", "partyName": "اسم الطرف كما ورد", '
             '"date": "YYYY-MM-DD أو null", "debit": رقم أو null, "credit": رقم أو null, '
             '"description": "نص", "claimNo": "رقم المستخلص إن وجد أو null"}. '
-            'لا تكتب أي شيء خارج الـJSON.'},
+            'لا تكتب أي شيء خارج الـJSON. قيمة description يجب أن تكون بالعربية '
+            'الفصحى فقط. ' + ARABIC_CLAUSE},
         {'role': 'user', 'content': text},
     ], json_mode=True)
     try:
@@ -616,7 +622,7 @@ def what_if_narrative(chat_fn, before: dict, after: dict, shift_days: int) -> st
         {'role': 'system', 'content':
             'اكتب فقرة عربية قصيرة تصف أثر تأجيل/تقديم استحقاقات هذا الطرف {} يوماً على '
             'التدفق النقدي، اعتماداً حصراً على قيم before/after المُعطاة أدناه دون '
-            'اختراع أي رقم إضافي.'.format(shift_days)},
+            'اختراع أي رقم إضافي. '.format(shift_days) + ARABIC_CLAUSE},
         {'role': 'user', 'content': json.dumps(dict(before=before, after=after), ensure_ascii=False)},
     ], json_mode=False)
     return (reply or '').strip()
@@ -641,7 +647,8 @@ def suggest_account_kind(account: Optional[str], name: str, excerpt: str) -> Opt
                 'supplier (مورد) أو contractor (مقاول/متعامل) أو guarantee (ضمان) أو '
                 'ignore (تجاهل). أعد JSON صارماً فقط بالشكل '
                 '{"kind": "supplier|contractor|guarantee|ignore", '
-                '"reason": "جملة عربية قصيرة"} بلا أي شرح خارج الـJSON.'},
+                '"reason": "جملة عربية قصيرة"} بلا أي شرح خارج الـJSON. قيمة reason '
+                'يجب أن تكون بالعربية الفصحى فقط. ' + ARABIC_CLAUSE},
             {'role': 'user', 'content':
                 'رقم الحساب: {}\nالاسم كما ورد بالملف: {}\nمقتطف من نص الملف:\n{}'.format(
                     account or '?', name or '', (excerpt or '')[:2000])},
@@ -725,7 +732,7 @@ def priorities_narrative(chat_fn, result: dict) -> str:
     reply = chat_fn([
         {'role': 'system', 'content':
             'اكتب فقرة عربية موجزة تشرح قائمة الأولويات أدناه (مبنية مسبقاً بالكامل) '
-            'دون اختراع أي رقم أو ترتيب جديد — فقط اشرح ما هو موجود.'},
+            'دون اختراع أي رقم أو ترتيب جديد — فقط اشرح ما هو موجود. ' + ARABIC_CLAUSE},
         {'role': 'user', 'content': json.dumps(result, ensure_ascii=False)},
     ], json_mode=False)
     return (reply or '').strip()

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError, type ContractorRow, type ContractorsResponse } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
-import { Card, EmptyState, Kpi, Money, State } from '@/components/ui';
+import { Card, EmptyState, ErrorState, Kpi, Money, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
 import { ContractorForm, type ContractorFormValues } from '@/components/ContractorForm';
 import { ExplainDot } from '@/components/Explain';
@@ -34,7 +34,7 @@ export function Contractors() {
   const [busy, setBusy] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
 
-  const reload = () => api.contractors().then(setD).catch((e) => setErr(e.message));
+  const reload = () => { setErr(null); api.contractors().then(setD).catch((e) => setErr(e.message)); };
   useEffect(() => { reload(); }, []);
 
   const projects = useMemo(() => {
@@ -58,7 +58,7 @@ export function Contractors() {
 
   const filtering = Boolean(q || project || direction);
 
-  if (err) return <State>تعذّر التحميل: {err}</State>;
+  if (err) return <ErrorState message={err} onRetry={reload} />;
 
   async function handleAdd(values: ContractorFormValues) {
     setBusy(true); setFormErr(null);
@@ -140,6 +140,7 @@ export function Contractors() {
                 ctaLabel="رفع الملفات" onCta={() => nav('/import')} />
             )
           ) : (
+          <div className="table-scroll">
           <table>
             <thead>
               <tr>
@@ -201,6 +202,7 @@ export function Contractors() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 

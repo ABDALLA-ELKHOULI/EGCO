@@ -249,6 +249,40 @@ export const EXPLANATIONS: Record<string, Explanation> = {
     source: 'من سجل ضمانات المقاولين لكل مشروع، مستبعداً ما أُفرج عنه.',
   },
 
+  guaranteeStatementsHeld: {
+    title: 'المحتجز حسب الكشوف',
+    meaning: 'مجموع أرصدة كل حسابات الضمان (٢١٦) المستوردة من كشوفات الحساب — كما وردت من البنك/الجهة.',
+    formula: 'المحتجز حسب الكشوف = Σ رصيد كل حساب ضمان',
+    compute: (v) => {
+      const held = v.guaranteeStatementsHeld;
+      return { substitution: held == null ? null : 'مجموع أرصدة حسابات الضمان المستوردة', result: money(held) };
+    },
+    source: 'من كشوفات حساب الضمان (٢١٦) المرفوعة.',
+  },
+
+  guaranteeTrackedHeld: {
+    title: 'المحتجز حسب المستخلصات',
+    meaning: 'مجموع الضمانات المتتبَّعة يدوياً لكل مقاول ومشروع (من التأمينات المخصومة من المستخلصات)، ولم تُصرف بعد.',
+    formula: 'المحتجز حسب المستخلصات = Σ ضمانات المقاولين غير المصروفة',
+    compute: (v) => {
+      const held = v.guaranteeTrackedHeld;
+      return { substitution: held == null ? null : 'مجموع ضمانات المقاولين غير المصروفة', result: money(held) };
+    },
+    source: 'من سجل ضمانات المقاولين لكل مشروع.',
+  },
+
+  guaranteeDueSoon: {
+    title: 'مستحقة الصرف',
+    meaning: 'عدد الضمانات المستحقة الصرف الآن أو خلال ٣٠ يوماً القادمة.',
+    formula: 'مستحقة الصرف = عدد الضمانات (مستحقة + تقترب خلال ٣٠ يوماً)',
+    compute: (v) => {
+      const overdue = v.guaranteeOverdueCount, dueSoon = v.guaranteeDueSoonCount;
+      if (overdue == null || dueSoon == null) return { substitution: null, result: null };
+      return { substitution: `${ar0(overdue)} + ${ar0(dueSoon)}`, result: `${overdue + dueSoon}` };
+    },
+    source: 'من مواعيد فك ضمانات المقاولين المسجّلة.',
+  },
+
   supplierCoverage: {
     title: 'التغطية ٪',
     meaning: 'نسبة الموردين الذين لديهم كشوفات حساب مرفوعة من إجمالي عدد الموردين — كلما زادت النسبة زادت دقة أرقام المديونية.',

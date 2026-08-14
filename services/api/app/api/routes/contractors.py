@@ -48,10 +48,21 @@ def _commit_or_409(db: Session, detail: str) -> None:
 
 # ---------------------------------------------------------------- list / detail
 
+_VALID_DIRECTIONS = ('owed_to_them', 'owed_to_us', 'balanced')
+
+
 @router.get('')
-def list_contractors(db: Session = Depends(get_session)) -> dict:
+def list_contractors(q: Optional[str] = Query(None),
+                     project: Optional[str] = Query(None),
+                     direction: Optional[str] = Query(None),
+                     has_guarantees: Optional[bool] = Query(None),
+                     db: Session = Depends(get_session)) -> dict:
     """قائمة المقاولين — sorted most-negative balance first (أكبر مستحقات لهم أولاً)."""
-    return CS.contractors_list_json(db)
+    if direction is not None and direction not in _VALID_DIRECTIONS:
+        raise HTTPException(422, detail=f'قيمة اتجاه غير صالحة: {direction} — '
+                                        f'المسموح: {", ".join(_VALID_DIRECTIONS)}')
+    return CS.contractors_list_json(db, q=q, project=project, direction=direction,
+                                    has_guarantees=has_guarantees)
 
 
 @router.get('/{code}')

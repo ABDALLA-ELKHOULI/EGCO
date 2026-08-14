@@ -5,6 +5,7 @@ import datetime as dt
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.api.deps import parse_date
 from app.db.session import get_session
 from app.services import cashflow_service
 
@@ -50,7 +51,33 @@ def cashflow(weeks: int = Query(26, ge=1, le=104),
     if not (1 <= period_days <= 92):
         raise HTTPException(status_code=422, detail='طول الفترة بين ١ و٩٢ يوماً')
 
-    from_date = dt.date.fromisoformat(from_) if from_ else None
+    from_date = parse_date(from_, 'تاريخ البداية')
     return cashflow_service.cashflow(db, weeks=weeks, from_date=from_date,
                                      opening_balance=opening_balance, project=project,
                                      parties=parties, period_days=period_days)
+
+
+@router.get('/breakdown')
+def cashflow_breakdown(term: str = Query(..., pattern='^(scheduled|overdue|undated|beyond|collected|forecast)$'),
+                       period: Optional[str] = Query(None),
+                       weeks: int = Query(26, ge=1, le=104),
+                       from_: Optional[str] = Query(None, alias='from'),
+                       project: Optional[str] = Query(None),
+                       parties: str = Query('suppliers', pattern='^(suppliers|contractors|both)$'),
+                       period_days: Optional[int] = Query(None),
+                       db: Session = Depends(get_session)) -> dict:
+    """الصفوف الفعلية وراء أي رقم في /cashflow — إجابة «من أين جاء هذا الرقم؟».
+
+    `period` — تاريخ بداية دلو محدد من استجابة /cashflow (`periods[i].from`) لقصر
+    scheduled/collected/forecast على تلك الفترة وحدها؛ يُهمَل لبقية المصطلحات
+    (overdue/undated/beyond) ولا يوجد له معنى فيها.
+    """
+    if period_days is None:
+        period_days = 14
+    if not (1 <= period_days <= 92):
+        raise HTTPException(status_code=422, detail='طول الفترة بين ١ و٩٢ يوماً')
+    from_date = parse_date(from_, 'تاريخ البداية')
+    period_date = parse_date(period, 'الفترة')
+    return cashflow_service.breakdown(db, term=term, project=project, parties=parties,
+                                      weeks=weeks, from_date=from_date, period_days=period_days,
+                                      period=period_date)

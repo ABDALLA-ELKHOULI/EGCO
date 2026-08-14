@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   api,
@@ -7,7 +7,7 @@ import {
   type ContractorGuarantee, type ContractorGuaranteeBody, type GuaranteeDueStatus,
 } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
-import { Card, EmptyState, Kpi, Money, Pill, State } from '@/components/ui';
+import { Card, EmptyState, ErrorState, Kpi, Money, Pill, State } from '@/components/ui';
 import { ExplainDot } from '@/components/Explain';
 import { Modal } from '@/components/Modal';
 import { ContractorForm, type ContractorFormValues } from '@/components/ContractorForm';
@@ -54,8 +54,14 @@ export function ContractorDetail() {
   const [parseTextOpen, setParseTextOpen] = useState(false);
   const { enabled: aiEnabled, loading: aiLoading } = useAiEnabled();
 
+  const seq = useRef(0);
   const reload = () => {
-    if (code) api.contractor(code).then(setD).catch((e) => setErr(e.message));
+    if (!code) return;
+    const my = ++seq.current;
+    setErr(null);
+    api.contractor(code)
+      .then((r) => { if (my === seq.current) setD(r); })
+      .catch((e) => { if (my === seq.current) setErr(e.message); });
   };
   useEffect(() => {
     reload();
@@ -77,7 +83,7 @@ export function ContractorDetail() {
   const retentionHeld = useMemo(
     () => (d?.guarantees ?? []).filter((g) => !g.releasedOn).reduce((s, g) => s + (g.amount || 0), 0), [d]);
 
-  if (err) return <State>{err}</State>;
+  if (err) return <ErrorState message={err} onRetry={reload} />;
   if (!d || !code) return <State>جارٍ التحميل…</State>;
 
   const v = balanceView(d.balance);
@@ -137,9 +143,21 @@ export function ContractorDetail() {
         <Kpi label="الضمان المحتجز" value={sar(retentionHeld)} unit="ر.س"
              explain={<ExplainDot metric="retentionHeld" values={{ retentionHeld }} />} />
       </div>
-      <p className="muted" style={{ fontSize: 11, margin: '-12px 0 18px' }}>
-        الرصيد يشمل أيضاً الخصومات والتأمينات والفواتير المحمّلة — لذا لا يساوي المدفوع ناقص المستخلصات بالضرورة
-      </p>
+      {/* تفصيل جانب المدين بالكامل — أي مبلغ لا يظهر في بند هو مبلغ يبدو مفقوداً.
+          المجموع أدناه يساوي «إجمالي المدين» بالضبط، فيمكن للمستخدم تدقيقه بنفسه. */}
+      <div className="muted" style={{ fontSize: 11, margin: '-12px 0 18px', lineHeight: 1.9 }}>
+        <div>
+          جانب المدين ={' '}
+          <b>{sar(paidTotal)}</b> مدفوعات
+          {(d.deductionsTotal ?? 0) !== 0 && <> + <b>{sar(d.deductionsTotal!)}</b> خصومات</>}
+          {(d.retentionTotal ?? 0) !== 0 && <> + <b>{sar(d.retentionTotal!)}</b> تأمينات</>}
+          {(d.otherDebits ?? 0) !== 0 && <> + <b>{sar(d.otherDebits!)}</b> فواتير محمّلة ورصيد افتتاحي</>}
+          {d.debitTotal != null && <> = <b>{sar(d.debitTotal)}</b> ر.س</>}
+        </div>
+        <div>
+          الرصيد = إجمالي المدين − إجمالي الدائن (المستخلصات) — لذا لا يساوي المدفوع ناقص المستخلصات بالضرورة
+        </div>
+      </div>
 
       {d.perProject.length > 0 && (
         <div className="project-cards">
@@ -154,7 +172,7 @@ export function ContractorDetail() {
                 title={active ? 'إلغاء التصفية' : 'تصفية الدفتر على هذا المشروع'}
               >
                 <div className="pc-name">{p.project}</div>
-                <div className={'pc-balance num ' + pv.cls}>{sar(p.balance)} <small>{pv.label}</small></div>
+                <div className={'pc-balance num ' + pv.cls}>{sar(p.balance)} ر.س <small>{pv.label}</small></div>
                 <div className="pc-count muted">{ar(p.entryCount)} حركة</div>
               </button>
             );
@@ -177,6 +195,7 @@ export function ContractorDetail() {
               ctaLabel={projectFilter ? 'إظهار الكل' : 'إضافة حركة'}
               onCta={() => projectFilter ? setProjectFilter('') : setEntryModal({})} />
           ) : (
+            <div className="table-scroll">
             <table>
               <thead>
                 <tr>
@@ -229,6 +248,7 @@ export function ContractorDetail() {
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </Card>
 
@@ -249,6 +269,7 @@ export function ContractorDetail() {
               body="سجّل المستخلصات هنا لمتابعة الأعمال التراكمية والتأمينات."
               ctaLabel="إضافة مستخلص" onCta={() => { setFormErr(null); setClaimModal({}); }} />
           ) : (
+            <div className="table-scroll">
             <table>
               <thead>
                 <tr>
@@ -291,6 +312,7 @@ export function ContractorDetail() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </Card>
 
@@ -318,7 +340,7 @@ export function ContractorDetail() {
                       <Pill kind={st.cls}>{st.label}</Pill>
                     </div>
                     <div className="num" style={{ fontSize: 20, fontWeight: 700 }}>
-                      {g.amount != null ? sar(g.amount) : '—'}
+                      {g.amount != null ? `${sar(g.amount)} ر.س` : '—'}
                       {g.retentionRate != null && (
                         <small className="muted" style={{ fontWeight: 400 }}> ({ar(g.retentionRate)}٪)</small>
                       )}

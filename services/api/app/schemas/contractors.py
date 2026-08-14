@@ -4,9 +4,11 @@
 Field names are the exact camelCase JSON keys the frontend sends — no aliasing layer,
 matching the rest of the API's wire format.
 """
-from typing import Optional
+from typing import Annotated, Optional
 
 from pydantic import BaseModel, Field
+
+from app.schemas._amount import AmountRange
 
 
 class ContractorIn(BaseModel):
@@ -31,8 +33,8 @@ class ContractorUpdate(BaseModel):
 class EntryIn(BaseModel):
     """حركة يدوية — exactly one of debit/credit must be > 0 (validated in the route)."""
     date: str                          # ISO
-    debit: float = Field(0.0, ge=0)
-    credit: float = Field(0.0, ge=0)
+    debit: Annotated[float, Field(0.0, ge=0), AmountRange]
+    credit: Annotated[float, Field(0.0, ge=0), AmountRange]
     description: str = ''
     kind: Optional[str] = None         # auto-classified from the description when omitted
     claimNo: Optional[str] = None
@@ -41,8 +43,8 @@ class EntryIn(BaseModel):
 
 class EntryUpdate(BaseModel):
     date: Optional[str] = None
-    debit: Optional[float] = Field(None, ge=0)
-    credit: Optional[float] = Field(None, ge=0)
+    debit: Annotated[Optional[float], Field(None, ge=0), AmountRange]
+    credit: Annotated[Optional[float], Field(None, ge=0), AmountRange]
     description: Optional[str] = None
     kind: Optional[str] = None
     claimNo: Optional[str] = None
@@ -54,12 +56,12 @@ class ClaimIn(BaseModel):
     project: str = ''
     number: str = ''
     date: str
-    grossCumulative: float = Field(0.0, ge=0)
-    previousCumulative: float = Field(0.0, ge=0)
+    grossCumulative: Annotated[float, Field(0.0, ge=0), AmountRange]
+    previousCumulative: Annotated[float, Field(0.0, ge=0), AmountRange]
     retentionRate: Optional[float] = Field(None, ge=0, le=1)
-    retentionAmount: float = Field(0.0, ge=0)
-    otherDeductions: float = Field(0.0, ge=0)
-    netDue: float = 0.0                # may go negative when deductions exceed the work
+    retentionAmount: Annotated[float, Field(0.0, ge=0), AmountRange]
+    otherDeductions: Annotated[float, Field(0.0, ge=0), AmountRange]
+    netDue: Annotated[float, AmountRange] = 0.0  # may go negative when deductions exceed the work
     description: str = ''
 
 
@@ -67,19 +69,19 @@ class ClaimUpdate(BaseModel):
     project: Optional[str] = None
     number: Optional[str] = None
     date: Optional[str] = None
-    grossCumulative: Optional[float] = Field(None, ge=0)
-    previousCumulative: Optional[float] = Field(None, ge=0)
+    grossCumulative: Annotated[Optional[float], Field(None, ge=0), AmountRange]
+    previousCumulative: Annotated[Optional[float], Field(None, ge=0), AmountRange]
     retentionRate: Optional[float] = Field(None, ge=0, le=1)
-    retentionAmount: Optional[float] = Field(None, ge=0)
-    otherDeductions: Optional[float] = Field(None, ge=0)
-    netDue: Optional[float] = None
+    retentionAmount: Annotated[Optional[float], Field(None, ge=0), AmountRange]
+    otherDeductions: Annotated[Optional[float], Field(None, ge=0), AmountRange]
+    netDue: Annotated[Optional[float], AmountRange] = None
     description: Optional[str] = None
 
 
 class GuaranteeIn(BaseModel):
     """ضمان مشروع — every field user-editable, the release clock lives here."""
     project: str = ''
-    amount: Optional[float] = Field(None, ge=0)
+    amount: Annotated[Optional[float], Field(None, ge=0), AmountRange]
     retentionRate: Optional[float] = Field(None, ge=0, le=1)
     finishedOn: Optional[str] = None
     guaranteeDays: Optional[int] = None
@@ -89,7 +91,7 @@ class GuaranteeIn(BaseModel):
 
 
 class GuaranteeUpdate(BaseModel):
-    amount: Optional[float] = Field(None, ge=0)
+    amount: Annotated[Optional[float], Field(None, ge=0), AmountRange]
     retentionRate: Optional[float] = Field(None, ge=0, le=1)
     finishedOn: Optional[str] = None
     guaranteeDays: Optional[int] = None

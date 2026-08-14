@@ -12,6 +12,7 @@ import datetime as dt
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.deps import parse_date
 from app.db import models
 from app.db.session import get_session
 from app.domain.payables import Term, due_date as _due_date
@@ -34,7 +35,7 @@ def _resolve_due_date(supplier: models.Supplier, invoice_date: dt.date,
     """Returns the value to store in `manual_due_date` (None means: derive from term
     at read time, using the normal invoice-date + term-days rule)."""
     if due_date_in:
-        return dt.date.fromisoformat(due_date_in)
+        return parse_date(due_date_in, 'تاريخ الاستحقاق')
     term = Term(days=supplier.term_days, kind=supplier.term_kind, raw=supplier.term_raw)
     if term.is_claim:
         raise HTTPException(422, detail='مدة المورد «مستخلص» — يلزم إدخال تاريخ الاستحقاق يدوياً')
@@ -44,7 +45,7 @@ def _resolve_due_date(supplier: models.Supplier, invoice_date: dt.date,
 @router.post('/invoices', status_code=201)
 def create_invoice(body: InvoiceIn, db: Session = Depends(get_session)) -> dict:
     supplier = _get_supplier(db, body.account)
-    inv_date = dt.date.fromisoformat(body.date)
+    inv_date = parse_date(body.date, 'تاريخ الفاتورة', required=True)
     manual_due = _resolve_due_date(supplier, inv_date, body.due_date)
 
     row = models.Invoice(supplier_id=supplier.id, date=inv_date, amount=body.amount,
@@ -70,13 +71,13 @@ def update_invoice(invoice_id: str, body: InvoiceUpdate,
     if body.amount is not None:
         row.amount = body.amount
     if body.date is not None:
-        row.date = dt.date.fromisoformat(body.date)
+        row.date = parse_date(body.date, 'تاريخ الفاتورة', required=True)
     if body.description is not None:
         row.description = body.description
     if body.reference is not None:
         row.doc = body.reference
     if body.due_date is not None:
-        row.manual_due_date = dt.date.fromisoformat(body.due_date)
+        row.manual_due_date = parse_date(body.due_date, 'تاريخ الاستحقاق')
     elif supplier.term_kind == 'claim' and row.manual_due_date is None:
         raise HTTPException(422, detail='مدة المورد «مستخلص» — يلزم إدخال تاريخ الاستحقاق يدوياً')
 
@@ -101,7 +102,8 @@ def delete_invoice(invoice_id: str, db: Session = Depends(get_session)) -> dict:
 @router.post('/payments', status_code=201)
 def create_payment(body: PaymentIn, db: Session = Depends(get_session)) -> dict:
     supplier = _get_supplier(db, body.account)
-    row = models.Payment(supplier_id=supplier.id, date=dt.date.fromisoformat(body.date),
+    row = models.Payment(supplier_id=supplier.id,
+                         date=parse_date(body.date, 'تاريخ الدفعة', required=True),
                          amount=body.amount, doc=body.reference or '',
                          description=body.description, source='manual')
     db.add(row)

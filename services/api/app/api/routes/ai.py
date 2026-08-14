@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.deps import parse_date
 from app.db import models
 from app.db.session import get_session
 from app.domain import contractors as C
@@ -78,11 +79,17 @@ def test_connection() -> dict:
 
 
 @router.post('/extract')
-def extract(body: ExtractBody) -> dict:
-    """استخراج سطور القيود من ملف عبر النموذج — تحليل فقط.
+def extract(body: ExtractBody, db: Session = Depends(get_session)) -> dict:
+    """استخراج سطور القيود من ملف — تحليل فقط، لا كتابة في قاعدة البيانات.
 
-    هذا المسار لا يكتب في قاعدة البيانات إطلاقاً؛ النتيجة تُعاد للمستخدم
-    للمراجعة، وواجهة المراجعة والاعتماد عمل مستقبلي.
+    قبل أي استدعاء للنموذج: يُجرَّب مسار حتمي محلي (try_deterministic_extract) إن
+    كانت هناك قاعدة تخطيط متعلَّمة من ملف سابق بنفس الشكل — عند نجاحها لا يُستهلك
+    أي رمز ذكاء اصطناعي. عند فشلها أو غياب القاعدة، يُستخدم النموذج كالمعتاد، ثم
+    تُستنتَج قاعدة جديدة كودياً وتُحفَظ لملفات لاحقة من نفس الشكل (ai_service.
+    learn_from_extraction) — بلا أي استدعاء إضافي للنموذج.
+
+    النتيجة دائماً تحمل source: 'learned' أو 'ai' — لكن في الحالتين تبقى مجرد
+    اقتراح للمراجعة؛ الاعتماد الفعلي عبر /ai/commit-extract إلزامي دوماً.
     """
     p = Path(body.path)
     if not p.exists() or not p.is_file():
@@ -90,10 +97,50 @@ def extract(body: ExtractBody) -> dict:
     s = ai_service.load_settings()
     if not s['enabled']:
         raise HTTPException(409, detail='المساعد غير مفعّل — فعّله من الإعدادات')
+
     try:
-        return ai_service.extract_rows(p)
+        learned = ai_service.try_deterministic_extract(db, p)
+    except Exception:
+        learned = None  # أي عطل في المسار الحتمي يجب ألا يمنع مسار النموذج المعتاد
+    if learned is not None:
+        return learned
+
+    try:
+        result = ai_service.extract_rows(p)
     except ai_service.AiError as e:
         raise HTTPException(502, detail=str(e))
+
+    result['source'] = 'ai'
+    result['tokensSaved'] = 0
+    try:
+        ai_service.learn_from_extraction(db, p, result.get('totalChars', 0), result)
+    except Exception:
+        pass  # فشل التعلّم لا يجوز أن يُفسد استخراجاً ناجحاً بالفعل
+    return result
+
+
+@router.get('/learned-layouts')
+def learned_layouts(db: Session = Depends(get_session)) -> dict:
+    """قائمة أنماط تخطيط الملفات المتعلَّمة — رؤية للمستخدم على ما وفّره التطبيق.
+
+    لا يتطلب useAi/تفعيل المساعد — قراءة فقط لجدول محلي، لا اتصال بأي مزود.
+    """
+    rows = db.query(models.LearnedLayout).order_by(
+        models.LearnedLayout.hit_count.desc()).all()
+    items = []
+    for r in rows:
+        approx_tokens = (r.hit_count or 0) * max((r.learned_from_chars or 0) // 4, 0)
+        items.append({
+            'id': r.id,
+            'sourceKind': r.source_kind,
+            'sampleAccount': r.sample_account,
+            'sampleName': r.sample_name,
+            'hitCount': r.hit_count or 0,
+            'createdAt': r.created_at.isoformat() if r.created_at else None,
+            'lastUsedAt': r.last_used_at.isoformat() if r.last_used_at else None,
+            'approxTokensSaved': approx_tokens,
+        })
+    return {'items': items}
 
 
 class NewContractorBody(BaseModel):
@@ -312,8 +359,8 @@ def summary(body: SummaryBody, db=Depends(get_session)) -> dict:
     كودياً بالكامل من نفس طبقة التقارير، والنموذج يصوغ منها فقط 3-5 جمل رسمية.
     """
     _require_enabled()
-    date_from = dt.date.fromisoformat(body.date_from) if body.date_from else None
-    date_to = dt.date.fromisoformat(body.date_to) if body.date_to else None
+    date_from = parse_date(body.date_from, 'تاريخ البداية')
+    date_to = parse_date(body.date_to, 'تاريخ النهاية')
     numbers = F.build_summary_numbers(db, body.parties, body.account, body.project,
                                       body.contractor, date_from, date_to)
     try:

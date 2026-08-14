@@ -138,7 +138,7 @@ export function AiRescueModal({ path, fileName, onClose, onSaved }: {
               <table>
                 <thead>
                   <tr>
-                    <th>التاريخ</th><th>مدين</th><th>دائن</th><th>الوصف</th><th></th>
+                    <th>التاريخ</th><th>مدين (ر.س)</th><th>دائن (ر.س)</th><th>الوصف</th><th></th>
                   </tr>
                 </thead>
                 <tbody>

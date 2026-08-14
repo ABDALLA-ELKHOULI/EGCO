@@ -34,6 +34,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from app.db import models
+from app.domain import contractors as C
 from app.domain.payables import D, money
 from app.services import contractors_service as CS
 
@@ -41,16 +42,28 @@ ZERO = Decimal('0')
 
 
 def _figures(entries) -> dict:
-    """Decimal figures for one contractor's live ledger entries."""
-    debit = credit = paid = ZERO
-    for e in entries:
-        d, c = D(e.debit or 0), D(e.credit or 0)
-        debit += d
-        credit += c
-        if (e.kind or 'other') == 'payment':
-            paid += d
-    balance = debit - credit
-    return dict(invoiced=credit, paid=paid, deductions=debit - paid,
+    """Decimal figures for one contractor's live ledger entries.
+
+    Reuses `domain.contractors.position()` — the same breakdown the contractor's
+    own screen is built from — instead of a separate ad-hoc definition, so
+    "deductions" never means two different things on two screens for the same
+    data (previously this function computed `deductions = Σdebit − paid`, which
+    silently folded retention AND the "other" debit bucket into "deductions",
+    disagreeing with the contractor detail page).
+
+    `deductions` is defined as whatever remains of the debit side once payments,
+    retention, and "other" are accounted for, so by construction:
+        paid + deductions + retention + other == debit_total
+    """
+    pos = C.position([dict(debit=e.debit, credit=e.credit, kind=e.kind) for e in entries])
+    debit, credit = pos['debit_total'], pos['credit_total']
+    paid = pos['payments_total']
+    retention = pos['retention_total']
+    other = pos['other_debits']
+    deductions = debit - paid - retention - other
+    balance = pos['balance']
+    return dict(invoiced=credit, paid=paid, deductions=deductions,
+                retention=retention, other=other,
                 debit=debit, credit=credit, balance=balance,
                 outstanding=(-balance if balance < 0 else ZERO))
 

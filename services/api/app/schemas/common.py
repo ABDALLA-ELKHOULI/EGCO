@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-from typing import List, Literal, Optional
+from typing import Annotated, List, Literal, Optional
 
 from pydantic import BaseModel, Field
+
+from app.schemas._amount import AmountRange
 
 
 class AccountClassificationIn(BaseModel):
@@ -65,7 +67,7 @@ class SupplierUpdate(BaseModel):
 class InvoiceIn(BaseModel):
     """إضافة مديونية مستحقة يدوياً."""
     account: str                      # رقم حساب المورد
-    amount: float = Field(gt=0)
+    amount: Annotated[float, Field(gt=0), AmountRange]
     date: str                         # ISO — تاريخ الفاتورة
     due_date: Optional[str] = None
     description: str = ''
@@ -73,7 +75,7 @@ class InvoiceIn(BaseModel):
 
 
 class InvoiceUpdate(BaseModel):
-    amount: Optional[float] = Field(default=None, gt=0)
+    amount: Annotated[Optional[float], Field(default=None, gt=0), AmountRange]
     date: Optional[str] = None
     due_date: Optional[str] = None
     description: Optional[str] = None
@@ -83,7 +85,7 @@ class InvoiceUpdate(BaseModel):
 class PaymentIn(BaseModel):
     """تسجيل دفعة يدوياً."""
     account: str
-    amount: float = Field(gt=0)
+    amount: Annotated[float, Field(gt=0), AmountRange]
     date: str
     description: str = ''
     reference: Optional[str] = None
@@ -96,7 +98,7 @@ class RevenueIn(BaseModel):
     project: str = ''
     unit: str = ''
     client: str = Field(min_length=1, max_length=300)
-    amount: float = Field(gt=0)
+    amount: Annotated[float, Field(gt=0), AmountRange]
     due_date: Optional[str] = Field(default=None, alias='dueDate')
     status: str = 'open'
     collected_on: Optional[str] = Field(default=None, alias='collectedOn')
@@ -112,7 +114,7 @@ class RevenueUpdate(BaseModel):
     project: Optional[str] = None
     unit: Optional[str] = None
     client: Optional[str] = Field(default=None, min_length=1, max_length=300)
-    amount: Optional[float] = Field(default=None, gt=0)
+    amount: Annotated[Optional[float], Field(default=None, gt=0), AmountRange]
     due_date: Optional[str] = Field(default=None, alias='dueDate')
     status: Optional[str] = None
     collected_on: Optional[str] = Field(default=None, alias='collectedOn')

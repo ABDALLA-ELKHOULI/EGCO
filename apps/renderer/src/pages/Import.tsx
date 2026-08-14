@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import type { ImportHistoryRow } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
-import { Card, EmptyState, Pill, State } from '@/components/ui';
+import { Card, EmptyState, ErrorState, Pill, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
 import { AiRescueModal } from '@/components/AiRescueModal';
 import { useAiEnabled } from '@/lib/useAi';
@@ -588,7 +588,7 @@ function QueueCard({ item, aiEnabled, onRescue }: {
         {(status === 'reconciled' || status === 'unreconciled') && preview && (
           <div className="muted" style={{ fontSize: 12 }}>
             رقم الحساب: {preview.account ?? '—'} · فواتير: {ar(preview.invoiceCount)} · دفعات: {ar(preview.paymentCount)}
-            {' '}· رصيد الكشف: {sar(preview.statementBalance ?? 0)} · المحسوب: {sar(preview.computedBalance)}
+            {' '}· رصيد الكشف: {sar(preview.statementBalance ?? 0)} ر.س · المحسوب: {sar(preview.computedBalance)} ر.س
             {status === 'reconciled'
               ? ' — ✓ مطابق'
               : ` — ✕ غير مطابق (الفرق ${sar(preview.difference ?? 0)} ر.س)`}
@@ -699,7 +699,7 @@ function UploadedFilesSection({ rows, loading, error, onDeleted, onPickFiles }: 
   if (error) {
     return (
       <Card title="الملفات المرفوعة">
-        <div className="callout bad" style={{ margin: '14px 20px' }}>{error}</div>
+        <ErrorState message={error} onRetry={onDeleted} />
       </Card>
     );
   }

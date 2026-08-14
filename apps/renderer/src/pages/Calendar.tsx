@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { ar, arDate, invoiceCount, k, sar } from '@/lib/format';
-import { Card, Money, Pill, State } from '@/components/ui';
+import { Card, ErrorState, Money, Pill, State } from '@/components/ui';
 
 const DAYS = ['السبت','الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'];
 
@@ -18,6 +18,7 @@ interface DayDetail {
 /** التقويم المالي — الاستحقاقات موزعة على أيام الشهر، وكل يوم قابل للنقر لعرض تفاصيله. */
 export function CalendarPage() {
   const [d, setD] = useState<any>(null);
+  const [err, setErr] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<DayDetail | null>(null);
@@ -25,18 +26,29 @@ export function CalendarPage() {
   const [params, setParams] = useSearchParams();
   const [projects, setProjects] = useState<string[]>([]);
   const project = params.get('project') || '';
+  const seq = useRef(0);
+  const detailSeq = useRef(0);
 
-  useEffect(() => { api.dashboard({ project: project || undefined }).then(setD); }, [project]);
+  const load = () => {
+    const my = ++seq.current;
+    setErr(null);
+    api.dashboard({ project: project || undefined })
+      .then((r) => { if (my === seq.current) setD(r); })
+      .catch((e) => { if (my === seq.current) setErr(e instanceof Error ? e.message : String(e)); });
+  };
+  useEffect(() => { load(); }, [project]);
 
   useEffect(() => { api.projects().then((r: any) => setProjects((r.rows ?? []).map((row: any) => row.project))).catch(() => {}); }, []);
 
-  useEffect(() => {
+  const loadDetail = () => {
     if (!selected) { setDetail(null); return; }
+    const my = ++detailSeq.current;
     setDetail(null); setDetailErr(null);
     api.calendarDay(selected, { project: project || undefined })
-      .then(setDetail)
-      .catch((e) => setDetailErr(e instanceof Error ? e.message : String(e)));
-  }, [selected, project]);
+      .then((r) => { if (my === detailSeq.current) setDetail(r); })
+      .catch((e) => { if (my === detailSeq.current) setDetailErr(e instanceof Error ? e.message : String(e)); });
+  };
+  useEffect(() => { loadDetail(); }, [selected, project]);
 
   function setProject(value: string) {
     const p = new URLSearchParams(params);
@@ -44,6 +56,7 @@ export function CalendarPage() {
     setParams(p, { replace: true });
   }
 
+  if (err) return <ErrorState message={err} onRetry={load} />;
   if (!d) return <State>جارٍ التحميل…</State>;
 
   const today = new Date(d.today + 'T00:00:00');
@@ -54,7 +67,7 @@ export function CalendarPage() {
   const firstCol = (new Date(year, month, 1).getDay() + 1) % 7;
 
   const byDay: Record<number, { amount: number; count: number; overdue: boolean }> = {};
-  for (const b of d.schedule) {
+  for (const b of d.schedule ?? []) {
     const dt = new Date(b.date + 'T00:00:00');
     if (dt.getFullYear() === year && dt.getMonth() === month) {
       byDay[dt.getDate()] = { amount: b.amount, count: b.count, overdue: b.overdue };
@@ -139,7 +152,7 @@ export function CalendarPage() {
       {selected && (
         <Card title={`تفاصيل يوم ${arDate(selected)}`}>
           <div style={{ padding: '4px 20px 16px' }}>
-            {detailErr && <State>تعذّر التحميل: {detailErr}</State>}
+            {detailErr && <ErrorState message={detailErr} onRetry={loadDetail} />}
             {!detail && !detailErr && <State>جارٍ التحميل…</State>}
             {detail && detail.suppliers.length === 0 && detail.guarantees.length === 0 && (
               <p className="muted">لا استحقاقات في هذا اليوم.</p>

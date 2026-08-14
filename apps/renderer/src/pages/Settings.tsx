@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from 'react';
-import { api, ApiError, AiSettings, ImportClassification } from '@/lib/api';
-import { Card, Pill, State } from '@/components/ui';
+import { api, ApiError, AiSettings, ImportClassification, LearnedLayout } from '@/lib/api';
+import { Card, ErrorState, Pill, State } from '@/components/ui';
 
 export function Settings() {
   const [info, setInfo] = useState<any>(null);
@@ -219,8 +219,48 @@ function AiCard() {
             {note.text}
           </div>
         )}
+
+        <LearnedLayoutsSection />
       </div>
     </Card>
+  );
+}
+
+/** أنماط تخطيط الملفات التي «تعلّمها» التطبيق — للقراءة فقط، بلا تعديل في v1.
+ * كل ملف كشف لاحق بنفس الشكل (نظام محاسبي واحد، بيانات مختلفة) يُستخرج محلياً
+ * بلا أي استدعاء للنموذج — هنا يظهر للمستخدم كم مرة تكرر ذلك وكم رمز وُفِّر تقريباً. */
+function LearnedLayoutsSection() {
+  const [items, setItems] = useState<LearnedLayout[] | null>(null);
+
+  useEffect(() => {
+    api.aiLearnedLayouts().then((r) => setItems(r.items)).catch(() => setItems([]));
+  }, []);
+
+  if (!items || items.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 20, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+      <h4 style={{ margin: '0 0 8px' }}>أنماط الملفات المتعلَّمة</h4>
+      <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 0 }}>
+        عندما يتعرّف المساعد على شكل ملف مرة، يحفظ قاعدة استخراج محلية له — أي ملف
+        لاحق بنفس الشكل يُستخرج مباشرة بلا أي اتصال بالنموذج.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.map((it) => (
+          <div key={it.id} className="callout" style={{ fontSize: 13 }}>
+            <strong>{it.sampleName || it.sampleAccount || it.sourceKind}</strong>
+            {' — '}
+            استُخدم {it.hitCount} {it.hitCount === 1 ? 'مرة' : 'مرات'}
+            {it.approxTokensSaved > 0 && <>، وفّر ~{it.approxTokensSaved} رمز</>}
+            {it.lastUsedAt && (
+              <span style={{ color: 'var(--muted)' }}>
+                {' '}— آخر استخدام {new Date(it.lastUsedAt).toLocaleDateString('ar-SA')}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -236,6 +276,7 @@ function ClassificationsCard() {
   const [busyAccount, setBusyAccount] = useState<string | null>(null);
 
   function load() {
+    setErr(null);
     api.importClassifications().then((r) => setRows(r.rows))
       .catch((e) => setErr(e instanceof ApiError ? e.message : 'تعذّر تحميل التصنيفات'));
   }
@@ -257,7 +298,7 @@ function ClassificationsCard() {
   return (
     <Card title="تصنيفات الحسابات" sub="حسابات برقم بادئة غير معروفة صنّفتها يدوياً من شاشة الرفع">
       <div className="card-body">
-        {err && <div className="callout bad">{err}</div>}
+        {err && <ErrorState message={err} onRetry={load} />}
         {rows === null && !err && <State>جارٍ التحميل…</State>}
         {rows && rows.length === 0 && (
           <div className="muted" style={{ fontSize: 13 }}>لا توجد تصنيفات محفوظة بعد.</div>

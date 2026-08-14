@@ -11,6 +11,7 @@ import datetime as dt
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.deps import parse_date
 from app.db import models
 from app.db.session import get_session
 from app.domain.payables import Term, due_date as _due_date
@@ -36,7 +37,7 @@ def update_due_date(invoice_id: str, body: DueDateUpdate,
     if row is None:
         raise HTTPException(404, detail='لا توجد فاتورة بهذا المعرّف')
 
-    row.manual_due_date = dt.date.fromisoformat(body.due_date) if body.due_date else None
+    row.manual_due_date = parse_date(body.due_date, 'تاريخ الاستحقاق')
     db.commit()
     db.refresh(row)
     return _invoice_out(row)

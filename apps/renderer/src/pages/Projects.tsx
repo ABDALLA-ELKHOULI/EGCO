@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { ar, sar } from '@/lib/format';
-import { Card, Kpi, Money, State } from '@/components/ui';
+import { Card, ErrorState, Kpi, Money, State } from '@/components/ui';
 import { ExplainDot } from '@/components/Explain';
 
 /** المشاريع — مديونية كل مشروع ومتأخراته. */
@@ -10,9 +10,14 @@ export function Projects() {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => { api.projects().then(setD).catch((e) => setErr(e.message)); }, []);
+  const load = () => {
+    setErr(null);
+    api.projects().then(setD).catch((e) => setErr(e.message));
+  };
 
-  if (err) return <State>تعذّر التحميل: {err}</State>;
+  useEffect(() => { load(); }, []);
+
+  if (err) return <ErrorState message={err} onRetry={load} />;
   if (!d) return <State>جارٍ التحميل…</State>;
 
   const rows = d.rows ?? [];
@@ -45,8 +50,8 @@ export function Projects() {
               <thead>
                 <tr>
                   <th>المشروع</th><th>الموردون</th>
-                  <th className="ltr">المفوتر</th><th className="ltr">المسدد</th>
-                  <th className="ltr">المديونية المفتوحة</th><th className="ltr">المتأخر</th>
+                  <th className="ltr">المفوتر (ر.س)</th><th className="ltr">المسدد (ر.س)</th>
+                  <th className="ltr">المديونية المفتوحة (ر.س)</th><th className="ltr">المتأخر (ر.س)</th>
                 </tr>
               </thead>
               <tbody>
@@ -91,7 +96,7 @@ export function Projects() {
                     }} />
                   </div>
                   <div className="num" style={{ width: 110, textAlign: 'left', fontSize: 12 }}>
-                    {sar(r.outstanding ?? 0)} ر.س
+                    <Money v={r.outstanding ?? 0} /> ر.س
                   </div>
                 </div>
               ))}

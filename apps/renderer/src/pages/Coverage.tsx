@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
-import { Card, EmptyState, Kpi, Pill, State } from '@/components/ui';
+import { Card, EmptyState, ErrorState, Kpi, Pill, State } from '@/components/ui';
 
 const STATE_PILL: Record<string, { text: string; kind: string }> = {
   none: { text: 'بلا كشوفات', kind: 'red' },
@@ -31,13 +31,18 @@ export function CoveragePage() {
   const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
 
+  const load = () => {
+    api.coverage(90).then((r) => { setD(r); setErr(null); }).catch((e) => setErr(e.message));
+  };
+
   useEffect(() => {
-    api.coverage(90).then(setD).catch((e) => setErr(e.message));
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rows: CoverageRow[] = useMemo(() => {
     if (!d) return [];
-    let r: CoverageRow[] = d.rows;
+    let r: CoverageRow[] = d.rows ?? [];
     if (filter !== 'all') r = r.filter((row) => row.state === filter);
     if (q.trim()) {
       const needle = q.trim().toLowerCase();
@@ -47,7 +52,7 @@ export function CoveragePage() {
     return r;
   }, [d, filter, q]);
 
-  if (err) return <State>{err}</State>;
+  if (err) return <ErrorState message={err} onRetry={load} />;
   if (!d) return <State>جارٍ التحميل…</State>;
 
   return (
@@ -62,16 +67,16 @@ export function CoveragePage() {
       <div className="kpi-row">
         <Kpi
           label="موردون بلا كشوفات"
-          value={ar(d.totals.withoutData)}
+          value={ar(d.totals?.withoutData ?? 0)}
           tone="red"
-          alert={d.totals.withoutData > 0}
+          alert={(d.totals?.withoutData ?? 0) > 0}
         />
         <Kpi
-          label={`كشوفاتهم قديمة (+${ar(d.staleDays)} يوماً)`}
-          value={ar(d.totals.stale)}
+          label={`كشوفاتهم قديمة (+${ar(d.staleDays ?? 0)} يوماً)`}
+          value={ar(d.totals?.stale ?? 0)}
           tone="gold"
         />
-        <Kpi label="نسبة التغطية" value={`${ar(d.totals.coveredPct)}٪`} />
+        <Kpi label="نسبة التغطية" value={`${ar(d.totals?.coveredPct ?? 0)}٪`} />
       </div>
 
       <div className="callout note" style={{ marginBottom: 14 }}>
@@ -99,17 +104,18 @@ export function CoveragePage() {
             body="لم يطابق البحث أو التصفية أي مورد."
             ctaLabel="مسح التصفية" onCta={() => { setQ(''); setFilter('all'); }} />
         ) : (
+          <div className="table-scroll">
           <table>
             <thead>
               <tr>
                 <th>المورد</th><th>رقم الحساب</th><th>المشروع</th>
                 <th>أول حركة</th><th>آخر حركة</th><th>منذ</th>
-                <th className="ltr">الفواتير</th><th className="ltr">المديونية</th><th>الحالة</th>
+                <th className="ltr">الفواتير</th><th className="ltr">المديونية (ر.س)</th><th>الحالة</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => {
-                const pill = STATE_PILL[row.state];
+                const pill = STATE_PILL[row.state] ?? { text: row.state, kind: '' };
                 const rowCls = row.state === 'none' ? 'row-overdue'
                   : row.state === 'stale' ? 'row-due-soon' : '';
                 return (
@@ -128,6 +134,7 @@ export function CoveragePage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
     </>

@@ -315,9 +315,14 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
 
     added = skipped = 0
     for inv in parsed['invoices']:
+        # الهوية تشمل المستند والوصف — سطران يتطابقان في الرقم والتاريخ والمبلغ
+        # ويختلفان في المستند/الوصف هما حركتان مختلفتان، لا تكراراً.
+        # .first() لا .one_or_none(): قواعد قديمة قد تحوي صفين متطابقين فيرفع
+        # one_or_none استثناءً يُفشل الملف كله.
         exists = db.query(models.Invoice).filter_by(
             supplier_id=supplier.id, number=inv.number, date=inv.date,
-            amount=inv.amount).one_or_none()
+            amount=inv.amount, doc=inv.doc,
+            description=inv.description).first()
         if exists:
             # a soft-deleted row matching this identity is resurrected, not skipped —
             # otherwise upload -> delete -> re-upload silently imports 0 rows.
@@ -336,7 +341,7 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
     for pay in parsed['payments']:
         exists = db.query(models.Payment).filter_by(
             supplier_id=supplier.id, doc=pay.doc, date=pay.date,
-            amount=pay.amount).one_or_none()
+            amount=pay.amount, description=pay.description).first()
         if exists:
             if exists.deleted_at is not None:
                 exists.deleted_at = None
