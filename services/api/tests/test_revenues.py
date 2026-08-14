@@ -120,10 +120,20 @@ def test_manual_dated_open_revenue_feeds_cashflow_inflow_and_clears_warning(api_
     buckets_with_inflow = [p for p in d['periods'] if p['inflow'] > 0]
     assert len(buckets_with_inflow) == 1
 
-    # mark collected — it should leave the *forecast* bucket for its due date's window
-    # but still count on its (new) dated event, since collected_on now drives the date
+    # SEMANTICS CHANGE (synergy audit): marking a revenue collected removes it from the
+    # forecast entirely. It used to be re-dated by `collected_on` and kept as inflow,
+    # which made money that had ALREADY arrived show up as future income — the cashflow
+    # screen then disagreed with التحصيلات, where the same row sits under «المحصّل».
+    # A forecast may only contain money that has not arrived yet.
     r = api_client.put(f'/api/v1/revenues/{rid}', json={
         'status': 'collected', 'collectedOn': '2026-08-05'})
     assert r.status_code == 200
     d = api_client.get('/api/v1/cashflow', params={'weeks': 8, 'from': '2026-08-01'}).json()
-    assert d['summary']['totalInflow'] == 5000  # still counted, now on the collection date
+    assert d['summary']['totalInflow'] == 0.0
+    assert d['summary']['receivablesStats'] == dict(total=0, dated=0, undated=0, collected=1)
+    # and the warning must say why — not "no data uploaded", which would be false
+    assert any('محصَّلة بالفعل' in w for w in d['warnings'])
+    # the inflow reconciliation ties to /revenues totals.open, which is now zero
+    assert d['reconciliation']['inflow']['openTotal'] == 0.0
+    assert d['reconciliation']['inflow']['difference'] == 0.0
+    assert api_client.get('/api/v1/revenues').json()['totals']['open'] == 0.0

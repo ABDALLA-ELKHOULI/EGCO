@@ -149,7 +149,9 @@ def test_cashflow_project_filter_scopes_outflow_and_inflow(two_project_db):
     result = cashflow_service.cashflow(db, weeks=2, today=today, project='مشروع الرسين')
     assert result['summary']['totalOutflow'] == 1000.0
     assert result['summary']['totalInflow'] == 500.0
-    assert result['summary']['receivablesStats'] == dict(total=1, dated=1, undated=0)
+    # SEMANTICS CHANGE (synergy audit): stats now count the OPEN population only, and
+    # report the collected count separately, so a "no inflow" message can say why.
+    assert result['summary']['receivablesStats'] == dict(total=1, dated=1, undated=0, collected=0)
 
     other = cashflow_service.cashflow(db, weeks=2, today=today, project='مشروع النخيل')
     assert other['summary']['totalOutflow'] == 2000.0
@@ -285,3 +287,108 @@ def test_parties_project_filter_scopes_contractor_attribution(contractor_cashflo
                                       project='مشروع ب')
     assert other['summary']['totalOutflow'] == 0.0
     assert other['undatedContractorDues'] == 0.0
+
+
+# ---------------------------------------------------------------- period_days
+
+def test_period_days_omitted_matches_14_and_pre_change_behaviour():
+    receivables = [
+        CashItem(date=dt.date(2026, 1, 3), amount=Decimal('1000')),
+        CashItem(date=dt.date(2026, 1, 20), amount=Decimal('500')),
+    ]
+    payables = [
+        CashItem(date=dt.date(2026, 1, 5), amount=Decimal('300')),
+    ]
+    default_periods = build_periods(receivables, payables, FROM, weeks=4, opening_balance=Decimal('0'))
+    explicit_periods = build_periods(receivables, payables, FROM, weeks=4, opening_balance=Decimal('0'),
+                                     period_days=14)
+    assert len(default_periods) == len(explicit_periods) == 2
+    for a, b in zip(default_periods, explicit_periods):
+        assert a.from_date == b.from_date
+        assert a.to_date == b.to_date
+        assert a.inflow == b.inflow
+        assert a.outflow == b.outflow
+        assert a.balance == b.balance
+
+
+def test_period_days_7_places_due_amount_in_correct_bucket():
+    # a receivable due on day 8 (2026-01-08) must land in the SECOND 7-day bucket
+    # (2026-01-08..2026-01-14), not the first (2026-01-01..2026-01-07).
+    receivables = [
+        CashItem(date=dt.date(2026, 1, 8), amount=Decimal('1000')),
+    ]
+    # a payable due on day 7 (2026-01-07) must land in the FIRST 7-day bucket.
+    payables = [
+        CashItem(date=dt.date(2026, 1, 7), amount=Decimal('400')),
+    ]
+    periods = build_periods(receivables, payables, FROM, weeks=2, opening_balance=Decimal('0'),
+                            period_days=7)
+    assert len(periods) == 2
+
+    p0 = periods[0]
+    assert p0.from_date == dt.date(2026, 1, 1)
+    assert p0.to_date == dt.date(2026, 1, 7)
+    assert p0.inflow == Decimal('0')
+    assert p0.outflow == Decimal('400')
+    assert p0.balance == Decimal('-400')
+
+    p1 = periods[1]
+    assert p1.from_date == dt.date(2026, 1, 8)
+    assert p1.to_date == dt.date(2026, 1, 14)
+    assert p1.inflow == Decimal('1000')
+    assert p1.outflow == Decimal('0')
+    assert p1.balance == Decimal('600')
+
+
+def test_period_days_30_places_due_amount_in_correct_bucket():
+    # a receivable due on day 31 (2026-01-31) must land in the SECOND 30-day bucket
+    # (2026-01-31..2026-03-01), not the first (2026-01-01..2026-01-30).
+    receivables = [
+        CashItem(date=dt.date(2026, 1, 31), amount=Decimal('2000')),
+    ]
+    # a payable due on day 30 (2026-01-30) must land in the FIRST 30-day bucket.
+    payables = [
+        CashItem(date=dt.date(2026, 1, 30), amount=Decimal('900')),
+    ]
+    periods = build_periods(receivables, payables, FROM, weeks=9, opening_balance=Decimal('0'),
+                            period_days=30)
+    assert len(periods) == 3  # 63 days -> ceil(63/30) = 3 buckets
+
+    p0 = periods[0]
+    assert p0.from_date == dt.date(2026, 1, 1)
+    assert p0.to_date == dt.date(2026, 1, 30)
+    assert p0.inflow == Decimal('0')
+    assert p0.outflow == Decimal('900')
+    assert p0.balance == Decimal('-900')
+
+    p1 = periods[1]
+    assert p1.from_date == dt.date(2026, 1, 31)
+    assert p1.to_date == dt.date(2026, 3, 1)
+    assert p1.inflow == Decimal('2000')
+    assert p1.outflow == Decimal('0')
+    assert p1.balance == Decimal('1100')
+
+
+def test_cashflow_service_period_days_omitted_is_identical_to_explicit_14(two_project_db):
+    db, cashflow_service, today = two_project_db
+    omitted = cashflow_service.cashflow(db, weeks=2, today=today)
+    explicit = cashflow_service.cashflow(db, weeks=2, today=today, period_days=14)
+    assert omitted['periodDays'] == explicit['periodDays'] == 14
+    assert omitted['periods'] == explicit['periods']
+    assert omitted['summary'] == explicit['summary']
+
+
+def test_route_rejects_period_days_out_of_range(api_client):
+    r_low = api_client.get('/api/v1/cashflow', params={'period_days': 0})
+    assert r_low.status_code == 422
+    assert r_low.json()['detail'] == 'طول الفترة بين ١ و٩٢ يوماً'
+
+    r_high = api_client.get('/api/v1/cashflow', params={'period_days': 100})
+    assert r_high.status_code == 422
+    assert r_high.json()['detail'] == 'طول الفترة بين ١ و٩٢ يوماً'
+
+
+def test_route_accepts_period_days_within_range(api_client):
+    r = api_client.get('/api/v1/cashflow', params={'period_days': 7, 'weeks': 2})
+    assert r.status_code == 200
+    assert r.json()['periodDays'] == 7

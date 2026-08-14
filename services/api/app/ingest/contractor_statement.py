@@ -29,7 +29,11 @@ from app.domain.payables import D
 from app.ingest.pdf_statement import (BLOCK_MARKER, StatementParseError, _date,
                                       _money, _norm, extract_text)
 
-ACCOUNT_RE = re.compile(r'\b(\d{7,9})\b')
+#: 5–9 digits: contractor accounts are 212xxxxx (8), supplier 211xxxxx (7), but
+#: guarantee accounts (216xx) are only 5 digits — this probe feeds the strict-prefix
+#: dispatch for ALL pdf statements (see import_service.dispatch_kind), so it must
+#: recognise the shortest of the three too.
+ACCOUNT_RE = re.compile(r'\b(\d{5,9})\b')
 #: printed footer: debit-total \n credit-total اجمالي الحساب closing-balance
 TOTALS_RE = re.compile(r'([\d,]+\.\d{2})\s*\n\s*([\d,]+\.\d{2})\s*اجمالي\s*الحساب')
 CLOSING_RE = re.compile(r'اجمالي\s*الحساب\s*(-?\(?[\d,]+\.\d{2}\)?)')

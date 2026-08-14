@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { ar, arDate, invoiceCount, k, sar } from '@/lib/format';
 import { Card, Kpi, Money, State } from '@/components/ui';
+import { ExplainDot } from '@/components/Explain';
 
 /** تفاصيل مشروع — الموردون واستحقاقاته القادمة. */
 export function ProjectDetail() {
@@ -32,9 +33,12 @@ export function ProjectDetail() {
       </div>
 
       <div className="kpi-row">
-        <Kpi label="المديونية المفتوحة" value={sar(d.outstanding ?? 0)} unit="ر.س" />
-        <Kpi label="المتأخر" value={sar(d.overdue ?? 0)} unit="ر.س" tone="red" alert={(d.overdue ?? 0) > 0} />
-        <Kpi label="خلال ٧ أيام" value={sar(d.dueWithin7 ?? 0)} unit="ر.س" tone="gold" />
+        <Kpi label="المديونية المفتوحة" value={sar(d.outstanding ?? 0)} unit="ر.س"
+             explain={<ExplainDot metric="projectDetailOutstanding" values={{ projectOutstanding: d.outstanding }} />} />
+        <Kpi label="المتأخر" value={sar(d.overdue ?? 0)} unit="ر.س" tone="red" alert={(d.overdue ?? 0) > 0}
+             explain={<ExplainDot metric="overdue" values={{ overdue: d.overdue }} />} />
+        <Kpi label="خلال ٧ أيام" value={sar(d.dueWithin7 ?? 0)} unit="ر.س" tone="gold"
+             explain={<ExplainDot metric="dueWithin7" values={{ dueWithin7: d.dueWithin7 }} />} />
         <Kpi label="عدد الموردين" value={ar(d.supplierCount ?? suppliers.length)} />
       </div>
 

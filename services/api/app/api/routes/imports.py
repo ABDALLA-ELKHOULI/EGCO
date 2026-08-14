@@ -10,10 +10,13 @@ from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_session
+from app.ingest import contractor_statement
 from app.ingest.csv_statement import CsvStatementParseError
 from app.ingest.pdf_statement import StatementParseError
 from app.ingest.suppliers_excel import SuppliersParseError
-from app.schemas.common import BatchImportRequest, ImportRequest, PreviewRequest, ScanDirRequest
+from app.schemas.common import (AccountClassificationIn, BatchImportRequest,
+                                ClassifySuggestRequest, ImportRequest, PreviewRequest,
+                                ScanDirRequest)
 from app.services import import_service, receivables_service
 
 router = APIRouter()
@@ -25,9 +28,10 @@ _PARSE_ERRORS = (StatementParseError, SuppliersParseError, CsvStatementParseErro
 #: the deviation report), so the history screen only lets the user delete statements.
 _UNDELETABLE_SOURCES = {'suppliers_excel', 'budget_deviation'}
 
-#: linked-rows count spans these four tables — every table a statement/receivables
-#: import can write to.
-_LINKED_MODELS = (models.Invoice, models.Payment, models.ContractorEntry, models.Receivable)
+#: linked-rows count spans these five tables — every table a statement/receivables
+#: import can write to (GuaranteeEntry added for the 216 guarantee-statement flow).
+_LINKED_MODELS = (models.Invoice, models.Payment, models.ContractorEntry,
+                  models.Receivable, models.GuaranteeEntry)
 
 _RESURRECTION_WINDOW = dt.timedelta(minutes=3)
 
@@ -70,6 +74,79 @@ def scan(body: ScanDirRequest) -> dict:
 def batch(body: BatchImportRequest, db: Session = Depends(get_session)) -> dict:
     """استيراد دفعة ملفات — ملفات الموردين أولاً، نسخة احتياطية واحدة للدفعة كلها."""
     return import_service.batch_import(db, body.paths, body.allow_unreconciled)
+
+
+# ---------------------------------------------------------------- تصنيف الحسابات
+#
+# «اسأل، لا تخمّن» — أي حساب برقم بادئة غير 211/212/216 لا يُحفظ إطلاقاً حتى يقرر
+# المستخدم تصنيفه هنا (يدوياً أو بمساعدة اقتراح ذكاء اصطناعي اختياري لا يقرر شيئاً).
+
+@router.get('/classify')
+def list_classifications(db: Session = Depends(get_session)) -> dict:
+    """التصنيفات المحفوظة — أحدثها أولاً."""
+    rows = db.query(models.AccountClassification).order_by(
+        models.AccountClassification.decided_at.desc()).all()
+    return dict(rows=[dict(account=r.account, kind=r.kind, name=r.name,
+                          decidedAt=r.decided_at.isoformat()) for r in rows])
+
+
+@router.put('/classify')
+def set_classification(body: AccountClassificationIn,
+                       db: Session = Depends(get_session)) -> dict:
+    """حفظ/تحديث قرار تصنيف حساب — القرار دائماً للمستخدم، لا يُستنتج كودياً."""
+    row = db.query(models.AccountClassification).filter_by(account=body.account).one_or_none()
+    if row is None:
+        row = models.AccountClassification(account=body.account)
+        db.add(row)
+    row.kind = body.kind
+    if body.name:
+        row.name = body.name
+    row.decided_at = dt.datetime.now(dt.timezone.utc)
+    db.commit()
+    return dict(account=row.account, kind=row.kind, name=row.name,
+               decidedAt=row.decided_at.isoformat())
+
+
+@router.delete('/classify/{account}')
+def delete_classification(account: str, db: Session = Depends(get_session)) -> dict:
+    """حذف تصنيف محفوظ — الحساب يعود «يحتاج تصنيفاً» عند رفعه لاحقاً."""
+    row = db.query(models.AccountClassification).filter_by(account=account).one_or_none()
+    if row is None:
+        raise HTTPException(404, detail='لا يوجد تصنيف محفوظ لهذا الحساب')
+    db.delete(row)
+    db.commit()
+    return dict(deleted=True)
+
+
+@router.post('/classify/suggest')
+def suggest_classification(body: ClassifySuggestRequest) -> dict:
+    """اقتراح ذكاء اصطناعي اختياري — استدعاء واحد رخيص، لا يقرر شيئاً بنفسه.
+    يعيد {} بصمت إن كان الذكاء الاصطناعي معطلاً أو فشل الاستدعاء."""
+    from pathlib import Path
+
+    from app.services import ai_features_service, ai_service
+
+    try:
+        if not ai_service.load_settings().get('enabled'):
+            return {}
+        account = None
+        name = ''
+        try:
+            probe = contractor_statement.parse(body.path)
+            account = probe.get('account')
+            name = probe.get('name') or ''
+        except Exception:
+            pass  # الملف ليس بصيغة كشف المقاول/الضمان — نحاول باقتراح بلا حساب/اسم
+        try:
+            segments = ai_service.extract_text_segments(Path(body.path))
+            excerpt = segments[0][:2000] if segments else ''
+        except Exception:
+            excerpt = ''
+        suggestion = ai_features_service.suggest_account_kind(
+            account=account, name=name, excerpt=excerpt)
+        return suggestion or {}
+    except Exception:
+        return {}
 
 
 # ---------------------------------------------------------------- الملفات المرفوعة
@@ -143,14 +220,15 @@ def delete_import(log_id: str, force: bool = False,
         raise HTTPException(400, detail='هذا النوع يُدار من شاشته الخاصة ولا يُحذف من هنا')
 
     now = dt.datetime.now(dt.timezone.utc)
-    counts = dict(invoices=0, payments=0, entries=0, receivables=0)
+    counts = dict(invoices=0, payments=0, entries=0, receivables=0, guaranteeEntries=0)
     linked = _count_linked(db, log.id)
     approximate = False
 
     if linked > 0:
         for model, key in ((models.Invoice, 'invoices'), (models.Payment, 'payments'),
                            (models.ContractorEntry, 'entries'),
-                           (models.Receivable, 'receivables')):
+                           (models.Receivable, 'receivables'),
+                           (models.GuaranteeEntry, 'guaranteeEntries')):
             for row in db.query(model).filter(
                     model.import_log_id == log.id, model.deleted_at.is_(None)).all():
                 row.deleted_at = now

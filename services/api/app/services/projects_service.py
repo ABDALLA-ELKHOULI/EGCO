@@ -63,11 +63,16 @@ def list_projects(db: Session, today: Optional[dt.date] = None) -> dict:
     rows = [_row_for(proj, positions) for proj, positions in groups.items()]
     rows.sort(key=lambda r: -r['outstanding'])
 
-    zero = 0.0
+    # Sum the Decimal positions across ALL groups directly, not the already-rounded
+    # per-project floats — summing money()-rounded floats can drift by fractions of a
+    # piaster from the exact total, disagreeing with dashboard/overview/suppliers which
+    # all sum Decimals before rounding once at the boundary.
+    zero = Decimal('0')
+    all_positions = [p for positions in groups.values() for p in positions]
     totals = dict(
-        outstanding=sum(r['outstanding'] for r in rows) or zero,
-        overdue=sum(r['overdue'] for r in rows) or zero,
-        dueWithin7=sum(r['dueWithin7'] for r in rows) or zero,
+        outstanding=money(sum((p.outstanding for p in all_positions), zero)),
+        overdue=money(sum((p.overdue for p in all_positions), zero)),
+        dueWithin7=money(sum((p.due_within_7 for p in all_positions), zero)),
         supplierCount=sum(r['supplierCount'] for r in rows),
     )
     return dict(asOf=today.isoformat(), totals=totals, rows=rows)

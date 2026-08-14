@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from 'react';
-import { api, ApiError, AiSettings } from '@/lib/api';
-import { Card, State } from '@/components/ui';
+import { api, ApiError, AiSettings, ImportClassification } from '@/lib/api';
+import { Card, Pill, State } from '@/components/ui';
 
 export function Settings() {
   const [info, setInfo] = useState<any>(null);
@@ -105,6 +105,8 @@ export function Settings() {
         </Card>
 
         <AiCard />
+
+        <ClassificationsCard />
 
         <Card title="عن التطبيق">
           <div className="card-body">
@@ -216,6 +218,71 @@ function AiCard() {
           <div className={'callout ' + (note.ok ? 'ok' : 'bad')} style={{ marginTop: 12 }}>
             {note.text}
           </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+const CLASSIFY_KIND_LABEL: Record<string, string> = {
+  supplier: 'مورد', contractor: 'مقاول', guarantee: 'ضمان', ignore: 'تجاهل',
+};
+
+/** تصنيفات الحسابات المحفوظة يدوياً — حسابات برقم بادئة غير 211/212/216 قرر
+ * المستخدم تصنيفها مرة واحدة عبر نافذة «تصنيف…» في شاشة الرفع. */
+function ClassificationsCard() {
+  const [rows, setRows] = useState<ImportClassification[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busyAccount, setBusyAccount] = useState<string | null>(null);
+
+  function load() {
+    api.importClassifications().then((r) => setRows(r.rows))
+      .catch((e) => setErr(e instanceof ApiError ? e.message : 'تعذّر تحميل التصنيفات'));
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function remove(account: string) {
+    setBusyAccount(account);
+    try {
+      await api.deleteImportClassification(account);
+      load();
+    } catch (e: any) {
+      setErr(e?.message ?? String(e));
+    } finally {
+      setBusyAccount(null);
+    }
+  }
+
+  return (
+    <Card title="تصنيفات الحسابات" sub="حسابات برقم بادئة غير معروفة صنّفتها يدوياً من شاشة الرفع">
+      <div className="card-body">
+        {err && <div className="callout bad">{err}</div>}
+        {rows === null && !err && <State>جارٍ التحميل…</State>}
+        {rows && rows.length === 0 && (
+          <div className="muted" style={{ fontSize: 13 }}>لا توجد تصنيفات محفوظة بعد.</div>
+        )}
+        {rows && rows.length > 0 && (
+          <table>
+            <thead>
+              <tr><th>الحساب</th><th>الاسم</th><th>التصنيف</th><th></th></tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.account}>
+                  <td className="ltr">{r.account}</td>
+                  <td>{r.name || '—'}</td>
+                  <td><Pill kind={r.kind === 'ignore' ? '' : 'ok'}>{CLASSIFY_KIND_LABEL[r.kind] ?? r.kind}</Pill></td>
+                  <td>
+                    <button className="btn sm" disabled={busyAccount === r.account}
+                      onClick={() => remove(r.account)}>
+                      {busyAccount === r.account ? '…' : 'حذف'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </Card>

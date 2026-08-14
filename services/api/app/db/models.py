@@ -241,6 +241,51 @@ class BudgetSnapshot(TimestampMixin, Base):
     source: Mapped[str] = mapped_column(Text, default='')
 
 
+class AccountClassification(TimestampMixin, Base):
+    """قرار تصنيف يدوي لحساب برقم بادئة غير معروفة (ليس 211/212/216).
+
+    Added for the strict-prefix-dispatch task: any account whose prefix isn't
+    211/212/216 must be asked about once, remembered, and never guessed again —
+    see import_service._dispatch_kind.
+    """
+    __tablename__ = 'account_classifications'
+    account: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    #: 'supplier' | 'contractor' | 'guarantee' | 'ignore'
+    kind: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str] = mapped_column(String(300), default='')
+    decided_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+
+
+class GuaranteeAccount(TimestampMixin, Base):
+    """حساب ضمان (بادئة 216) مستقل — يُربط لاحقاً بمقاول/مورد إن وُجدت مطابقة.
+
+    New table (additive only, no ALTER on existing tables) backing the 216
+    guarantee-statement flow described in this task.
+    """
+    __tablename__ = 'guarantee_accounts'
+    account: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(300), default='')
+    linked_contractor_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    balance: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class GuaranteeEntry(TimestampMixin, Base):
+    """حركة على حساب ضمان (216) — credit يضيف تأمين من مستخلص، debit يفرج/يخصم."""
+    __tablename__ = 'guarantee_entries'
+    __table_args__ = (UniqueConstraint('guarantee_account_id', 'doc', 'date', 'debit',
+                                       'credit', 'description',
+                                       name='uq_guarantee_entry_identity'),)
+    guarantee_account_id: Mapped[str] = mapped_column(ForeignKey('guarantee_accounts.id'),
+                                                       index=True)
+    date: Mapped[dt.date] = mapped_column(Date)
+    debit: Mapped[float] = mapped_column(Float, default=0.0)
+    credit: Mapped[float] = mapped_column(Float, default=0.0)
+    doc: Mapped[str] = mapped_column(String(60), default='')
+    description: Mapped[str] = mapped_column(Text, default='')
+    source: Mapped[str] = mapped_column(String(20), default='statement')
+    import_log_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+
+
 class ImportLog(TimestampMixin, Base):
     """سجل الرفع — audit trail so any imported number can be explained later."""
     __tablename__ = 'import_logs'

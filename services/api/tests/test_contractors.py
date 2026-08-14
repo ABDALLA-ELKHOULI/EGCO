@@ -221,13 +221,13 @@ def test_full_statement_book_reconciles():
 
 @_needs_batch
 def test_batch_dispatch_over_representative_statement_book(db, env):
-    """Dispatch rule over real files.
+    """قاعدة البادئة المطلقة على ملفات حقيقية: ٢١١ مورد، ٢١٢ مقاول.
 
-    Known suppliers keep the supplier flow (قنبر, and فاروس عقد 1 — it is in
-    suppliers-terms.xlsx and its statement is fully representable). Known suppliers
-    whose statement the supplier flow structurally CANNOT represent fall back to the
-    ledger: بي سي في جلوبال (opening-only, zero blocks) and بيت الاباء روشن (positive
-    printed closing — they owe us). Unknown accounts (ديار الوادي) go to the ledger.
+    Rewritten for the user-stated chart-of-accounts rule. Previously dispatch was by
+    ownership + structural fallbacks, which sent بي سي في جلوبال (opening-only) and
+    بيت الاباء (positive closing — they owe us) into the contractor ledger. Both are
+    211 accounts, i.e. suppliers, so the SUPPLIER flow must now represent them:
+    zero-transaction statements and overpaid (credit) balances included.
     """
     if not os.path.exists(SUPPLIERS_XLSX):
         pytest.skip('samples missing')
@@ -237,25 +237,24 @@ def test_batch_dispatch_over_representative_statement_book(db, env):
     out = env.import_service.batch_import(db, paths)
     by_name = {os.path.basename(r['path']): r for r in out['results']}
 
-    # known suppliers with representable statements — supplier flow, unchanged.
+    # ---- 211* → supplier flow, always. None of them may become a contractor.
     for fname, code in [('شركة قنبر.pdf', '2110110'),
-                        ('شركة فاروس عقد 1.pdf', '2111741')]:
+                        ('شركة فاروس عقد 1.pdf', '2111741'),
+                        ('شركة بي سي في جلوبال.pdf', '2110602'),
+                        ('شركة بيت الاباء روشن.pdf', '2110919')]:
         row = by_name[fname]
         assert row['status'] == 'saved', fname
         assert row['message'] == 'تم الحفظ بنجاح', fname
         assert db.query(env.models.Contractor).filter_by(
             code=code).one_or_none() is None, fname
 
-    for fname, code, closing in [
-            ('شركة ديار الوادي.pdf', '21201020', -56651.99),
-            ('شركة بي سي في جلوبال.pdf', '2110602', -327700.91),
-            ('شركة بيت الاباء روشن.pdf', '2110919', 474147.10)]:
-        row = by_name[fname]
-        assert row['status'] == 'saved', fname
-        assert row['message'] == 'تم حفظ كشف مقاول/متعامل', fname
-        c = db.query(env.models.Contractor).filter_by(code=code).one()
-        detail = env.contractors_service.contractor_detail_json(c)
-        assert abs(detail['balance'] - closing) < 0.005, fname
+    # ---- 212* → contractor ledger, always.
+    row = by_name['شركة ديار الوادي.pdf']
+    assert row['status'] == 'saved'
+    assert row['message'] == 'تم حفظ كشف مقاول/متعامل'
+    c = db.query(env.models.Contractor).filter_by(code='21201020').one()
+    detail = env.contractors_service.contractor_detail_json(c)
+    assert abs(detail['balance'] - (-56651.99)) < 0.005
 
 
 # ---------------------------------------------------------------- import dispatch
@@ -280,19 +279,24 @@ def test_batch_import_creates_contractor_and_is_idempotent(db, env):
     assert row2['skipped'] >= 70
 
 
-def test_unknown_211_account_takes_contractor_flow(db, env):
-    """The dispatch rule is ownership, not prefix: a 211* statement whose account is
-    not in the Supplier table goes to the contractor ledger flow."""
-    path = os.path.join(SAMPLES, 'contractor-harmony.pdf')
+def test_211_account_takes_supplier_flow_even_when_unknown(db, env):
+    """قاعدة العميل المطلقة: البادئة ٢١١ = مورد دائماً.
+
+    Rewritten (was `test_unknown_211_account_takes_contractor_flow`): dispatch used
+    to be by ownership, so a 211* account missing from the Supplier table fell into
+    the contractor ledger. The user states the chart of accounts is absolute —
+    211 is ALWAYS a supplier — so an unknown 211 must create/serve a SUPPLIER and
+    must never appear among المقاولون.
+    """
+    path = os.path.join(SAMPLES, 'contractor-harmony.pdf')   # account 2111636
     if not os.path.exists(path):
         pytest.skip('sample missing')
     out = env.import_service.batch_import(db, [path])
     row = out['results'][0]
-    assert row['status'] == 'saved'
     assert row['account'] == '2111636'
-    assert row['message'] == 'تم حفظ كشف مقاول/متعامل'
-    c = db.query(env.models.Contractor).filter_by(code='2111636').one_or_none()
-    assert c is not None
+    # whatever the save outcome, it must NOT have become a contractor
+    assert db.query(env.models.Contractor).filter_by(code='2111636').one_or_none() is None
+    assert row['message'] != 'تم حفظ كشف مقاول/متعامل'
 
 
 def test_known_supplier_pdf_still_takes_supplier_flow(db, env):

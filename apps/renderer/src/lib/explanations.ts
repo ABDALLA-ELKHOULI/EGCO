@@ -143,10 +143,16 @@ export const EXPLANATIONS: Record<string, Explanation> = {
   cashflowHorizon: {
     title: 'أفق التدفق النقدي',
     meaning:
-      'الأفق ١٣ أو ٢٦ أسبوعاً القادمة، وكل صف في الجدول يمثّل فترة أسبوعين. الرصيد '
-      + 'في كل فترة تراكمي من بداية الأفق، فرقم سالب فيه يعني عجزاً متوقعاً في تلك الفترة.',
+      'الأفق ١٣ أو ٢٦ أسبوعاً القادمة، وكل صف في الجدول يمثّل فترة طولها بعدد الأيام '
+      + 'المختار في «طول الفترة» أعلاه — أسبوع أو أسبوعان أو شهر أو أي عدد أيام مخصص '
+      + 'بين ١ و٩٢. الرصيد في كل فترة تراكمي من بداية الأفق، فرقم سالب فيه يعني عجزاً '
+      + 'متوقعاً في تلك الفترة.',
     formula: 'رصيد الفترة = رصيد الفترة السابقة + الداخل − الخارج',
-    compute: () => ({ substitution: null, result: null }),
+    compute: (v) => {
+      const periodDays = v.periodDays;
+      if (periodDays == null) return { substitution: null, result: null };
+      return { substitution: 'طول الفترة الحالي', result: `${periodDays} يوماً` };
+    },
     source: 'من فواتير الموردين المستحقة والتحصيلات المتوقعة داخل الأفق المختار.',
   },
 
@@ -175,6 +181,159 @@ export const EXPLANATIONS: Record<string, Explanation> = {
     },
     source: 'من تقرير انحراف الموازنة لأحدث شهر مرفوع.',
   },
+
+  revenuesOpen: {
+    title: 'المستحق المفتوح',
+    meaning: 'مجموع مبالغ التحصيلات التي لم تُحصَّل بعد — عملاء لم يسددوا دفعتهم حتى الآن.',
+    formula: 'المستحق المفتوح = Σ مبالغ التحصيلات بحالة «مفتوح»',
+    compute: (v) => {
+      const open = v.revenuesOpen;
+      return { substitution: open == null ? null : 'مجموع التحصيلات المفتوحة', result: money(open) };
+    },
+    source: 'من صفوف التحصيلات المدخلة يدوياً أو المرفوعة بحالة «مفتوح».',
+  },
+
+  revenuesCollected: {
+    title: 'المحصّل',
+    meaning: 'مجموع مبالغ التحصيلات التي سُددت فعلاً من العملاء حتى تاريخه.',
+    formula: 'المحصّل = Σ مبالغ التحصيلات بحالة «محصّل»',
+    compute: (v) => {
+      const collected = v.revenuesCollected;
+      return { substitution: collected == null ? null : 'مجموع التحصيلات المحصّلة', result: money(collected) };
+    },
+    source: 'من صفوف التحصيلات المدخلة يدوياً أو المرفوعة بحالة «محصّل».',
+  },
+
+  revenuesTotal: {
+    title: 'الإجمالي',
+    meaning: 'مجموع كل التحصيلات — المفتوح والمحصّل معاً — بصرف النظر عن الحالة.',
+    formula: 'الإجمالي = المستحق المفتوح + المحصّل',
+    compute: (v) => {
+      const open = v.revenuesOpen, collected = v.revenuesCollected, total = v.revenuesTotal;
+      if (open == null || collected == null) return { substitution: null, result: money(total) };
+      return { substitution: `${sar(open)} + ${sar(collected)}`, result: money(total ?? open + collected) };
+    },
+    source: 'ناتج مباشر من جمع المستحق المفتوح والمحصّل أعلاه.',
+  },
+
+  contractorsOwed: {
+    title: 'إجمالي مستحق للمقاولين',
+    meaning: 'مجموع أرصدة كل المقاولين الذين رصيدهم سالب — أي ما تدين به الشركة لهم فعلياً («له»).',
+    formula: 'مستحق للمقاولين = Σ |رصيد المقاول| لكل مقاول رصيده سالب',
+    compute: (v) => {
+      const owed = v.contractorsOwed;
+      return { substitution: owed == null ? null : 'مجموع الأرصدة السالبة (له) لكل المقاولين', result: money(owed) };
+    },
+    source: 'من مجموع أرصدة المقاولين المسجّلة في دفاترهم.',
+  },
+
+  contractorsOwedToUs: {
+    title: 'إجمالي مستحق لنا',
+    meaning: 'مجموع أرصدة كل المقاولين الذين رصيدهم موجب — أي ما دفعته الشركة لهم أكثر من المستحق («لنا»).',
+    formula: 'مستحق لنا = Σ رصيد المقاول لكل مقاول رصيده موجب',
+    compute: (v) => {
+      const owedToUs = v.contractorsOwedToUs;
+      return { substitution: owedToUs == null ? null : 'مجموع الأرصدة الموجبة (لنا) لكل المقاولين', result: money(owedToUs) };
+    },
+    source: 'من مجموع أرصدة المقاولين المسجّلة في دفاترهم.',
+  },
+
+  contractorsRetention: {
+    title: 'الضمانات المحتجزة',
+    meaning: 'مجموع ضمانات كل المشاريع المحتجزة لدى الشركة لكل المقاولين مجتمعين، ولم تُصرف بعد.',
+    formula: 'الضمانات المحتجزة = Σ ضمانات المشاريع غير المصروفة لكل المقاولين',
+    compute: (v) => {
+      const held = v.contractorsRetention;
+      return { substitution: held == null ? null : 'مجموع الضمانات غير المصروفة لكل المقاولين', result: money(held) };
+    },
+    source: 'من سجل ضمانات المقاولين لكل مشروع، مستبعداً ما أُفرج عنه.',
+  },
+
+  supplierCoverage: {
+    title: 'التغطية ٪',
+    meaning: 'نسبة الموردين الذين لديهم كشوفات حساب مرفوعة من إجمالي عدد الموردين — كلما زادت النسبة زادت دقة أرقام المديونية.',
+    formula: 'التغطية ٪ = (عدد الموردين ذوي الكشوفات ÷ إجمالي عدد الموردين) × ١٠٠',
+    compute: (v) => {
+      const withData = v.supplierWithData, total = v.supplierCount, pct = v.coveredPct;
+      if (withData == null || total == null || !total) return { substitution: null, result: pct == null ? null : `${pct}٪` };
+      return { substitution: `(${ar0(withData)} ÷ ${ar0(total)}) × ١٠٠`, result: `${pct ?? Math.round((withData / total) * 100)}٪` };
+    },
+    source: 'من عدد الموردين الإجمالي مقارنةً بمن رُفعت له كشوفات حساب حديثة.',
+  },
+
+  projectsTotals: {
+    title: 'إجمالي مديونية المشاريع',
+    meaning: 'مجموع المديونية المفتوحة لكل الموردين مجمَّعةً على مستوى كل المشاريع.',
+    formula: 'إجمالي المديونية = Σ المديونية المفتوحة لكل مشروع',
+    compute: (v) => {
+      const total = v.projectsOutstanding;
+      return { substitution: total == null ? null : 'مجموع المديونية المفتوحة لكل المشاريع', result: money(total) };
+    },
+    source: 'من مجموع مديونية الموردين المسجّلة تحت كل مشروع.',
+  },
+
+  projectDetailOutstanding: {
+    title: 'المديونية المفتوحة للمشروع',
+    meaning: 'مجموع المديونية المفتوحة لكل الموردين العاملين في هذا المشروع تحديداً.',
+    formula: 'مديونية المشروع = Σ المديونية المفتوحة لموردي هذا المشروع',
+    compute: (v) => {
+      const outstanding = v.projectOutstanding;
+      return { substitution: outstanding == null ? null : 'مجموع مديونية موردي هذا المشروع', result: money(outstanding) };
+    },
+    source: 'من فواتير ومدفوعات موردي هذا المشروع فقط.',
+  },
+
+  ageingByDueDate: {
+    title: 'أعمار الديون',
+    meaning:
+      'كل فئة عمرية تُحسب من تاريخ استحقاق الفاتورة (تاريخ الفاتورة + مدة سداد المورد) لا من تاريخ الفاتورة نفسها. '
+      + 'فاتورة لم يحن استحقاقها بعد لا تُحتسب متأخرة حتى لو كان تاريخها قديماً.',
+    formula: 'عمر الفاتورة (أيام) = اليوم − تاريخ الاستحقاق؛ تُصنَّف الفاتورة حسب هذا الفارق في فئتها',
+    compute: () => ({ substitution: null, result: null }),
+    source: 'من تاريخ كل فاتورة ومدة السداد المتفق عليها لكل مورد، مقارنةً بتاريخ اليوم.',
+  },
+
+  cashflowColumns: {
+    title: 'الداخل / الخارج / الرصيد',
+    meaning:
+      'الداخل = التحصيلات المتوقعة من العملاء خلال الفترة. الخارج = مستحقات الموردين و/أو المقاولين '
+      + 'المتوقع سدادها خلال نفس الفترة. الرصيد عمود تراكمي — يبدأ من الرصيد الافتتاحي ويتراكم فترة بعد '
+      + 'فترة، فرقم سالب فيه يعني عجزاً متوقعاً عند تلك الفترة تحديداً وليس في تلك الفترة فقط.',
+    formula: 'صافي الفترة = الداخل − الخارج؛ الرصيد = رصيد الفترة السابقة + صافي الفترة',
+    compute: () => ({ substitution: null, result: null }),
+    source: 'من فواتير الموردين/المقاولين المستحقة والتحصيلات المتوقعة داخل كل فترة من الأفق المختار.',
+  },
+
+  reportAgeing: {
+    title: 'جدول أعمار الديون',
+    meaning:
+      'يوزّع المتبقي من الفواتير على فئات حسب عدد الأيام منذ تاريخ الاستحقاق (لا تاريخ الفاتورة). '
+      + 'فاتورة استحقاقها لم يحن بعد تظهر في فئة «لم يستحق بعد»، لا في فئة متأخرة.',
+    formula: 'فئة الفاتورة = اليوم − تاريخ الاستحقاق، حيث الاستحقاق = تاريخ الفاتورة + مدة سداد المورد',
+    compute: () => ({ substitution: null, result: null }),
+    source: 'من تاريخ كل فاتورة ومدة السداد المتفق عليها لكل مورد ضمن نطاق التقرير وفترته.',
+  },
+
+  cashflowReconciliation: {
+    title: 'مطابقة الخارج مع المديونية المفتوحة',
+    meaning:
+      'جدول الفترات أعلاه لا يستطيع عرض كل ما ندين به: مبلغ استحقاقه مضى لا دلو له، ومبلغ '
+      + 'استحقاقه بعد نهاية الأفق خارج الجدول، وفاتورة «مستخلص» بلا تاريخ استحقاق لا يمكن '
+      + 'وضعها في أي فترة بأمانة. هذه المعادلة تعرض الفروق الأربعة صراحةً حتى يتطابق مجموعها '
+      + 'مع رقم المديونية في شاشة الموردين بالهللة، بدل أن تختفي بصمت.',
+    formula:
+      'الخارج المجدول + متأخر الآن + بعد نهاية الأفق + بلا تواريخ − أرصدة دائنة = المديونية المفتوحة',
+    compute: (v) => {
+      const { scheduled, overdueNow, beyondHorizon, undated, credits, openDebt } = v;
+      if (scheduled == null || openDebt == null) return { substitution: null, result: null };
+      const terms = `${sar(scheduled)} + ${sar(overdueNow ?? 0)} + ${sar(beyondHorizon ?? 0)}`
+        + ` + ${sar(undated ?? 0)} − ${sar(credits ?? 0)}`;
+      return { substitution: terms, result: `${sar(openDebt)} ر.س` };
+    },
+    source: 'من فواتير الموردين المفتوحة ودفاتر المقاولين — نفس المصدر الذي تقرأ منه شاشتاهما.',
+  },
 };
+
+const ar0 = (v: number | undefined | null) => (v == null ? '' : String(Math.round(v)));
 
 export type ExplainMetric = keyof typeof EXPLANATIONS;

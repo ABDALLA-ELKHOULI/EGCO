@@ -4,6 +4,16 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
+class AccountClassificationIn(BaseModel):
+    account: str = Field(min_length=1, max_length=32)
+    kind: Literal['supplier', 'contractor', 'guarantee', 'ignore']
+    name: str = ''
+
+
+class ClassifySuggestRequest(BaseModel):
+    path: str
+
+
 class ImportRequest(BaseModel):
     path: str
     source: Literal['pdf_statement', 'suppliers_excel', 'csv_statement', 'receivables_legacy_html', 'receivables_excel']

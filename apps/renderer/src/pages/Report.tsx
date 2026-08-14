@@ -282,7 +282,8 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
 
         {showSuppliers && (
           <>
-            <Section num={sn(2)} title="أعمار الديون" sub="المتبقي موزعاً حسب عدد الأيام منذ الاستحقاق" />
+            <Section num={sn(2)} title="أعمار الديون" sub="المتبقي موزعاً حسب عدد الأيام منذ الاستحقاق"
+                     explain={<ExplainDot metric="reportAgeing" values={{}} />} />
             <div className="table-scroll">
               <table className="rpt-table">
                 <thead><tr><th>الفئة</th><th>عدد الفواتير</th><th className="ltr">المبلغ</th><th className="ltr">النسبة</th></tr></thead>
@@ -484,9 +485,9 @@ const RKpi = ({ label, value, cls, explain }:
   { label: string; value: string; cls?: string; explain?: ReactNode }) => (
   <div className="rpt-kpi"><span>{label}{explain}</span><b className={'num ' + (cls || '')}>{value}</b><i>ر.س</i></div>
 );
-const Section = ({ num, title, sub }: { num: string; title: string; sub?: string }) => (
+const Section = ({ num, title, sub, explain }: { num: string; title: string; sub?: string; explain?: ReactNode }) => (
   <div className="rpt-section">
-    <div><span className="badge">{num}</span><b>{title}</b></div>
+    <div><span className="badge">{num}</span><b>{title}</b>{explain}</div>
     {sub && <p>{sub}</p>}
   </div>
 );

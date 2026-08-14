@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 from typing import Optional
 import datetime as dt
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_session
-from app.domain.payables import parse_term
+from app.domain.payables import parse_term, money
 from app.schemas.common import SupplierIn, SupplierUpdate
 from app.services import payables_service as PS
 
@@ -36,6 +37,7 @@ def list_suppliers(q: Optional[str] = Query(None),
     because status depends on the calculation, not on a stored column."""
     ps = PS.positions(db, include_empty=True)
     rows = []
+    matched = []
     supplier_ids = {row.account: row.id for row in
                     db.query(models.Supplier).filter(models.Supplier.deleted_at.is_(None)).all()}
     for p in ps:
@@ -55,12 +57,18 @@ def list_suppliers(q: Optional[str] = Query(None),
         d['firstActivity'] = first_act
         d['lastActivity'] = last_act
         rows.append(d)
+        matched.append(p)
 
     rows.sort(key=lambda r: (-r['overdue'], -r['outstanding'], r['name']))
     projects = sorted({s.project for s in db.query(models.Supplier).all() if s.project})
-    return dict(count=len(rows), rows=rows, projects=projects,
-                totals=dict(outstanding=sum(r['outstanding'] for r in rows),
-                            overdue=sum(r['overdue'] for r in rows)))
+    # Sum the Decimal positions, not the already-rounded per-row floats — summing
+    # money()-rounded floats can drift by fractions of a piaster from the exact total
+    # (e.g. 5611014.100000001), disagreeing with dashboard/overview/projects which all
+    # sum Decimals before rounding once at the boundary.
+    zero = Decimal('0')
+    totals = dict(outstanding=money(sum((p.outstanding for p in matched), zero)),
+                  overdue=money(sum((p.overdue for p in matched), zero)))
+    return dict(count=len(rows), rows=rows, projects=projects, totals=totals)
 
 
 @router.get('/{account}')

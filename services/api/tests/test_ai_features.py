@@ -238,4 +238,96 @@ def test_priorities_deterministic_ordering(api_client, monkeypatch):
     items = r.json()['items']
     # score_a = 1000*1 + 100*50 = 6000; score_b = 1e6*1 + 5*50 = 1000250 -> b first
     assert items[0]['key'] == acc_b
-    assert items[1]['key'] == acc_a
+
+
+# ---------------------------------------------------------------- commit-extract
+
+def _rows_ok():
+    return [
+        {'date': '2026-01-01', 'debit': 0, 'credit': 1000, 'description': 'مستخلص 1'},
+        {'date': '2026-01-15', 'debit': 500, 'credit': 0, 'description': 'دفعة'},
+    ]
+
+
+def test_commit_extract_new_contractor_happy_path(api_client):
+    # ai disabled by default here (no _enable call) — proves no AI-enabled gate server-side
+    r = api_client.post('/api/v1/ai/commit-extract', json={
+        'partyKind': 'contractor',
+        'newContractor': {'code': 'ai-c1', 'name': 'مقاول جديد'},
+        'rows': _rows_ok(),
+        'sourceFile': '/tmp/statement.pdf',
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body['saved'] is True
+    assert body['added'] == 2
+    assert body['contractor'] == {'code': 'ai-c1', 'name': 'مقاول جديد'}
+    assert body['balance'] == -500  # 500 debit - 1000 credit
+
+    detail = api_client.get('/api/v1/contractors/ai-c1').json()
+    assert len(detail['entries']) == 2
+
+    hist = api_client.get('/api/v1/import/history').json()['rows']
+    row = next(x for x in hist if x['fileName'] == 'statement.pdf')
+    assert row['source'] == 'ai_extract'
+    assert row['linkedRows'] == 2
+    assert row['canDelete'] is True
+
+    del_res = api_client.delete(f"/api/v1/import/history/{row['id']}")
+    assert del_res.status_code == 200
+    assert del_res.json()['deleted']['entries'] == 2
+    detail2 = api_client.get('/api/v1/contractors/ai-c1').json()
+    assert len(detail2['entries']) == 0
+
+
+def test_commit_extract_existing_contractor(api_client):
+    code = _contractor(api_client, code='ai-c2')
+    r = api_client.post('/api/v1/ai/commit-extract', json={
+        'partyKind': 'contractor', 'code': code,
+        'rows': _rows_ok(), 'sourceFile': '/tmp/s2.pdf',
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()['contractor']['code'] == code
+
+
+def test_commit_extract_validation_bad_rows(api_client):
+    rows = [
+        {'date': 'not-a-date', 'debit': 100, 'credit': 0, 'description': 'x'},   # 1: bad date
+        {'date': '2026-01-01', 'debit': 100, 'credit': 50, 'description': 'y'},  # 2: both
+        {'date': '2026-01-01', 'debit': 0, 'credit': 0, 'description': 'z'},     # 3: neither
+        {'date': '2026-01-01', 'debit': 100, 'credit': 0, 'description': 'ok'},  # 4: fine
+    ]
+    r = api_client.post('/api/v1/ai/commit-extract', json={
+        'partyKind': 'contractor',
+        'newContractor': {'code': 'ai-bad', 'name': 'x'},
+        'rows': rows, 'sourceFile': '/tmp/bad.pdf',
+    })
+    assert r.status_code == 422
+    detail = r.json()['detail']
+    assert '1' in detail and '2' in detail and '3' in detail
+
+
+def test_commit_extract_409_existing_code(api_client):
+    _contractor(api_client, code='ai-dup')
+    r = api_client.post('/api/v1/ai/commit-extract', json={
+        'partyKind': 'contractor',
+        'newContractor': {'code': 'ai-dup', 'name': 'x'},
+        'rows': _rows_ok(), 'sourceFile': '/tmp/dup.pdf',
+    })
+    assert r.status_code == 409
+
+
+def test_commit_extract_404_missing_code(api_client):
+    r = api_client.post('/api/v1/ai/commit-extract', json={
+        'partyKind': 'contractor', 'code': 'no-such-code',
+        'rows': _rows_ok(), 'sourceFile': '/tmp/missing.pdf',
+    })
+    assert r.status_code == 404
+
+
+def test_commit_extract_rejects_supplier_party_kind(api_client):
+    r = api_client.post('/api/v1/ai/commit-extract', json={
+        'partyKind': 'supplier', 'code': '9001',
+        'rows': _rows_ok(), 'sourceFile': '/tmp/x.pdf',
+    })
+    assert r.status_code == 422

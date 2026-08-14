@@ -64,8 +64,11 @@ def parse(path: str) -> dict:
     issues: list[dict] = []
 
     blocks = text.split(BLOCK_MARKER)
-    if len(blocks) < 2:
-        raise StatementParseError('لم يُعثر على أي حركة في الملف — تأكد أنه كشف حساب')
+    # A statement with NO transaction blocks is legal: an account whose whole balance
+    # is carried forward prints only the «رصيد افتتاحي» line and its footer total
+    # (شركة بي سي في جلوبال is a real example). Rejecting it here used to push such
+    # files into the wrong flow, so the "is this a statement at all?" decision is
+    # deferred until after the opening line has had its chance — see below.
 
     # The account number appears in the header, before the first transaction block.
     account = None
@@ -107,6 +110,11 @@ def parse(path: str) -> dict:
                                     doc='OPENING', description='رصيد افتتاحي (مُرحَّل من الكشف)'))
         issues.append(dict(severity='info', row=None,
                            message=f'التُقط رصيد افتتاحي مُرحَّل: {opening_credit - opening_debit:,.2f} ر.س'))
+
+    # Nothing at all — neither a transaction block nor an opening line — means this
+    # simply is not one of the accounting system's statements.
+    if len(blocks) < 2 and not ob:
+        raise StatementParseError('لم يُعثر على أي حركة في الملف — تأكد أنه كشف حساب')
 
     for i, block in enumerate(blocks[1:], start=1):
         lines = [ln.strip() for ln in block.split('\n') if ln.strip()]

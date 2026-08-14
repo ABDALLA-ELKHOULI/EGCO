@@ -3,6 +3,7 @@ import { api, ApiError } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
 import { Card, EmptyState, Kpi, Money, Pill, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
+import { ExplainDot } from '@/components/Explain';
 
 type Revenue = {
   id: string; project: string; unit: string; client: string; amount: number;
@@ -34,6 +35,8 @@ export function Revenues() {
   }, [q, project, status]);
 
   const projects = useMemo(() => d?.projects ?? [], [d]);
+  const clients = useMemo(() => d?.clients ?? [], [d]);
+  const allRows = useMemo(() => d?.rows ?? [], [d]);
   const filtering = Boolean(q || project || status);
 
   if (err) return <State>تعذّر التحميل: {err}</State>;
@@ -87,9 +90,12 @@ export function Revenues() {
 
       {d && (
         <div className="kpi-row">
-          <Kpi label="المستحق المفتوح" value={sar(d.totals.open)} unit="ر.س" tone="gold" />
-          <Kpi label="المحصّل" value={sar(d.totals.collected)} unit="ر.س" tone="ok" />
-          <Kpi label="الإجمالي" value={sar(d.totals.all)} unit="ر.س" />
+          <Kpi label="المستحق المفتوح" value={sar(d.totals.open)} unit="ر.س" tone="gold"
+               explain={<ExplainDot metric="revenuesOpen" values={{ revenuesOpen: d.totals.open }} />} />
+          <Kpi label="المحصّل" value={sar(d.totals.collected)} unit="ر.س" tone="ok"
+               explain={<ExplainDot metric="revenuesCollected" values={{ revenuesCollected: d.totals.collected }} />} />
+          <Kpi label="الإجمالي" value={sar(d.totals.all)} unit="ر.س"
+               explain={<ExplainDot metric="revenuesTotal" values={{ revenuesOpen: d.totals.open, revenuesCollected: d.totals.collected, revenuesTotal: d.totals.all }} />} />
         </div>
       )}
 
@@ -172,7 +178,8 @@ export function Revenues() {
 
       {addOpen && (
         <Modal title="إضافة تحصيل" onClose={() => setAddOpen(false)}>
-          <RevenueForm projects={projects} onSubmit={handleAdd} busy={busy} error={formErr} />
+          <RevenueForm projects={projects} clients={clients} allRows={allRows}
+                       onSubmit={handleAdd} busy={busy} error={formErr} />
         </Modal>
       )}
 
@@ -181,6 +188,8 @@ export function Revenues() {
                onClose={() => { setEditRow(null); setCollectRow(null); }}>
           <RevenueForm
             projects={projects}
+            clients={clients}
+            allRows={allRows}
             initial={{
               project: modalRow.project, unit: modalRow.unit, client: modalRow.client,
               amount: modalRow.amount, dueDate: modalRow.dueDate || '',
@@ -211,8 +220,10 @@ type RevenueFormValues = {
   dueDate: string; status: string; collectedOn: string; notes: string;
 };
 
-function RevenueForm({ projects, initial, onSubmit, busy, error }: {
+function RevenueForm({ projects, clients, allRows, initial, onSubmit, busy, error }: {
   projects: string[];
+  clients?: string[];
+  allRows?: Revenue[];
   initial?: Partial<RevenueFormValues>;
   onSubmit: (v: RevenueFormValues) => void;
   busy: boolean;
@@ -227,6 +238,13 @@ function RevenueForm({ projects, initial, onSubmit, busy, error }: {
   const [collectedOn, setCollectedOn] = useState(initial?.collectedOn ?? '');
   const [notes, setNotes] = useState(initial?.notes ?? '');
 
+  const clientUnits = useMemo(() => {
+    if (!allRows || !client) return [];
+    return Array.from(new Set(
+      allRows.filter((r) => r.client === client && r.unit).map((r) => r.unit)
+    ));
+  }, [allRows, client]);
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     onSubmit({
@@ -239,7 +257,11 @@ function RevenueForm({ projects, initial, onSubmit, busy, error }: {
       {error && <div className="callout bad">{error}</div>}
       <label>
         العميل
-        <input required value={client} onChange={(e) => setClient(e.target.value)} style={{ width: '100%' }} />
+        <input required list="revenue-clients" value={client} onChange={(e) => setClient(e.target.value)}
+               style={{ width: '100%' }} />
+        <datalist id="revenue-clients">
+          {(clients ?? []).map((c) => <option key={c} value={c} />)}
+        </datalist>
       </label>
       <label>
         المشروع
@@ -251,7 +273,10 @@ function RevenueForm({ projects, initial, onSubmit, busy, error }: {
       </label>
       <label>
         الوحدة
-        <input value={unit} onChange={(e) => setUnit(e.target.value)} style={{ width: '100%' }} />
+        <input list="revenue-units" value={unit} onChange={(e) => setUnit(e.target.value)} style={{ width: '100%' }} />
+        <datalist id="revenue-units">
+          {clientUnits.map((u) => <option key={u} value={u} />)}
+        </datalist>
       </label>
       <label>
         المبلغ

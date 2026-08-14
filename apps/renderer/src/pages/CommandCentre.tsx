@@ -4,6 +4,7 @@ import { ar, arDate, sar } from '@/lib/format';
 import { Card, Money, Kpi, State } from '@/components/ui';
 import { AiBlock, AiDisabledHint, CopyButton } from '@/components/Ai';
 import { useAiEnabled } from '@/lib/useAi';
+import { ExplainDot } from '@/components/Explain';
 
 interface Alert { level: 'danger' | 'warning' | 'info'; text: string }
 interface Project { project: string; outstanding: number; overdue: number }
@@ -55,15 +56,18 @@ export function CommandCentre() {
       </div>
 
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-        <Kpi label="المديونية المفتوحة" value={sar(payables.outstanding ?? 0)} unit="ر.س" />
+        <Kpi label="المديونية المفتوحة" value={sar(payables.outstanding ?? 0)} unit="ر.س"
+             explain={<ExplainDot metric="outstanding" values={{ outstanding: payables.outstanding }} />} />
         <Kpi
           label="المتأخر"
           value={sar(payables.overdue ?? 0)}
           unit="ر.س"
           tone="red"
           alert={(payables.overdue ?? 0) > 0}
+          explain={<ExplainDot metric="overdue" values={{ overdue: payables.overdue }} />}
         />
-        <Kpi label="مستحق خلال ٧ أيام" value={sar(payables.dueWithin7 ?? 0)} unit="ر.س" tone="gold" />
+        <Kpi label="مستحق خلال ٧ أيام" value={sar(payables.dueWithin7 ?? 0)} unit="ر.س" tone="gold"
+             explain={<ExplainDot metric="dueWithin7" values={{ dueWithin7: payables.dueWithin7 }} />} />
         <Kpi
           label="الموردون"
           value={ar(payables.supplierCount ?? 0)}
@@ -74,8 +78,12 @@ export function CommandCentre() {
       <div className="two" style={{ marginTop: 18 }}>
         <Card title="التغطية">
           <div className="card-body">
-            <div className="value num" style={{ fontSize: 32, marginBottom: 10 }}>
+            <div className="value num" style={{ fontSize: 32, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
               {coverage.coveredPct != null ? `${coverage.coveredPct}٪` : '—'}
+              <ExplainDot metric="supplierCoverage" values={{
+                supplierWithData: (payables.supplierCount ?? 0) - (coverage.withoutData ?? 0),
+                supplierCount: payables.supplierCount, coveredPct: coverage.coveredPct,
+              }} />
             </div>
             <div style={{ background: 'var(--tint)', height: 10, borderRadius: 99, overflow: 'hidden' }}>
               <div

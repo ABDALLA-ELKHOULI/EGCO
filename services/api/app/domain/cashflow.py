@@ -48,6 +48,22 @@ def _label(a: dt.date, b: dt.date) -> str:
     return f'{a.isoformat()} — {b.isoformat()}'
 
 
+def bucket_count(weeks: int, period_days: int = PERIOD_DAYS) -> int:
+    """عدد الدلاء المعروضة فعلاً — the single definition `build_periods` also uses."""
+    return max(1, -(-(weeks * 7) // period_days))   # ceil division
+
+
+def horizon_end(from_date: dt.date, weeks: int, period_days: int = PERIOD_DAYS) -> dt.date:
+    """آخر يوم يغطيه آخر دلو معروض.
+
+    Deliberately NOT `from_date + weeks*7 - 1`: the buckets are whole `period_days`
+    blocks, so the rendered horizon overshoots `weeks*7` whenever the two do not divide
+    evenly. Anything that classifies an amount as "inside the table" vs "beyond it" must
+    use this, or the reconciliation totals stop matching what the table actually shows.
+    """
+    return from_date + dt.timedelta(days=bucket_count(weeks, period_days) * period_days - 1)
+
+
 def build_periods(receivable_items: Sequence[CashItem],
                   payable_items: Sequence[CashItem],
                   from_date: dt.date,
@@ -59,8 +75,7 @@ def build_periods(receivable_items: Sequence[CashItem],
     `weeks` is kept as the caller-facing knob (contract: `?weeks=26`); it is converted
     to a number of `period_days`-day buckets covering roughly that many weeks.
     """
-    total_days = weeks * 7
-    n_periods = max(1, -(-total_days // period_days))   # ceil division
+    n_periods = bucket_count(weeks, period_days)
 
     periods: List[Period] = []
     balance = D(opening_balance)

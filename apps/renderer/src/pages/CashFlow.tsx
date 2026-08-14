@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { CSSProperties, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
@@ -8,6 +8,19 @@ import { useAiEnabled } from '@/lib/useAi';
 import { ExplainDot } from '@/components/Explain';
 
 type PartiesFilter = 'suppliers' | 'contractors' | 'both';
+
+const PERIOD_DAYS_MIN = 1;
+const PERIOD_DAYS_MAX = 92;
+const PERIOD_DAYS_DEFAULT = 14;
+const PERIOD_PRESETS = [7, 14, 30];
+const MAX_RENDERED_PERIOD_ROWS = 60;
+
+/** «يوم واحد» / «يومان» / «٣ أيام» ... — تعريب صحيح لعدد الأيام. */
+function periodDaysLabel(n: number): string {
+  if (n === 1) return 'يوم واحد';
+  if (n === 2) return 'يومان';
+  return `${ar(n)} أيام`;
+}
 
 /** التدفق النقدي — الداخل مقابل الخارج، بالفترات. */
 export function CashFlow() {
@@ -23,14 +36,23 @@ export function CashFlow() {
   const rawParties = params.get('parties') as PartiesFilter | null;
   const parties: PartiesFilter =
     rawParties === 'suppliers' || rawParties === 'contractors' || rawParties === 'both' ? rawParties : 'both';
+  // الخادم افتراضياً ١٤ يوماً للتوافق الخلفي — نتبع نفس الافتراض هنا.
+  const rawPeriodDays = Number(params.get('period_days'));
+  const periodDays: number =
+    Number.isFinite(rawPeriodDays) && rawPeriodDays >= PERIOD_DAYS_MIN && rawPeriodDays <= PERIOD_DAYS_MAX
+      ? rawPeriodDays : PERIOD_DAYS_DEFAULT;
+  const [customPeriodDays, setCustomPeriodDays] = useState(String(periodDays));
   const [applied, setApplied] = useState<{ weeks: 13 | 26; opening: number }>({ weeks: 26, opening: 0 });
 
-  const load = (weeks: number, opening_balance: number, projectFilter: string, partiesFilter: PartiesFilter) => {
-    api.cashflow({ weeks, opening_balance, project: projectFilter || undefined, parties: partiesFilter })
+  const load = (weeks: number, opening_balance: number, projectFilter: string, partiesFilter: PartiesFilter,
+                periodDaysFilter: number) => {
+    api.cashflow({ weeks, opening_balance, project: projectFilter || undefined, parties: partiesFilter,
+                  period_days: periodDaysFilter })
       .then(setD).catch((e) => setErr(e.message));
   };
 
-  useEffect(() => { load(applied.weeks, applied.opening, project, parties); }, [applied, project, parties]);
+  useEffect(() => { load(applied.weeks, applied.opening, project, parties, periodDays); },
+    [applied, project, parties, periodDays]);
 
   function apply() {
     setApplied({ weeks: weeksSel, opening: Number(opening) || 0 });
@@ -47,6 +69,24 @@ export function CashFlow() {
     if (value === 'both') p.delete('parties'); else p.set('parties', value);
     setParams(p, { replace: true });
   }
+
+  function setPeriodDays(value: number) {
+    const clamped = Math.min(PERIOD_DAYS_MAX, Math.max(PERIOD_DAYS_MIN, Math.round(value) || PERIOD_DAYS_DEFAULT));
+    const p = new URLSearchParams(params);
+    if (clamped === PERIOD_DAYS_DEFAULT) p.delete('period_days'); else p.set('period_days', String(clamped));
+    setParams(p, { replace: true });
+  }
+
+  function onPeriodDaysPresetChange(value: string) {
+    if (value === 'custom') { setCustomPeriodDays(String(periodDays)); return; }
+    setPeriodDays(Number(value));
+  }
+
+  function applyCustomPeriodDays() {
+    setPeriodDays(Number(customPeriodDays));
+  }
+
+  const isCustomPeriodDays = !PERIOD_PRESETS.includes(periodDays);
 
   if (err) return <State>تعذّر التحميل: {err}</State>;
   if (!d) return <State>جارٍ التحميل…</State>;
@@ -65,7 +105,7 @@ export function CashFlow() {
       <div className="page-head">
         <div className="grow">
           <h1>التدفق النقدي</h1>
-          <p>الداخل مقابل الخارج، بفترات ١٤ يوماً</p>
+          <p>الداخل مقابل الخارج، بفترات {periodDaysLabel(periodDays)}</p>
         </div>
       </div>
 
@@ -75,6 +115,12 @@ export function CashFlow() {
             ? warnings.join(' — ')
             : 'لم تُرفع بيانات التحصيلات بعد — التدفق الداخل أدناه ليس تقديراً فعلياً.'}
         </div>
+      )}
+
+      {/* تحذيرات الخارج (متأخر الآن / بلا تواريخ) تصل حتى حين تكون بيانات التحصيلات سليمة —
+          وإلا لبقيت مخفية خلف شرط «لا توجد تحصيلات» أعلاه. */}
+      {hasReceivables && warnings.length > 0 && (
+        <div className="callout warn" style={{ marginBottom: 14 }}>{warnings.join(' — ')}</div>
       )}
 
       <div className="toolbar">
@@ -91,7 +137,28 @@ export function CashFlow() {
           <option value={13}>٣ أشهر قادمة (١٣ أسبوعاً)</option>
           <option value={26}>٦ أشهر قادمة (٢٦ أسبوعاً)</option>
         </select>
-        <ExplainDot metric="cashflowHorizon" values={{}} />
+        <label style={{ fontSize: 13, color: 'var(--muted)' }}>
+          طول الفترة
+          <select value={isCustomPeriodDays ? 'custom' : String(periodDays)}
+                  onChange={(e) => onPeriodDaysPresetChange(e.target.value)}
+                  style={{ marginInlineStart: 8 }}>
+            <option value="7">أسبوع (٧ أيام)</option>
+            <option value="14">أسبوعان (١٤ يوماً) (الافتراضي)</option>
+            <option value="30">شهر (٣٠ يوماً)</option>
+            <option value="custom">مخصص…</option>
+          </select>
+        </label>
+        {isCustomPeriodDays && (
+          <label style={{ fontSize: 13, color: 'var(--muted)' }}>
+            أيام
+            <input type="number" dir="ltr" value={customPeriodDays} min={PERIOD_DAYS_MIN} max={PERIOD_DAYS_MAX}
+                   onChange={(e) => setCustomPeriodDays(e.target.value)}
+                   onBlur={applyCustomPeriodDays}
+                   onKeyDown={(e) => { if (e.key === 'Enter') applyCustomPeriodDays(); }}
+                   style={{ marginInlineStart: 8, width: 80 }} />
+          </label>
+        )}
+        <ExplainDot metric="cashflowHorizon" values={{ periodDays }} />
         <label style={{ fontSize: 13, color: 'var(--muted)' }}>
           الأطراف
           <select value={parties} onChange={(e) => setParties(e.target.value as PartiesFilter)}
@@ -175,40 +242,149 @@ export function CashFlow() {
         </Card>
 
         <Card title="جدول الفترات">
-          <p className="muted" style={{ fontSize: 11, margin: '0 20px 8px' }}>كل صف = فترة أسبوعين</p>
+          <p className="muted" style={{ fontSize: 11, margin: '0 20px 8px', display: 'flex', alignItems: 'center', gap: 2 }}>
+            كل صف = {periodDaysLabel(periodDays)}
+            <ExplainDot metric="cashflowColumns" values={{}} />
+          </p>
           {periods.length === 0 ? (
             <State>لا توجد بيانات.</State>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>الفترة</th><th className="ltr">الداخل</th><th className="ltr">الخارج</th>
-                  <th className="ltr">صافي الحركة</th><th className="ltr">الرصيد التراكمي</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {periods.map((p: any) => (
-                  <tr key={p.label} style={p.deficit ? { background: 'var(--tint)' } : undefined}>
-                    <td className="nowrap">{arDate(p.from)} — {arDate(p.to)}</td>
-                    <td className="ltr"><Money v={p.inflow ?? 0} cls="ok" /></td>
-                    <td className="ltr"><Money v={p.outflow ?? 0} /></td>
-                    <td className="ltr">
-                      <Money v={p.net ?? 0} cls={(p.net ?? 0) < 0 ? 'red' : ''} />
-                    </td>
-                    <td className="ltr">
-                      <Money v={p.balance ?? 0} cls={(p.balance ?? 0) < 0 ? 'red' : ''} />
-                    </td>
-                    <td>{p.deficit && <Pill kind="red">عجز</Pill>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>الفترة</th><th className="ltr">الداخل</th><th className="ltr">الخارج</th>
+                      <th className="ltr">صافي الحركة</th><th className="ltr">الرصيد التراكمي</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {periods.slice(0, MAX_RENDERED_PERIOD_ROWS).map((p: any) => (
+                      <tr key={p.label} style={p.deficit ? { background: 'var(--tint)' } : undefined}>
+                        <td className="nowrap">{arDate(p.from)} — {arDate(p.to)}</td>
+                        <td className="ltr"><Money v={p.inflow ?? 0} cls="ok" /></td>
+                        <td className="ltr"><Money v={p.outflow ?? 0} /></td>
+                        <td className="ltr">
+                          <Money v={p.net ?? 0} cls={(p.net ?? 0) < 0 ? 'red' : ''} />
+                        </td>
+                        <td className="ltr">
+                          <Money v={p.balance ?? 0} cls={(p.balance ?? 0) < 0 ? 'red' : ''} />
+                        </td>
+                        <td>{p.deficit && <Pill kind="red">عجز</Pill>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {periods.length > MAX_RENDERED_PERIOD_ROWS && (
+                <p className="muted" style={{ fontSize: 11, margin: '8px 20px 0' }}>
+                  عُرضت أول {ar(MAX_RENDERED_PERIOD_ROWS)} فترة — قصّر الأفق أو أطل الفترة
+                </p>
+              )}
+              <ReconciliationFooter recon={d.reconciliation} parties={parties} />
+            </>
           )}
         </Card>
 
         <WhatIfCard />
       </div>
     </>
+  );
+}
+
+/** حدّ مقبول للفرق: أقل من نصف هللة — أي انحراف أكبر خطأ لا تقريب. */
+const RECON_EPSILON = 0.005;
+
+/** طرف واحد في المعادلة: علامة (+/−)، تسمية، مبلغ. */
+function ReconTerm({ sign, label, value, muted }: {
+  sign?: string; label: string; value: number; muted?: boolean;
+}) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
+      {sign && <span className="muted" style={{ fontSize: 13 }}>{sign}</span>}
+      <span style={{ color: muted ? 'var(--muted)' : 'inherit' }}>{label}</span>
+      <b className="num ltr">{sar(value)}</b>
+    </span>
+  );
+}
+
+/**
+ * سطر المطابقة — لماذا لا يساوي مجموع عمود «الخارج» أعلاه رقمَ المديونية في شاشة الموردين.
+ *
+ * الجدول أعلاه يعرض ما يمكن جدولته فقط: مبلغ مضى استحقاقه لا دلو له، ومبلغ بعد نهاية
+ * الأفق خارج الشاشة، وفاتورة بلا تاريخ استحقاق لا يمكن وضعها في فترة. هذه المصطلحات
+ * الأربعة تُعرض هنا صراحةً، ومجموعها يساوي رقم الشاشة الأخرى بالهللة — والفرق (المفترض
+ * أن يكون صفراً) يُعرض بنفسه إن لم يكن كذلك، فلا انحراف صامت.
+ */
+function ReconciliationFooter({ recon, parties }: { recon: any; parties: PartiesFilter }) {
+  if (!recon) return null;
+  const o = recon.outflow;
+  const inflow = recon.inflow;
+  if (!o) return null;
+
+  const partiesLabel = parties === 'suppliers' ? 'الموردين'
+    : parties === 'contractors' ? 'المقاولين' : 'الموردين والمقاولين';
+  const outDrift = Math.abs(o.difference ?? 0) >= RECON_EPSILON;
+  const inDrift = inflow && Math.abs(inflow.difference ?? 0) >= RECON_EPSILON;
+
+  const box: CSSProperties = {
+    borderTop: '1px solid var(--hair)', margin: '12px 20px 0', padding: '12px 0 4px',
+    display: 'flex', flexDirection: 'column', gap: 10, fontSize: 12,
+  };
+  const row: CSSProperties = {
+    display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 8,
+  };
+
+  return (
+    <div style={box}>
+      <div style={row}>
+        <b style={{ fontSize: 12 }}>مطابقة الخارج مع مديونية {partiesLabel}</b>
+        <ExplainDot metric="cashflowReconciliation" values={{
+          scheduled: o.scheduled, overdueNow: o.overdueNow, beyondHorizon: o.beyondHorizon,
+          undated: o.undated, credits: o.credits, openDebt: o.openDebt,
+        }} />
+      </div>
+
+      <div style={row}>
+        <ReconTerm label="الخارج المجدول" value={o.scheduled ?? 0} />
+        <ReconTerm sign="+" label="متأخر الآن" value={o.overdueNow ?? 0} />
+        <ReconTerm sign="+" label="بعد نهاية الأفق" value={o.beyondHorizon ?? 0} />
+        <ReconTerm sign="+" label="بلا تواريخ" value={o.undated ?? 0} />
+        {(o.credits ?? 0) !== 0 && <ReconTerm sign="−" label="أرصدة دائنة" value={o.credits} muted />}
+        {(o.excess ?? 0) !== 0 && <ReconTerm sign="−" label="ضمانات تتجاوز المستحق" value={o.excess} muted />}
+        <span className="muted">=</span>
+        <ReconTerm label="المديونية المفتوحة" value={o.openDebt ?? 0} />
+        <span style={{ marginInlineStart: 'auto' }}>
+          <Pill kind={outDrift ? 'red' : 'ok'}>
+            {outDrift ? `فرق غير مفسَّر ${sar(o.difference)}` : 'مطابق بالهللة'}
+          </Pill>
+        </span>
+      </div>
+
+      {inflow && (
+        <div style={row}>
+          <ReconTerm label="الداخل المجدول" value={inflow.scheduled ?? 0} />
+          <ReconTerm sign="+" label="متأخر الآن" value={inflow.overdueNow ?? 0} />
+          <ReconTerm sign="+" label="بعد نهاية الأفق" value={inflow.beyondHorizon ?? 0} />
+          <ReconTerm sign="+" label="بلا تواريخ" value={inflow.undated ?? 0} />
+          <span className="muted">=</span>
+          <ReconTerm label="المستحق المفتوح" value={inflow.openTotal ?? 0} />
+          <span style={{ marginInlineStart: 'auto' }}>
+            <Pill kind={inDrift ? 'red' : 'ok'}>
+              {inDrift ? `فرق غير مفسَّر ${sar(inflow.difference)}` : 'مطابق بالهللة'}
+            </Pill>
+          </span>
+        </div>
+      )}
+
+      <p className="muted" style={{ margin: 0, fontSize: 11, lineHeight: 1.7 }}>
+        «المديونية المفتوحة» و«المستحق المفتوح» هما رقما شاشتَي الموردين/المقاولين والتحصيلات
+        نفسهما. الجدول أعلاه يعرض المجدول فقط — «متأخر الآن» مضى استحقاقه فلا دلو له،
+        و«بعد نهاية الأفق» يستحق بعد {arDate(recon.horizonEnd)}، و«بلا تواريخ» فواتير
+        ودفاتر بلا تاريخ استحقاق لا يمكن وضعها في فترة بأمانة. لا شيء من هذه الثلاثة داخل
+        الرصيد التراكمي أعلاه.
+      </p>
+    </div>
   );
 }
 

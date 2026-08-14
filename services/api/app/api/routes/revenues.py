@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_session
+from app.domain.payables import D, money
 from app.schemas.common import RevenueIn, RevenueUpdate
 
 router = APIRouter()
@@ -65,14 +67,20 @@ def list_revenues(q: Optional[str] = Query(None), project: Optional[str] = Query
     projects = sorted({r.project for r in
                        db.query(models.Receivable).filter(models.Receivable.deleted_at.is_(None)).all()
                        if r.project})
+    clients = sorted({r.client for r in
+                      db.query(models.Receivable).filter(models.Receivable.deleted_at.is_(None)).all()
+                      if r.client})
 
+    # Sum via Decimal, not raw float columns — a plain float sum can drift by
+    # fractions of a piaster from the exact total (same rule as payables/projects).
+    zero = Decimal('0')
     totals = dict(
-        open=sum(r.amount for r in scoped_rows if r.status == 'open'),
-        collected=sum(r.amount for r in scoped_rows if r.status == 'collected'),
-        all=sum(r.amount for r in scoped_rows),
+        open=money(sum((D(r.amount) for r in scoped_rows if r.status == 'open'), zero)),
+        collected=money(sum((D(r.amount) for r in scoped_rows if r.status == 'collected'), zero)),
+        all=money(sum((D(r.amount) for r in scoped_rows), zero)),
     )
 
-    return dict(count=len(rows), rows=[_out(r) for r in rows], totals=totals, projects=projects)
+    return dict(count=len(rows), rows=[_out(r) for r in rows], totals=totals, projects=projects, clients=clients)
 
 
 def _validate_status_coherence(status: str, collected_on: Optional[dt.date]) -> None:

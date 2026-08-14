@@ -154,6 +154,9 @@ class SupplierPosition:
     total_invoiced: Decimal = field(default_factory=lambda: Decimal('0'))
     total_paid: Decimal = field(default_factory=lambda: Decimal('0'))
     outstanding: Decimal = field(default_factory=lambda: Decimal('0'))
+    # المورد مدفوع له أكثر من فواتيره — رصيد لنا (مقدم). outstanding يبقى >= 0 دائماً؛
+    # الفائض الفعلي (لو وُجد) يظهر هنا بدلاً من رقم outstanding سالب لا معنى محاسبياً له.
+    credit_balance: Decimal = field(default_factory=lambda: Decimal('0'))
     due_today: Decimal = field(default_factory=lambda: Decimal('0'))        # overdue + due on or before today
     overdue: Decimal = field(default_factory=lambda: Decimal('0'))          # strictly past the due date
     due_within_7: Decimal = field(default_factory=lambda: Decimal('0'))
@@ -237,7 +240,11 @@ def position(supplier: Supplier,
         needs_manual_due_date=supplier.term.is_claim and
             any(i.remaining > 0 and i.due_date is None for i in invoices),
     )
-    p.outstanding = p.total_invoiced - p.total_paid
+    net = p.total_invoiced - p.total_paid
+    # net < 0 means payments exceeded invoices (overpaid / supplier owes us): keep
+    # outstanding non-negative and surface the surplus as credit_balance instead.
+    p.outstanding = net if net > 0 else Decimal('0')
+    p.credit_balance = -net if net < 0 else Decimal('0')
     p.overdue = sum((i.remaining for i in open_invoices
                      if i.due_date and i.due_date < today), Decimal('0'))
     p.due_today = sum((i.remaining for i in open_invoices
@@ -254,7 +261,16 @@ def reconciles(p: SupplierPosition, statement_balance: float, tolerance: float =
     An import that does not reconcile is rejected rather than saved — a wrong number in
     the database is worse than a failed import.
     """
-    return abs(p.outstanding - abs(D(statement_balance))) <= D(tolerance)
+    # Sign convention of the accounting system's printed «اجمالي الحساب», verified
+    # against real statements: NEGATIVE closing == we owe them (انجاز الرواد prints
+    # -64,565.45 while we owe 64,565.45), POSITIVE closing == they owe us (بيت الاباء
+    # prints +474,147.10 after we prepaid). It matches the contractor ledger's rule
+    # (Σمدين − Σدائن), so both modules speak one language.
+    #
+    # Comparing signed values — not magnitudes — is what lets an overpaid statement
+    # reconcile instead of silently matching the wrong side.
+    signed = p.credit_balance - p.outstanding
+    return abs(signed - D(statement_balance)) <= D(tolerance)
 
 
 def payment_schedule(positions: Iterable[SupplierPosition],

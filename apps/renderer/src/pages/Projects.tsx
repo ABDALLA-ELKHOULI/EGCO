@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { ar, sar } from '@/lib/format';
 import { Card, Kpi, Money, State } from '@/components/ui';
+import { ExplainDot } from '@/components/Explain';
 
 /** المشاريع — مديونية كل مشروع ومتأخراته. */
 export function Projects() {
@@ -27,9 +28,12 @@ export function Projects() {
       </div>
 
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
-        <Kpi label="إجمالي المديونية" value={sar(d.totals?.outstanding ?? 0)} unit="ر.س" />
-        <Kpi label="المتأخر" value={sar(d.totals?.overdue ?? 0)} unit="ر.س" tone="red" alert={(d.totals?.overdue ?? 0) > 0} />
-        <Kpi label="مستحق خلال ٧ أيام" value={sar(d.totals?.dueWithin7 ?? 0)} unit="ر.س" tone="gold" />
+        <Kpi label="إجمالي المديونية" value={sar(d.totals?.outstanding ?? 0)} unit="ر.س"
+             explain={<ExplainDot metric="projectsTotals" values={{ projectsOutstanding: d.totals?.outstanding }} />} />
+        <Kpi label="المتأخر" value={sar(d.totals?.overdue ?? 0)} unit="ر.س" tone="red" alert={(d.totals?.overdue ?? 0) > 0}
+             explain={<ExplainDot metric="overdue" values={{ overdue: d.totals?.overdue }} />} />
+        <Kpi label="مستحق خلال ٧ أيام" value={sar(d.totals?.dueWithin7 ?? 0)} unit="ر.س" tone="gold"
+             explain={<ExplainDot metric="dueWithin7" values={{ dueWithin7: d.totals?.dueWithin7 }} />} />
       </div>
 
       <div className="stack">

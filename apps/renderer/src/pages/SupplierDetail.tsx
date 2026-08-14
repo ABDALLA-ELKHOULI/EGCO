@@ -154,6 +154,11 @@ export function SupplierDetail() {
         <Link to="/suppliers"><button className="btn sm">رجوع</button></Link>
       </div>
 
+      <p className="muted" style={{ fontSize: 11, marginTop: -8, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 2 }}>
+        فئات أعمار المديونية أدناه محسوبة من تاريخ الاستحقاق
+        <ExplainDot metric="ageingByDueDate" values={{}} />
+      </p>
+
       {d.needsManualDueDate && (
         <div className="callout note" style={{ marginBottom: 14 }}>
           مدة هذا المورد «{d.term}» — لا يُحسب الاستحقاق تلقائياً، ويحتاج إدخال تاريخ يدوياً

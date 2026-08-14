@@ -5,6 +5,8 @@ import type { ImportHistoryRow } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
 import { Card, EmptyState, Pill, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
+import { AiRescueModal } from '@/components/AiRescueModal';
+import { useAiEnabled } from '@/lib/useAi';
 import type { PickedFile } from '@/types/global';
 
 const LABEL: Record<string, string> = {
@@ -80,7 +82,12 @@ const BATCH_STATUS: Record<string, { text: string; kind: string }> = {
   not_reconciled: { text: 'غير مطابق', kind: 'red' },
   unknown_supplier: { text: 'مورد غير معروف', kind: 'warn' },
   no_account: { text: 'بلا رقم حساب', kind: 'warn' },
+  needs_classification: { text: 'يحتاج تصنيفاً', kind: 'warn' },
   read_error: { text: 'تعذّرت القراءة', kind: 'red' },
+};
+
+const KIND_LABEL: Record<string, string> = {
+  supplier: 'مورد', contractor: 'مقاول', guarantee: 'ضمان', ignore: 'تجاهل',
 };
 
 interface ScanResult {
@@ -112,10 +119,14 @@ interface BatchResult {
  */
 export function ImportPage() {
   const nav = useNavigate();
+  const { enabled: aiEnabled } = useAiEnabled();
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [rescueTarget, setRescueTarget] = useState<{ path: string; name: string } | null>(null);
+  const [classifyTarget, setClassifyTarget] =
+    useState<{ path: string; fileName: string; account: string; parsedName: string; source: string } | null>(null);
 
   // ---- وضع اختيار مجلد كامل ----
   const [folderErr, setFolderErr] = useState<string | null>(null);
@@ -189,6 +200,21 @@ export function ImportPage() {
     } finally {
       setBatchBusy(false);
     }
+  }
+
+  /** بعد حفظ تصنيف حساب من نافذة «تصنيف…» — يُعاد استيراد هذا الملف وحده فوراً
+   * وتُحدَّث نتيجته في جدول الرفع الجماعي، ثم تُحدَّث الملفات المرفوعة. */
+  async function reimportAfterClassification(target: { path: string; source: string }) {
+    const res = await api.batchImport([target.path]);
+    const row = res.results?.[0];
+    if (row) {
+      setBatchResult((prev) => prev && ({
+        ...prev,
+        results: prev.results.map((r) => (r.path === target.path ? row : r)),
+        saved: prev.saved + (row.status === 'saved' ? 1 : 0),
+      }));
+    }
+    loadHistory();
   }
 
   function patch(idx: number, upd: Partial<QueueItem>) {
@@ -386,6 +412,22 @@ export function ImportPage() {
                           {r.status === 'saved'
                             ? `أُضيف ${ar(r.added ?? 0)}، تُجوهل ${ar(r.skipped ?? 0)}`
                             : (r.message ?? '—')}
+                          {aiEnabled && (r.status === 'read_error' || r.status === 'no_account') && (
+                            <button className="btn sm" style={{ marginInlineStart: 8 }}
+                              onClick={() => setRescueTarget({ path: r.path, name: r.name })}>
+                              محاولة القراءة بالذكاء الاصطناعي
+                            </button>
+                          )}
+                          {r.status === 'needs_classification' && (
+                            <button className="btn sm" style={{ marginInlineStart: 8 }}
+                              onClick={() => setClassifyTarget({
+                                path: r.path, fileName: r.name,
+                                account: r.account ?? '', parsedName: r.supplierName ?? '',
+                                source: r.source,
+                              })}>
+                              تصنيف…
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -414,7 +456,8 @@ export function ImportPage() {
         )}
 
         {queue.map((item, i) => (
-          <QueueCard key={item.file.path + i} item={item} />
+          <QueueCard key={item.file.path + i} item={item} aiEnabled={aiEnabled}
+            onRescue={() => setRescueTarget({ path: item.file.path, name: item.file.name })} />
         ))}
 
         {queue.length > 0 && !done && (
@@ -434,11 +477,100 @@ export function ImportPage() {
           </div>
         )}
       </div>
+
+      {rescueTarget && (
+        <AiRescueModal
+          path={rescueTarget.path}
+          fileName={rescueTarget.name}
+          onClose={() => setRescueTarget(null)}
+          onSaved={loadHistory}
+        />
+      )}
+
+      {classifyTarget && (
+        <ClassifyModal
+          target={classifyTarget}
+          aiEnabled={aiEnabled}
+          onClose={() => setClassifyTarget(null)}
+          onSaved={() => {
+            const t = classifyTarget;
+            setClassifyTarget(null);
+            reimportAfterClassification(t);
+          }}
+        />
+      )}
     </>
   );
 }
 
-function QueueCard({ item }: { item: QueueItem }) {
+/**
+ * «اسأل، لا تخمّن» — حساب برقم بادئة غير 211/212/216 لا يُحفظ إطلاقاً حتى يقرر
+ * المستخدم تصنيفه هنا. اقتراح الذكاء الاصطناعي (إن كان مفعّلاً) اختياري بحت —
+ * يظهر كتنبيه هادئ ولا يقرر شيئاً بنفسه.
+ */
+function ClassifyModal({ target, aiEnabled, onClose, onSaved }: {
+  target: { path: string; fileName: string; account: string; parsedName: string; source: string };
+  aiEnabled: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [suggestion, setSuggestion] = useState<{ kind?: string; reason?: string } | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!aiEnabled) return;
+    let cancelled = false;
+    api.suggestImportClassification(target.path)
+      .then((s) => { if (!cancelled && s?.kind) setSuggestion(s); })
+      .catch(() => { /* اقتراح أفضل-جهد فقط — تجاهل الفشل */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target.path, aiEnabled]);
+
+  async function choose(kind: 'supplier' | 'contractor' | 'guarantee' | 'ignore') {
+    setSaving(kind); setError(null);
+    try {
+      await api.setImportClassification({ account: target.account, kind, name: target.parsedName });
+      onSaved();
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+      setSaving(null);
+    }
+  }
+
+  return (
+    <Modal title="تصنيف حساب" onClose={onClose}>
+      <p>
+        رقم الحساب <b>{target.account || '—'}</b>
+        {target.parsedName && <> — «{target.parsedName}»</>} في ملف «{target.fileName}»
+        {' '}ليس مورداً (211) ولا مقاولاً (212) ولا ضماناً (216). اختر تصنيفه ليُحفظ.
+      </p>
+
+      {aiEnabled && suggestion?.kind && (
+        <div className="callout" style={{ margin: '10px 0' }}>
+          اقتراح آلي — القرار لك: {KIND_LABEL[suggestion.kind] ?? suggestion.kind}
+          {suggestion.reason && <> — {suggestion.reason}</>}
+        </div>
+      )}
+
+      {error && <div className="callout bad">{error}</div>}
+
+      <div className="modal-foot" style={{ flexWrap: 'wrap', gap: 8 }}>
+        {(['supplier', 'contractor', 'guarantee', 'ignore'] as const).map((k) => (
+          <button key={k} className="btn primary" disabled={!!saving} onClick={() => choose(k)}>
+            {saving === k ? 'جارٍ الحفظ…' : KIND_LABEL[k]}
+          </button>
+        ))}
+        <button className="btn" onClick={onClose} disabled={!!saving}>إلغاء</button>
+      </div>
+    </Modal>
+  );
+}
+
+function QueueCard({ item, aiEnabled, onRescue }: {
+  item: QueueItem; aiEnabled: boolean; onRescue: () => void;
+}) {
   const { file, status, preview, saveResult, error } = item;
   return (
     <Card>
@@ -464,7 +596,14 @@ function QueueCard({ item }: { item: QueueItem }) {
         )}
 
         {status === 'read_error' && (
-          <div className="callout bad" style={{ margin: 0 }}>خطأ قراءة: {error}</div>
+          <div className="callout bad" style={{ margin: 0 }}>
+            خطأ قراءة: {error}
+            {aiEnabled && (
+              <div style={{ marginTop: 8 }}>
+                <button className="btn sm" onClick={onRescue}>محاولة القراءة بالذكاء الاصطناعي</button>
+              </div>
+            )}
+          </div>
         )}
 
         {status === 'save_error' && (

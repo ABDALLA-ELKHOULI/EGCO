@@ -412,7 +412,9 @@ function ProjectBudget({ p }: { p: BudgetProject }) {
             <Kpi label="حجم العمل الفعلي للشهر" value={sar(latest.actualMonth)} unit="ر.س" />
             <Kpi label="المخطط للشهر" value={sar(latest.plannedMonth)} unit="ر.س" />
             <Kpi label="انحراف الشهر" value={sar(latest.deviationMonth)} unit="ر.س"
-                 tone={latest.deviationMonth < 0 ? 'red' : latest.deviationMonth > 0 ? 'ok' : 'muted'} />
+                 tone={latest.deviationMonth < 0 ? 'red' : latest.deviationMonth > 0 ? 'ok' : 'muted'}
+                 explain={<ExplainDot metric="budgetDelay"
+                   values={{ plannedCum: latest.cumPlanned, actualCum: latest.cumActual, delayPct: latest.delayPct }} />} />
             <Kpi label="نسبة الإنجاز" value={`${sar(latest.completionPct * 100)}٪`}
                  tone={latest.delayPct > 0.10 ? 'red' : ''} alert={latest.delayPct > 0.10}
                  explain={<ExplainDot metric="budgetCompletion"

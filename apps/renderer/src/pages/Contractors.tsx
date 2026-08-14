@@ -5,6 +5,7 @@ import { ar, arDate, sar } from '@/lib/format';
 import { Card, EmptyState, Kpi, Money, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
 import { ContractorForm, type ContractorFormValues } from '@/components/ContractorForm';
+import { ExplainDot } from '@/components/Explain';
 
 /**
  * المقاولون — قاعدة الإشارة (متفق عليها مع المستخدم):
@@ -101,9 +102,12 @@ export function Contractors() {
 
       {d && (
         <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-          <Kpi label="إجمالي مستحق للمقاولين" value={sar(d.totals.owedToContractors)} unit="ر.س" tone="red" />
-          <Kpi label="إجمالي مستحق لنا" value={sar(d.totals.owedToUs)} unit="ر.س" tone="ok" />
-          <Kpi label="الضمانات المحتجزة" value={sar(d.totals.retentionHeld)} unit="ر.س" />
+          <Kpi label="إجمالي مستحق للمقاولين" value={sar(d.totals.owedToContractors)} unit="ر.س" tone="red"
+               explain={<ExplainDot metric="contractorsOwed" values={{ contractorsOwed: d.totals.owedToContractors }} />} />
+          <Kpi label="إجمالي مستحق لنا" value={sar(d.totals.owedToUs)} unit="ر.س" tone="ok"
+               explain={<ExplainDot metric="contractorsOwedToUs" values={{ contractorsOwedToUs: d.totals.owedToUs }} />} />
+          <Kpi label="الضمانات المحتجزة" value={sar(d.totals.retentionHeld)} unit="ر.س"
+               explain={<ExplainDot metric="contractorsRetention" values={{ contractorsRetention: d.totals.retentionHeld }} />} />
         </div>
       )}
 

@@ -622,6 +622,39 @@ def what_if_narrative(chat_fn, before: dict, after: dict, shift_days: int) -> st
     return (reply or '').strip()
 
 
+# ================================================================== import classification
+
+def suggest_account_kind(account: Optional[str], name: str, excerpt: str) -> Optional[Dict]:
+    """اقتراح تصنيف حساب برقم بادئة غير معروفة (ليس 211/212/216) — استدعاء واحد رخيص
+    للنموذج، اقتراح فقط لا قرار؛ المستخدم يقرر دائماً من واجهة التصنيف.
+
+    يعيد None بصمت عند تعطيل الذكاء الاصطناعي أو فشل الاستدعاء أو ردّ غير صالح —
+    لا يرفع أي استثناء أبداً، هذه الميزة لا يجوز أن تعطّل تدفق التصنيف اليدوي.
+    """
+    from app.services import ai_service
+    try:
+        if not ai_service.load_settings().get('enabled'):
+            return None
+        reply = ai_service.chat([
+            {'role': 'system', 'content':
+                'صنّف حساباً محاسبياً برقم بادئة غير معروفة إلى واحد فقط من: '
+                'supplier (مورد) أو contractor (مقاول/متعامل) أو guarantee (ضمان) أو '
+                'ignore (تجاهل). أعد JSON صارماً فقط بالشكل '
+                '{"kind": "supplier|contractor|guarantee|ignore", '
+                '"reason": "جملة عربية قصيرة"} بلا أي شرح خارج الـJSON.'},
+            {'role': 'user', 'content':
+                'رقم الحساب: {}\nالاسم كما ورد بالملف: {}\nمقتطف من نص الملف:\n{}'.format(
+                    account or '?', name or '', (excerpt or '')[:2000])},
+        ], json_mode=True)
+        data = json.loads(_extract_json(reply))
+        kind = data.get('kind')
+        if kind not in ('supplier', 'contractor', 'guarantee', 'ignore'):
+            return None
+        return dict(kind=kind, reason=str(data.get('reason') or ''))
+    except Exception:
+        return None  # اقتراح أفضل-جهد فقط — أي عطل هنا لا يوقف التصنيف اليدوي
+
+
 # ================================================================== /priorities
 
 # وزن التأخر بالأيام ووزن المبلغ المتأخر ومكافأة الاستحقاق خلال 7 أيام — ثوابت كودية

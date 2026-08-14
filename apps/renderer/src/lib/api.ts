@@ -105,6 +105,16 @@ export const api = {
   deleteImport: (id: string, force = false) =>
     del<ImportDeleteResult>(`/api/v1/import/history/${id}` + (force ? '?force=true' : '')),
 
+  /** تصنيف حساب برقم بادئة غير معروفة (ليس 211/212/216) — «اسأل، لا تخمّن». */
+  importClassifications: () => call<ImportClassificationsResponse>('/api/v1/import/classify'),
+  setImportClassification: (b: { account: string; kind: 'supplier' | 'contractor' | 'guarantee' | 'ignore'; name?: string }) =>
+    put<ImportClassification>('/api/v1/import/classify', b),
+  deleteImportClassification: (account: string) =>
+    del<{ deleted: boolean }>(`/api/v1/import/classify/${encodeURIComponent(account)}`),
+  /** اقتراح ذكاء اصطناعي اختياري — لا يقرر شيئاً، يعيد {} إن كان معطلاً أو فشل. */
+  suggestImportClassification: (path: string) =>
+    post<Partial<{ kind: string; reason: string }>>('/api/v1/import/classify/suggest', { path }),
+
   /* ---- التقارير ---- */
   report: (account?: string, p: Period & Omit<ReportScopeParams, 'account'> = {}) =>
     call<any>('/api/v1/reports/analysis' + qs({ account, ...p })),
@@ -139,7 +149,7 @@ export const api = {
 
   /* ---- v0.3: التدفق النقدي ---- */
   cashflow: (p: { weeks?: number; from?: string; opening_balance?: number; project?: string;
-    parties?: 'suppliers' | 'contractors' | 'both' } = {}) =>
+    parties?: 'suppliers' | 'contractors' | 'both'; period_days?: number } = {}) =>
     call<any>('/api/v1/cashflow' + qs({ ...p })),
 
   /* ---- v0.3: لوحة القيادة ---- */
@@ -185,6 +195,16 @@ export const api = {
   saveAiSettings: (b: Partial<AiSettings>) => put<AiSettings>('/api/v1/ai/settings', b),
   aiTest: () => post<{ ok: boolean; message: string; model?: string }>('/api/v1/ai/test', {}),
   aiExtract: (path: string) => post<any>('/api/v1/ai/extract', { path }),
+  /** اعتماد سطور مُستخرَجة آلياً بعد مراجعة المستخدم — للمقاولين فقط */
+  aiCommitExtract: (b: {
+    partyKind: 'contractor';
+    code?: string;
+    newContractor?: { code: string; name: string };
+    rows: { date: string; debit: number; credit: number; description: string }[];
+    sourceFile: string;
+  }) => post<{ saved: boolean; added: number;
+              contractor: { code: string; name: string }; balance: number }>(
+    '/api/v1/ai/commit-extract', b),
 
   /* ---- v0.5: مزايا المساعد — نصوص فقط، الأرقام تأتي دائماً من قاعدة البيانات ---- */
   /** سؤال بالعربية عن البيانات — قراءة فقط */
@@ -349,6 +369,17 @@ export interface ImportHistoryRow {
 export interface ImportHistoryResponse { rows: ImportHistoryRow[] }
 
 export interface ImportDeleteResult {
-  deleted: { invoices: number; payments: number; entries: number; receivables: number };
+  deleted: { invoices: number; payments: number; entries: number; receivables: number; guaranteeEntries?: number };
   approximate?: boolean;
 }
+
+/* ---------------- تصنيف الحسابات ---------------- */
+
+export interface ImportClassification {
+  account: string;
+  kind: 'supplier' | 'contractor' | 'guarantee' | 'ignore';
+  name: string;
+  decidedAt?: string;
+}
+
+export interface ImportClassificationsResponse { rows: ImportClassification[] }

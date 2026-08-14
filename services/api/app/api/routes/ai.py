@@ -10,9 +10,14 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from app.db import models
 from app.db.session import get_session
+from app.domain import contractors as C
+from app.domain.payables import money
 from app.services import ai_service, ai_features_service as F
+from app.services import contractors_service as CS
 
 router = APIRouter()
 
@@ -89,6 +94,113 @@ def extract(body: ExtractBody) -> dict:
         return ai_service.extract_rows(p)
     except ai_service.AiError as e:
         raise HTTPException(502, detail=str(e))
+
+
+class NewContractorBody(BaseModel):
+    code: str
+    name: str
+
+
+class ExtractRowBody(BaseModel):
+    date: str
+    debit: float = 0.0
+    credit: float = 0.0
+    description: str = ''
+
+
+class CommitExtractBody(BaseModel):
+    partyKind: str
+    code: Optional[str] = None
+    newContractor: Optional[NewContractorBody] = None
+    rows: List[ExtractRowBody]
+    sourceFile: str
+
+
+@router.post('/commit-extract')
+def commit_extract(body: CommitExtractBody, db: Session = Depends(get_session)) -> dict:
+    """اعتماد سطور مُستخرَجة آلياً (بعد مراجعة المستخدم) وكتابتها كحركات مقاول.
+
+    ملاحظة حاكمة: هذا المسار **للمقاولين فقط** — partyKind يجب أن يكون
+    'contractor' دوماً من الواجهة. الموردون مستبعدون عمداً: تدفق مطابقتهم يعتمد
+    على مطابقة FIFO دقيقة بين الفواتير والدفعات لا يمكن لاستخراج نصي بالذكاء
+    الاصطناعي أن يضمنها؛ محاولة اعتماد كشف مورد بهذه الطريقة قد تُفسد مطابقة
+    FIFO القائمة بصمت. أي دعم مستقبلي للموردين يحتاج تصميماً منفصلاً.
+
+    قرار التفعيل: هذا المسار لا يتطلب useAi/تفعيل المساعد في الخادم — المراجعة
+    الفعلية للسطور تمت في الواجهة قبل استدعاء هذا المسار (شاشة المراجعة)،
+    وهذا المسار مجرد كتابة بيانات مُتحقق منها، تماماً كإدخال حركة يدوية.
+    """
+    if body.partyKind != 'contractor':
+        raise HTTPException(422, detail='هذا المسار للمقاولين فقط — partyKind يجب أن يكون contractor')
+    if not body.code and not body.newContractor:
+        raise HTTPException(422, detail='يجب تحديد مقاول موجود (code) أو مقاول جديد (newContractor)')
+
+    # ---- validate every row: ISO date + exactly one of debit/credit > 0
+    bad: List[int] = []
+    for i, r in enumerate(body.rows):
+        ok_date = True
+        try:
+            dt.date.fromisoformat(r.date)
+        except (ValueError, TypeError):
+            ok_date = False
+        ok_sides = (r.debit > 0) ^ (r.credit > 0)
+        if not ok_date or not ok_sides:
+            bad.append(i + 1)
+    if bad:
+        raise HTTPException(422, detail='سطور غير صالحة (رقم {}): تحقق من التاريخ ومن '
+                                        'أن مدين أو دائن واحد فقط أكبر من صفر'.format(
+                                            '، '.join(str(n) for n in bad)))
+
+    # ---- resolve the contractor
+    if body.newContractor:
+        code = body.newContractor.code
+        exists = db.query(models.Contractor).filter_by(code=code).one_or_none()
+        if exists is not None and exists.deleted_at is None:
+            raise HTTPException(409, detail=f'يوجد مقاول بالفعل بالكود {code}')
+        if exists is not None:
+            row = exists
+            row.deleted_at = None
+            row.name = body.newContractor.name
+        else:
+            row = models.Contractor(code=code, name=body.newContractor.name)
+            db.add(row)
+        db.flush()
+    else:
+        row = db.query(models.Contractor).filter_by(code=body.code).filter(
+            models.Contractor.deleted_at.is_(None)).one_or_none()
+        if row is None:
+            raise HTTPException(404, detail=f'لا يوجد مقاول بالكود {body.code}')
+
+    # ---- ImportLog so this batch shows up on «الملفات المرفوعة» and can be deleted
+    log = models.ImportLog(source='ai_extract', path=body.sourceFile, account=row.code,
+                           imported=0, skipped=0, reconciled=1)
+    db.add(log)
+    db.flush()
+
+    projects = CS.known_projects(db)
+    added = 0
+    for r in body.rows:
+        kind = C.classify_entry(r.description)
+        entry = models.ContractorEntry(
+            contractor_id=row.id, date=dt.date.fromisoformat(r.date), debit=r.debit,
+            credit=r.credit, description=r.description, kind=kind,
+            claim_no=C.extract_claim_no(r.description),
+            project=C.detect_project(r.description, projects),
+            source='manual', import_log_id=log.id)
+        db.add(entry)
+        added += 1
+
+    log.imported = added
+    db.commit()
+    db.refresh(row)
+    entries = [e for e in row.entries if e.deleted_at is None]
+    pos = C.position(CS._entry_dicts(entries))
+    return {
+        'saved': True,
+        'added': added,
+        'contractor': {'code': row.code, 'name': row.name},
+        'balance': money(pos['balance']),
+    }
 
 
 # ---------------------------------------------------------------- v0.5 AI features

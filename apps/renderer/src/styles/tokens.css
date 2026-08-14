@@ -150,7 +150,12 @@ td.num, th.num, td.ltr, th.ltr { display: table-cell; }
   display: flex;
   flex-direction: column;
   gap: 3px;
-  overflow: hidden;
+  /* القائمة صارت ١٣ بنداً — على شاشة 768px كانت البنود السفلية تُقص بلا تمرير.
+     overflow-x يبقى مخفياً حتى لا تظهر البنود أثناء حركة الطي. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.25) transparent;
   transition: width var(--motion-base) var(--ease-base),
               flex-basis var(--motion-base) var(--ease-base),
               padding var(--motion-base) var(--ease-base);
