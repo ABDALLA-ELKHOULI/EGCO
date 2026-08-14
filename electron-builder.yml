@@ -1,0 +1,66 @@
+appId: sa.com.egco.dashboard
+productName: EGCO Dashboard
+copyright: شركة إعمار الخليج المصرية للمقاولات
+
+directories:
+  output: release
+  buildResources: build
+
+# التحديث عن بُعد — the app checks this repo's Releases on every launch.
+# OWNER/REPO are replaced once the user's GitHub repo is known (scripts/set-repo.mjs).
+publish:
+  provider: github
+  owner: ABDALLA-ELKHOULI
+  repo: EGCO
+
+# Only the compiled shell and the built renderer ship — no source, no node_modules.
+files:
+  - apps/desktop/dist/**/*
+  - package.json
+  - '!**/*.map'
+
+# The PyInstaller bundle lands in Resources/api/, which is where backend.ts looks for it
+# when app.isPackaged is true.
+extraResources:
+  - from: services/api/dist/egco-api
+    to: api
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+  category: public.app-category.finance
+  artifactName: EGCO-Dashboard-${version}-${arch}.${ext}
+  icon: build/icon.png
+  # The bundled Python binary is not signed by us. Without an Apple Developer identity
+  # the app is ad-hoc signed, and macOS shows an "unidentified developer" warning on
+  # first launch (right-click → Open once to get past it).
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+dmg:
+  title: EGCO Dashboard
+  contents:
+    - x: 130
+      y: 220
+      type: file
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+win:
+  target: [nsis]
+  artifactName: EGCO-Dashboard-${version}-setup.${ext}
+  icon: build/icon.png
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  language: '1025'      # Arabic (Saudi Arabia)
+
+linux:
+  target: [AppImage]
+  category: Finance

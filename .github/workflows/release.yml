@@ -1,0 +1,50 @@
+# بناء المثبّتات في السحابة — يعمل عند دفع وسم إصدار مثل v0.5.0
+#
+# Pushing a tag `v*` builds the Windows NSIS installer and the macOS DMG on
+# GitHub's machines and attaches both to a GitHub Release. The installed apps
+# see that release and offer the in-app update. No building on the office
+# machine ever again.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # electron-builder uploads the installers to the Release
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            arch: x64
+          - os: macos-latest
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install JS dependencies
+        run: npm ci || npm install
+
+      - name: Python venv + backend dependencies
+        run: npm run setup
+
+      - name: Backend tests
+        run: npm run test:api
+
+      - name: Build and publish installers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build && npm run build:api && npx electron-builder --config electron-builder.yml --publish always

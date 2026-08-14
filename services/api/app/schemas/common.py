@@ -1,0 +1,79 @@
+# -*- coding: utf-8 -*-
+from typing import List, Literal, Optional
+
+from pydantic import BaseModel, Field
+
+
+class ImportRequest(BaseModel):
+    path: str
+    source: Literal['pdf_statement', 'suppliers_excel', 'csv_statement', 'receivables_legacy_html', 'receivables_excel']
+    allow_unreconciled: bool = False
+
+
+class PreviewRequest(BaseModel):
+    path: str
+    source: Literal['pdf_statement', 'suppliers_excel', 'csv_statement', 'receivables_legacy_html', 'receivables_excel'] = 'pdf_statement'
+
+
+class ScanDirRequest(BaseModel):
+    dir: str
+
+
+class BatchImportRequest(BaseModel):
+    paths: List[str]
+    allow_unreconciled: bool = False
+
+
+class DueDateUpdate(BaseModel):
+    due_date: Optional[str] = None
+
+
+# ---------------------------------------------------------------- الموردون
+
+class SupplierIn(BaseModel):
+    """إضافة مورد يدوياً.
+
+    `term` is the free-text payment term exactly as the company writes it
+    ('45 يوم', 'كاش', 'مستخلص', or blank) — it is normalised server-side by the same
+    parser the Excel import uses, so a hand-added supplier behaves identically to an
+    imported one.
+    """
+    account: str = Field(min_length=1, max_length=32)
+    name: str = Field(min_length=1, max_length=300)
+    project: str = ''
+    term: str = ''
+
+
+class SupplierUpdate(BaseModel):
+    name: Optional[str] = None
+    project: Optional[str] = None
+    term: Optional[str] = None
+
+
+# ---------------------------------------------------------------- المديونية
+
+class InvoiceIn(BaseModel):
+    """إضافة مديونية مستحقة يدوياً."""
+    account: str                      # رقم حساب المورد
+    amount: float = Field(gt=0)
+    date: str                         # ISO — تاريخ الفاتورة
+    due_date: Optional[str] = None
+    description: str = ''
+    reference: Optional[str] = None
+
+
+class InvoiceUpdate(BaseModel):
+    amount: Optional[float] = Field(default=None, gt=0)
+    date: Optional[str] = None
+    due_date: Optional[str] = None
+    description: Optional[str] = None
+    reference: Optional[str] = None
+
+
+class PaymentIn(BaseModel):
+    """تسجيل دفعة يدوياً."""
+    account: str
+    amount: float = Field(gt=0)
+    date: str
+    description: str = ''
+    reference: Optional[str] = None

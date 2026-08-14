@@ -1,0 +1,495 @@
+/* مشتق من design/tokens/tokens.json — عدّل ملف الرموز لا هذا الملف.
+   Generated from the same tokens the Figma variables use. */
+
+:root {
+  --gold: #D9943C;
+  --bronze: #B87A28;
+  --tint: #EFE1CB;
+  --ink: #211D16;
+  --muted: #8A8578;
+  --hair: #DDD8CE;
+  --red: #C0271A;
+  --ok: #2E7D32;
+  --warn: #D9943C;
+  --bg: #FBFAF7;
+  --card: #FFFFFF;
+
+  --r-card: 10px;
+  --r-control: 6px;
+  --sidebar: 248px;
+  /* Cairo is the design font (macOS/Figma). Windows has neither Cairo nor SF Arabic,
+     so Segoe UI then Tahoma carry the Arabic there — both ship with Windows and
+     render Arabic correctly. Install Cairo on Windows to match the design exactly. */
+  --font: "Cairo", "SF Arabic", "Segoe UI", Tahoma, "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+:root[data-theme="dark"] {
+  --tint: #3A3226;
+  --ink: #F2EFE8;
+  --muted: #9A9486;
+  --hair: #3C382F;
+  --red: #E0554A;
+  --ok: #5CB860;
+  --bg: #16140F;
+  --card: #1E1B15;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* الأرقام تُعرض دائماً من اليسار لليمين بأرقام جدولية داخل النص العربي —
+   إهمال هذه القاعدة يُفسد محاذاة كل جدول مالي. */
+.num {
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  display: inline-block;
+}
+/* …لكن خلية الجدول تبقى خلية جدول. وضع display:inline-block على <td class="num">
+   يُخرج الخلية من تخطيط الأعمدة، فتتوقف الأرقام عن الجلوس تحت عناوينها.
+   A td that stops being a table-cell breaks every column alignment in the table. */
+td.num, th.num, td.ltr, th.ltr { display: table-cell; }
+
+/* ---------------- layout ---------------- */
+.app { display: flex; height: 100%; }
+.main { flex: 1; overflow-y: auto; padding: 26px 32px; }
+.page-head { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.page-head .grow { flex: 1; }
+.page-head h1 { font-size: 20px; margin: 0; letter-spacing: -0.3px; }
+.page-head p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+
+/* ---------------- sidebar ---------------- */
+/* مدة الانتقال ومنحناه من لوح مواصفات الحركة في Figma — مصدر واحد للاثنين. */
+:root {
+  --sidebar-w: 248px;
+  --sidebar-w-collapsed: 76px;
+  --motion-base: 280ms;
+  --motion-fast: 120ms;
+  --ease-base: cubic-bezier(0.4, 0, 0.2, 1);   /* EASE_IN_AND_OUT */
+}
+
+.sidebar {
+  width: var(--sidebar-w);
+  flex: 0 0 var(--sidebar-w);
+  background: var(--ink);
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+  transition: width var(--motion-base) var(--ease-base),
+              flex-basis var(--motion-base) var(--ease-base),
+              padding var(--motion-base) var(--ease-base);
+}
+.sidebar.collapsed {
+  width: var(--sidebar-w-collapsed);
+  flex-basis: var(--sidebar-w-collapsed);
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.side-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 6px 18px;
+}
+.side-head .brand { flex: 1; min-width: 0; text-align: right; }
+.brand b { color: #fff; font-size: 16px; display: block; white-space: nowrap; }
+.brand span { color: var(--gold); font-size: 11px; white-space: nowrap; }
+
+.side-toggle {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; flex: 0 0 30px;
+  border: 0; border-radius: var(--r-control); cursor: pointer;
+  background: rgba(255,255,255,.08); color: var(--tint);
+  transition: background var(--motion-fast) var(--ease-base),
+              color var(--motion-fast) var(--ease-base);
+}
+.side-toggle:hover { background: rgba(255,255,255,.16); color: #fff; }
+.side-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.nav-group { display: flex; flex-direction: column; gap: 3px; }
+.sidebar .section {
+  color: var(--muted); font-size: 11px;
+  padding: 14px 10px 5px;
+  white-space: nowrap;
+}
+/* عند الطي يتحوّل عنوان القسم إلى خط فاصل — الإيقاع البصري يبقى فلا يضيع المكان */
+.section-rule {
+  display: block; height: 1px; width: 28px; margin: 6px auto 0;
+  background: rgba(255,255,255,.14);
+}
+
+.nav-item {
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-control);
+  color: var(--tint); text-decoration: none; font-size: 13px;
+  white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-base),
+              color var(--motion-fast) var(--ease-base),
+              padding var(--motion-base) var(--ease-base);
+}
+.nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
+.nav-item.active { background: var(--gold); color: var(--ink); font-weight: 600; }
+.nav-item:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* الترتيب في RTL: الأيقونة يميناً ثم النص ثم النقطة أقصى اليسار */
+.nav-item .nav-label {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  opacity: 1;
+  transition: opacity var(--motion-fast) var(--ease-base);
+}
+.sidebar.collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+.sidebar.collapsed .nav-label { opacity: 0; width: 0; flex: 0 0 0; }
+.sidebar.collapsed .side-head .brand { opacity: 0; width: 0; flex: 0 0 0; overflow: hidden; }
+.sidebar.collapsed .side-head { justify-content: center; padding-bottom: 14px; }
+
+/* نقطة التنبيه تبقى مرئية في الحالتين — الطي لا يُخفي معلومة */
+.alert-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--red); flex: 0 0 6px;
+  transition: all var(--motion-base) var(--ease-base);
+}
+.sidebar.collapsed .alert-dot {
+  position: absolute; top: 6px; inset-inline-start: 14px;
+}
+
+.sidebar .grow { flex: 1; }
+
+/* احترام تفضيل تقليل الحركة في النظام */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .nav-item, .nav-label, .alert-dot, .side-toggle { transition: none !important; }
+}
+
+/* ---------------- cards ---------------- */
+.card {
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+.card > .cap { padding: 14px 20px 10px; }
+.card > .cap h2 { font-size: 16px; margin: 0; }
+.card > .cap p { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
+
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+.kpi {
+  background: var(--card); border: 1px solid var(--hair);
+  border-radius: var(--r-card); padding: 16px 18px;
+}
+.kpi.alert { border-color: var(--red); border-width: 1.5px; }
+.kpi .label { font-size: 12px; color: var(--muted); }
+.kpi .value { font-size: 28px; font-weight: 700; letter-spacing: -1px; margin-top: 2px; }
+.kpi .unit { font-size: 11px; color: var(--muted); }
+
+/* ---------------- tables ---------------- */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 10px 12px; text-align: right; }
+thead tr { background: var(--tint); }
+th { font-size: 11px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+tbody tr { border-top: 1px solid var(--hair); }
+tbody tr:hover { background: var(--tint); }
+td.ltr, th.ltr { text-align: left; }
+tfoot tr { background: var(--tint); font-weight: 600; }
+
+/* الجداول العريضة تنزلق داخل حاويتها بدل أن تلتف وتتكسّر أعمدتها.
+   A wide table scrolls inside its own box; it never reflows into stacked cells. */
+.table-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+.table-scroll > table { min-width: var(--table-min, 760px); }
+.table-scroll.wide > table { --table-min: 980px; }
+/* خلايا الأرقام لا تلتف أبداً — سطر ملفوف يُزحزح الصف كله عن عناوينه */
+td.num, td.nowrap, th { white-space: nowrap; }
+
+/* ---------------- bits ---------------- */
+.pill { display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 99px; background: var(--tint); }
+.pill.red { background: rgba(192,39,26,.12); color: var(--red); }
+.pill.gold { background: rgba(217,148,60,.16); color: var(--bronze); }
+.pill.ok { background: rgba(46,125,50,.12); color: var(--ok); }
+.pill.warn { background: rgba(217,148,60,.16); color: var(--bronze); }
+/* وسم الطرف — كل صفّ يقول لمن هو: مورد أم مقاول */
+.pill.party { font-size: 10px; padding: 1px 7px; margin-inline-start: 6px; vertical-align: middle; white-space: nowrap; }
+.pill.party.supplier { background: rgba(217,148,60,.16); color: var(--bronze); }
+.pill.party.contractor { background: rgba(46,125,50,.12); color: var(--ok); }
+
+.btn {
+  font: inherit; font-size: 13px; padding: 9px 18px; border-radius: var(--r-control);
+  border: 1px solid var(--hair); background: transparent; color: var(--ink); cursor: pointer;
+}
+.btn:hover { border-color: var(--gold); }
+.btn.primary { background: var(--gold); border-color: var(--gold); color: #fff; }
+.btn.primary:hover { filter: brightness(1.05); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+input, select {
+  font: inherit; font-size: 13px; padding: 8px 12px;
+  border: 1px solid var(--hair); border-radius: var(--r-control);
+  background: var(--card); color: var(--ink);
+}
+input:focus, select:focus { outline: none; border-color: var(--gold); }
+
+.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.toolbar .count { font-size: 12px; color: var(--muted); margin-right: auto; }
+
+.callout { padding: 12px 16px; border-radius: 8px; border: 1px solid; font-size: 13px; }
+.callout.ok { border-color: var(--ok); color: var(--ok); }
+.callout.bad { border-color: var(--red); color: var(--red); }
+.callout.note { border-color: var(--hair); color: var(--muted); }
+
+.state { padding: 60px 20px; text-align: center; color: var(--muted); font-size: 14px; }
+.red { color: var(--red); }
+.ok { color: var(--ok); }
+.gold { color: var(--bronze); }
+.muted { color: var(--muted); }
+.stack { display: flex; flex-direction: column; gap: 18px; }
+.two { display: grid; grid-template-columns: 1fr 380px; gap: 14px; align-items: start; }
+.dropzone {
+  border: 1.5px dashed var(--gold); border-radius: var(--r-card);
+  background: var(--card); padding: 34px; text-align: center; cursor: pointer;
+}
+.dropzone:hover { background: var(--tint); }
+.bars { display: flex; gap: 10px; align-items: flex-end; height: 200px; padding: 0 20px 16px; }
+.bars .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; justify-content: flex-end; }
+.bars .bar { width: 100%; border-radius: 4px; min-height: 6px; }
+.age-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+
+/* ---------------- التقرير التحليلي (A4) ---------------- */
+.sheet {
+  background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-card);
+  padding: 48px 56px; max-width: 900px; margin: 0 auto;
+}
+.rpt-head { display: flex; justify-content: flex-start; }
+.rpt-head b { display: block; font-size: 16px; }
+.rpt-head span { font-size: 11px; color: var(--muted); }
+.rule-ink { border: 0; border-top: 1.5px solid var(--ink); margin: 10px 0 18px; }
+hr { border: 0; border-top: 1px solid var(--hair); margin: 16px 0; }
+.rpt-title { font-size: 26px; margin: 0; letter-spacing: -0.6px; }
+.rpt-sub { margin: 4px 0 16px; font-size: 13px; color: var(--muted); }
+.rpt-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.rpt-meta span { display: block; font-size: 10px; color: var(--muted); }
+.rpt-meta b { font-size: 12px; font-weight: 600; }
+.rpt-section { margin: 22px 0 10px; }
+.rpt-section > div { display: flex; align-items: center; gap: 8px; }
+.rpt-section b { font-size: 15px; }
+.rpt-section p { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
+.badge { background: var(--gold); color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 4px; }
+.rpt-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+.rpt-kpi { border: 1px solid var(--hair); padding: 12px; }
+.rpt-kpi span { display: block; font-size: 10px; color: var(--muted); }
+.rpt-kpi b { font-size: 18px; display: block; margin-top: 2px; }
+.rpt-kpi i { font-size: 10px; color: var(--muted); font-style: normal; }
+.rpt-lede { font-size: 13px; line-height: 1.9; }
+.rpt-table { font-size: 12px; }
+.rpt-table th, .rpt-table td { padding: 7px 8px; }
+.rpt-notes > div { margin-bottom: 8px; }
+.rpt-notes b { font-size: 12px; display: block; }
+.rpt-notes p { margin: 1px 0 0; font-size: 12px; color: var(--muted); }
+.rpt-foot { margin-top: 28px; }
+.rpt-foot .signs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.rpt-foot .signs div { border-top: 1px solid var(--hair); padding-top: 6px; font-size: 10px; color: var(--muted); }
+.rpt-foot .muted { font-size: 10px; margin-top: 10px; }
+
+@media print {
+  .sidebar, .no-print { display: none !important; }
+  .main { padding: 0; overflow: visible; }
+  .sheet { border: 0; border-radius: 0; padding: 0; max-width: none; }
+  body { background: #fff; }
+  @page { size: A4; margin: 16mm; }
+}
+
+/* ---------------- وضع العرض (ملء الشاشة) ---------------- */
+.present {
+  position: fixed; inset: 0; z-index: 200;
+  background: var(--bg); display: flex; flex-direction: column;
+}
+.present-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 20px; border-bottom: 1px solid var(--hair); background: var(--card);
+}
+.present-bar .grow { flex: 1; }
+.present-count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; direction: ltr; }
+.present-stage { flex: 1; display: flex; align-items: center; justify-content: center; padding: 28px; overflow: auto; }
+
+.present-slide {
+  width: 100%; max-width: 1180px;
+  background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-card);
+  padding: 40px 48px; display: flex; flex-direction: column; gap: 22px;
+}
+.present-slide header h1 { font-size: 32px; margin: 0; letter-spacing: -0.8px; }
+.present-slide header p { margin: 6px 0 0; font-size: 15px; color: var(--muted); }
+.present-slide footer {
+  display: flex; justify-content: space-between; align-items: center;
+  border-top: 1px solid var(--hair); padding-top: 12px;
+  font-size: 11px; color: var(--muted);
+}
+.present-slide { min-width: 0; overflow: hidden; }
+.present-body { flex: 1; min-width: 0; }
+
+/* الشرائح كبيرة عمداً — تُقرأ من آخر الغرفة.
+   لكن «كبير» لا يعني «خارج الشريحة»: البطاقات تلتف والأرقام تتقلّص لتبقى داخل الورقة. */
+/* 1.75vw: a 13-digit amount (43,312,712.98) must fit a 4-across card on one line
+   at 1500px — 2.3vw wrapped its last digit to a second row. */
+.present-body .kpi .value { font-size: clamp(16px, 1.75vw, 32px); }
+.present-body .kpi .label { font-size: 14px; }
+.present-body table { font-size: 15px; }
+.present-body th { font-size: 13px; }
+.present-body .bars { height: 260px; }
+.present-body .table-scroll > table { --table-min: 0px; }
+
+/* صفّ مؤشرات الشريحة — يلتف تلقائياً بدل أن تخرج آخر بطاقة من الورقة البيضاء */
+.slide-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+.slide-kpis > .kpi { min-width: 0; }
+.slide-kpis .value, .slide-kpis .label, .slide-kpis .unit { min-width: 0; overflow-wrap: anywhere; }
+/* أي صفّ مؤشرات ورثه العرض من الشاشات — يخضع لنفس القاعدة */
+.present-body .kpi-row { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)) !important; }
+.present-body .kpi { min-width: 0; }
+
+.present-print-only { display: none; }
+
+@media print {
+  /* التصدير يطبع كل الشرائح، شريحة لكل صفحة أفقية */
+  .present-bar, .present-stage { display: none !important; }
+  .present-print-only { display: block !important; }
+  .present { position: static; }
+  .print-slide {
+    break-after: page; page-break-after: always;
+    border: 0; border-radius: 0; min-height: 92vh;
+  }
+  .print-slide:last-child { break-after: auto; page-break-after: auto; }
+  /* في الطباعة لا وجود لـ vw موثوق — نثبّت مقاساً يسع الصفحة الأفقية */
+  .print-slide { overflow: hidden; }
+  .print-slide .slide-kpis,
+  .print-slide .kpi-row {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
+    gap: 10px !important;
+  }
+  .print-slide .kpi { min-width: 0; padding: 10px 12px; }
+  .print-slide .kpi .value { font-size: 20px !important; letter-spacing: -0.4px; overflow-wrap: anywhere; }
+  .print-slide .kpi .label { font-size: 11px !important; }
+  .print-slide .table-scroll { overflow: visible !important; }
+  .print-slide .table-scroll > table { min-width: 0 !important; }
+  html.presenting .sidebar, html.presenting .main > *:not(.present) { display: none !important; }
+  @page { size: A4 landscape; margin: 12mm; }
+}
+
+/* ---------------- حالات الفراغ (Empty/State) ---------------- */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 44px 32px; text-align: center;
+}
+.empty-icon { font-size: 30px; line-height: 1; margin-bottom: 4px; }
+.empty-icon.gold { color: var(--gold); }
+.empty-icon.muted { color: var(--muted); }
+.empty-icon.ok { color: var(--ok); }
+.empty-title { font-size: 16px; font-weight: 600; color: var(--ink); }
+.empty-body { font-size: 13px; color: var(--muted); max-width: 380px; margin-bottom: 6px; }
+
+/* ---------------- كثافة حبر الجدول المتدرّجة (Table/Row) ---------------- */
+/* الاستثناء يصرخ والباقي يصمت — شريط الحافة يحمل الحالة دون إغراق الصف باللون. */
+/* الشريط يُعلَّق على أول خلية لا على الصف نفسه: العنصر الزائف على <tr> يُلفّ في
+   خلية مجهولة فيُزحزح كل خلايا الصف عموداً كاملاً عن عناوينها.
+   A ::before on a <tr> gets wrapped in an anonymous table-cell — it steals a
+   column and shifts every real cell in that row off its header. */
+tbody tr.row-overdue { background: var(--row-critical, transparent); }
+tbody tr.row-overdue > td:first-child,
+tbody tr.row-due-soon > td:first-child { position: relative; }
+tbody tr.row-overdue > td:first-child::before {
+  content: ''; position: absolute; inset-inline-start: 0; top: 0; bottom: 0;
+  width: 3px; background: var(--red);
+}
+tbody tr.row-due-soon { background: var(--row-decision, transparent); }
+tbody tr.row-due-soon > td:first-child::before {
+  content: ''; position: absolute; inset-inline-start: 0; top: 0; bottom: 0;
+  width: 3px; background: var(--gold);
+}
+tbody tr.row-settled { opacity: 0.55; }
+
+/* ---------------- المقاولون ---------------- */
+/* شرائح المشاريع — تلتف على أكثر من سطر عند الازدحام */
+.chip-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  display: inline-block; font-size: 11px; padding: 1px 8px;
+  border-radius: 99px; background: var(--tint); color: var(--muted);
+  white-space: nowrap;
+}
+/* وسم اتجاه الرصيد: «له» / «لنا» / «متوازن» */
+.balance-tag { font-size: 11px; }
+/* نقطة ذهبية — ضمان يقترب أو استحق صرفه */
+.release-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gold); margin-inline-start: 6px; vertical-align: middle;
+}
+/* بطاقات المشاريع في كشف المقاول — الضغط يصفّي الدفتر */
+.project-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px; margin-bottom: 18px;
+}
+.project-card {
+  font: inherit; text-align: right; cursor: pointer;
+  background: var(--card); border: 1px solid var(--hair);
+  border-radius: var(--r-card); padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 2px; color: var(--ink);
+}
+.project-card:hover { border-color: var(--gold); }
+.project-card.active { border-color: var(--gold); background: var(--tint); }
+.project-card .pc-name { font-size: 13px; font-weight: 600; }
+.project-card .pc-balance { font-size: 17px; font-weight: 700; }
+.project-card .pc-balance small { font-size: 11px; font-weight: 400; }
+.project-card .pc-count { font-size: 11px; }
+/* شبكة بطاقات الضمانات */
+.guarantee-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px; padding: 14px 20px 18px;
+}
+.guarantee-card {
+  border: 1px solid var(--hair); border-radius: var(--r-card);
+  padding: 14px; display: flex; flex-direction: column; gap: 8px;
+}
+
+:root {
+  --row-critical: rgba(192, 39, 26, 0.05);
+  --row-decision: rgba(217, 148, 60, 0.06);
+}
+:root[data-theme="dark"] {
+  --row-critical: rgba(224, 85, 74, 0.10);
+  --row-decision: rgba(217, 148, 60, 0.10);
+}
+
+/* ==================== وثيقة الموازنة (Budget.tsx) — كتلة مضافة، لا تعدَّل خارج صفحة الموازنة ==================== */
+.budget-doc-project { margin-bottom: 26px; }
+.budget-doc-bar {
+  display: flex; align-items: center; gap: 10px; font-size: 11px; margin-bottom: 5px;
+}
+.budget-doc-bar > span:first-child { width: 52px; flex: 0 0 52px; color: var(--muted); }
+.budget-doc-bar .track {
+  flex: 1; background: var(--tint); border-radius: 4px; height: 12px; overflow: hidden;
+}
+.budget-doc-bar .fill { height: 100%; background: var(--hair); border-radius: 4px; }
+.budget-doc-bar .fill.gold { background: var(--gold); }
+.budget-doc-bar .amount { width: 110px; flex: 0 0 110px; text-align: left; direction: ltr; }
+
+@media print {
+  /* الوثيقة فقط — القسم الواحد لا ينقسم على صفحتين، والجداول لا تفيض */
+  .budget-doc-project { break-inside: avoid; page-break-inside: avoid; }
+  .budget-doc table { width: 100%; table-layout: fixed; font-size: 10px; }
+  .budget-doc table td, .budget-doc table th { overflow-wrap: anywhere; }
+  .budget-doc .rpt-kpis { grid-template-columns: repeat(5, 1fr) !important; gap: 6px; }
+  .budget-doc .rpt-kpi b { font-size: 13px; }
+  /* الأشرطة تُطبع بألوانها */
+  .budget-doc-bar .fill { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}
+/* ==================== نهاية كتلة وثيقة الموازنة ==================== */

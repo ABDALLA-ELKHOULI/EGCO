@@ -1,0 +1,20 @@
+node_modules/
+services/api/.venv/
+services/api/dist/
+services/api/build/
+apps/desktop/dist/
+apps/renderer/*.tsbuildinfo
+release/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+*.db
+*.db-journal
+
+# ---- بيانات الشركة الحقيقية — لا تُرفع إلى GitHub أبداً ----
+design/samples/statements-batch/
+design/samples/*.pdf
+design/samples/*.xlsx
+data/
+ai-settings.json

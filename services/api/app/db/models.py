@@ -1,0 +1,245 @@
+# -*- coding: utf-8 -*-
+"""جداول قاعدة البيانات.
+
+Every row carries id (UUID) / created_at / updated_at / deleted_at. There is no cloud,
+but those four columns are what make a future device-to-device merge possible without a
+migration — and financial records are soft-deleted, never removed.
+
+The supplier key is `account` (رقم الحساب), never the name: انجاز الرواد appears in five
+projects and سماء البناء in four.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import uuid
+from typing import List, Optional
+
+from sqlalchemy import (Date, DateTime, Float, ForeignKey, Integer, String, Text,
+                        UniqueConstraint)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+def _uuid() -> str:
+    return str(uuid.uuid4())
+
+
+def _now() -> dt.datetime:
+    return dt.datetime.now(dt.timezone.utc)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class TimestampMixin:
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+    deleted_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class Supplier(TimestampMixin, Base):
+    __tablename__ = 'suppliers'
+    account: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(300))
+    project: Mapped[str] = mapped_column(String(120), default='')
+    term_raw: Mapped[str] = mapped_column(String(60), default='')
+    #: cached normalisation of term_raw — 'days' | 'cash' | 'claim'
+    term_kind: Mapped[str] = mapped_column(String(20), default='cash')
+    term_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    invoices: Mapped[List['Invoice']] = relationship(back_populates='supplier')
+    payments: Mapped[List['Payment']] = relationship(back_populates='supplier')
+
+
+class Invoice(TimestampMixin, Base):
+    """فاتورة — a credit line on the statement."""
+    __tablename__ = 'invoices'
+    __table_args__ = (UniqueConstraint('supplier_id', 'number', 'date', 'amount',
+                                       name='uq_invoice_identity'),)
+
+    supplier_id: Mapped[str] = mapped_column(ForeignKey('suppliers.id'), index=True)
+    number: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    date: Mapped[dt.date] = mapped_column(Date)
+    amount: Mapped[float] = mapped_column(Float, default=0.0)
+    doc: Mapped[str] = mapped_column(String(60), default='')
+    description: Mapped[str] = mapped_column(Text, default='')
+    #: only used by claim-based suppliers, where the due date cannot be derived
+    manual_due_date: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    #: 'statement' | 'manual' | 'csv_statement'
+    source: Mapped[str] = mapped_column(String(20), default='statement')
+
+    supplier: Mapped[Supplier] = relationship(back_populates='invoices')
+
+
+class Payment(TimestampMixin, Base):
+    """دفعة — a debit line on the statement."""
+    __tablename__ = 'payments'
+    __table_args__ = (UniqueConstraint('supplier_id', 'doc', 'date', 'amount',
+                                       name='uq_payment_identity'),)
+
+    supplier_id: Mapped[str] = mapped_column(ForeignKey('suppliers.id'), index=True)
+    date: Mapped[dt.date] = mapped_column(Date)
+    amount: Mapped[float] = mapped_column(Float, default=0.0)
+    doc: Mapped[str] = mapped_column(String(60), default='')
+    description: Mapped[str] = mapped_column(Text, default='')
+    #: 'statement' | 'manual' | 'csv_statement'
+    source: Mapped[str] = mapped_column(String(20), default='statement')
+
+    supplier: Mapped[Supplier] = relationship(back_populates='payments')
+
+
+class Receivable(TimestampMixin, Base):
+    """تحصيلات — an amount owed TO the company (unit sale instalments)."""
+    __tablename__ = 'receivables'
+    __table_args__ = (UniqueConstraint('unit', 'client', 'amount', 'status', 'source',
+                                       name='uq_receivable_identity'),)
+
+    project: Mapped[str] = mapped_column(String(120), default='')
+    unit: Mapped[str] = mapped_column(String(60), default='')
+    client: Mapped[str] = mapped_column(String(300), default='')
+    amount: Mapped[float] = mapped_column(Float, default=0.0)
+    due_date: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    collected_on: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    #: 'collected' | 'open'
+    status: Mapped[str] = mapped_column(String(20), default='open')
+    source: Mapped[str] = mapped_column(String(40), default='')
+    notes: Mapped[str] = mapped_column(Text, default='')
+
+
+class Contractor(TimestampMixin, Base):
+    """مقاول — keyed by the accounting-system code (212xxxxx), never the name.
+
+    Names repeat across projects the same way supplier names do; the code is the
+    identity, the name is only for matching suggestions during import.
+    """
+    __tablename__ = 'contractors'
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(300))
+    phone: Mapped[str] = mapped_column(String(60), default='')
+    notes: Mapped[str] = mapped_column(Text, default='')
+    #: default retention rate for new claims (e.g. 0.05 / 0.10) — the claim itself wins
+    default_retention_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    #: default guarantee period in days — editable per project guarantee
+    default_guarantee_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    entries: Mapped[List['ContractorEntry']] = relationship(back_populates='contractor')
+    claims: Mapped[List['ContractorClaim']] = relationship(back_populates='contractor')
+    guarantees: Mapped[List['ContractorGuarantee']] = relationship(back_populates='contractor')
+
+
+class ContractorEntry(TimestampMixin, Base):
+    """حركة على حساب مقاول — ledger line from the statement or manual entry.
+
+    The ledger is the financial source of truth: balance = Σdebit − Σcredit,
+    positive = he owes us, negative = we owe him — the statement's own convention.
+    debit (مدين) = payments to him / back-charges; credit (دائن) = مستخلصات.
+    """
+    __tablename__ = 'contractor_entries'
+    __table_args__ = (UniqueConstraint('contractor_id', 'doc', 'date', 'debit', 'credit',
+                                       'description', name='uq_contractor_entry_identity'),)
+
+    contractor_id: Mapped[str] = mapped_column(ForeignKey('contractors.id'), index=True)
+    date: Mapped[dt.date] = mapped_column(Date)
+    debit: Mapped[float] = mapped_column(Float, default=0.0)
+    credit: Mapped[float] = mapped_column(Float, default=0.0)
+    doc: Mapped[str] = mapped_column(String(60), default='')
+    description: Mapped[str] = mapped_column(Text, default='')
+    #: 'claim' مستخلص | 'payment' دفعة | 'retention' تأمين/ضمان | 'deduction' خصم
+    #: | 'invoice' فاتورة محملة عليه | 'opening' رصيد افتتاحي | 'other'
+    kind: Mapped[str] = mapped_column(String(20), default='other')
+    #: مستخلص number when the description carries one
+    claim_no: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    #: project attribution — auto-detected from the description, editable
+    project: Mapped[str] = mapped_column(String(120), default='')
+    #: 'statement' | 'manual'
+    source: Mapped[str] = mapped_column(String(20), default='statement')
+
+    contractor: Mapped[Contractor] = relationship(back_populates='entries')
+
+
+class ContractorClaim(TimestampMixin, Base):
+    """مستخلص — the document itself, cumulative totals as printed, all editable.
+
+    Claims do NOT feed the balance (the ledger does); they carry the retention
+    detail and cumulative history the ledger lines cannot show.
+    """
+    __tablename__ = 'contractor_claims'
+    __table_args__ = (UniqueConstraint('contractor_id', 'project', 'number', 'date',
+                                       name='uq_claim_identity'),)
+
+    contractor_id: Mapped[str] = mapped_column(ForeignKey('contractors.id'), index=True)
+    project: Mapped[str] = mapped_column(String(120), default='')
+    number: Mapped[str] = mapped_column(String(60), default='')
+    date: Mapped[dt.date] = mapped_column(Date)
+    gross_cumulative: Mapped[float] = mapped_column(Float, default=0.0)
+    previous_cumulative: Mapped[float] = mapped_column(Float, default=0.0)
+    retention_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    retention_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    other_deductions: Mapped[float] = mapped_column(Float, default=0.0)
+    net_due: Mapped[float] = mapped_column(Float, default=0.0)
+    description: Mapped[str] = mapped_column(Text, default='')
+    #: 'manual' | 'excel' | 'pdf'
+    source: Mapped[str] = mapped_column(String(20), default='manual')
+
+    contractor: Mapped[Contractor] = relationship(back_populates='claims')
+
+
+class ContractorGuarantee(TimestampMixin, Base):
+    """ضمان مقاول في مشروع — the release clock, every field user-editable."""
+    __tablename__ = 'contractor_guarantees'
+    __table_args__ = (UniqueConstraint('contractor_id', 'project',
+                                       name='uq_guarantee_identity'),)
+
+    contractor_id: Mapped[str] = mapped_column(ForeignKey('contractors.id'), index=True)
+    project: Mapped[str] = mapped_column(String(120), default='')
+    #: retention held for this project (accumulated from claims or set by hand)
+    amount: Mapped[float] = mapped_column(Float, default=0.0)
+    retention_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    finished_on: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    guarantee_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    #: manual override; when null the due date derives from finished_on + guarantee_days
+    release_due: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    released_on: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default='')
+
+    contractor: Mapped[Contractor] = relationship(back_populates='guarantees')
+
+
+class BudgetSnapshot(TimestampMixin, Base):
+    """لقطة موازنة شهرية لمشروع — من تقرير انحراف الموازنة التقديرية."""
+    __tablename__ = 'budget_snapshots'
+    __table_args__ = (UniqueConstraint('project', 'month', name='uq_budget_identity'),)
+
+    project: Mapped[str] = mapped_column(String(120), index=True)
+    #: first day of the report month
+    month: Mapped[dt.date] = mapped_column(Date)
+    serial: Mapped[str] = mapped_column(String(60), default='')
+    issued_on: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    actual_month: Mapped[float] = mapped_column(Float, default=0.0)
+    planned_month: Mapped[float] = mapped_column(Float, default=0.0)
+    deviation_month: Mapped[float] = mapped_column(Float, default=0.0)
+    cum_actual: Mapped[float] = mapped_column(Float, default=0.0)
+    cum_planned: Mapped[float] = mapped_column(Float, default=0.0)
+    cum_prev_actual: Mapped[float] = mapped_column(Float, default=0.0)
+    cum_prev_planned: Mapped[float] = mapped_column(Float, default=0.0)
+    #: fraction, e.g. 0.1596 = 15.96% behind schedule
+    delay_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    #: fraction, e.g. 0.8404 — from the financial notes when stated
+    completion_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    #: JSON list of {no, amount, date} — مستخلصات صادرة للمالك في الشهر
+    claims: Mapped[str] = mapped_column(Text, default='[]')
+    notes: Mapped[str] = mapped_column(Text, default='')
+    source: Mapped[str] = mapped_column(Text, default='')
+
+
+class ImportLog(TimestampMixin, Base):
+    """سجل الرفع — audit trail so any imported number can be explained later."""
+    __tablename__ = 'import_logs'
+    source: Mapped[str] = mapped_column(String(40))
+    path: Mapped[str] = mapped_column(Text)
+    account: Mapped[str] = mapped_column(String(32), default='')
+    imported: Mapped[int] = mapped_column(Integer, default=0)
+    skipped: Mapped[int] = mapped_column(Integer, default=0)
+    reconciled: Mapped[int] = mapped_column(Integer, default=0)
+    issues: Mapped[str] = mapped_column(Text, default='[]')
