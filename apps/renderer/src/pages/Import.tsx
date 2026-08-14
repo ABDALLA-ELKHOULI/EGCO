@@ -322,7 +322,7 @@ export function ImportPage() {
         {/* ---- نتيجة فحص المجلد ---- */}
         {scanResult && !batchResult && (
           <Card title="نتيجة فحص المجلد" sub={scanResult.dir}>
-            <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="card-body top flow">
               <div>
                 وُجد {ar(scanResult.files.length)} ملفاً: {ar(scanResult.files.filter((f) => f.source === 'pdf_statement').length)} كشف PDF
                 {' '}· {ar(scanResult.files.filter((f) => f.source === 'csv_statement').length)} كشف CSV
@@ -350,7 +350,7 @@ export function ImportPage() {
         {/* ---- نتيجة الرفع الجماعي ---- */}
         {batchResult && (
           <Card title="نتيجة الرفع">
-            <div style={{ padding: '14px 20px' }}>
+            <div className="card-body top">
               <div style={{ marginBottom: 10 }}>
                 <BatchSummaryBanner
                   total={batchResult.total}
@@ -442,7 +442,7 @@ function QueueCard({ item }: { item: QueueItem }) {
   const { file, status, preview, saveResult, error } = item;
   return (
     <Card>
-      <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="card-body top flow">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, fontSize: 14 }}>{file.name}</div>
@@ -588,22 +588,22 @@ function UploadedFilesSection({ rows, loading, error, onDeleted, onPickFiles }: 
             تحدّثت أرصدة {lastDeleted.row.partyName ?? lastDeleted.row.account ?? 'الطرف المرتبط'} فوراً.
           </div>
         )}
-        <div style={{ overflowX: 'auto' }}>
+        <div className="table-scroll">
           <table>
             <thead>
               <tr>
                 <th>التاريخ</th><th>الملف</th><th>النوع</th><th>الطرف</th>
-                <th>الحركات</th><th>مطابق</th><th></th>
+                <th className="ltr">الحركات</th><th>مطابق</th><th></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} title={r.path}>
                   <td className="muted">{arDate(r.date.slice(0, 10))}</td>
-                  <td title={r.path}>{r.fileName}</td>
+                  <td title={r.path} className="truncate">{r.fileName}</td>
                   <td className="muted">{r.detected}</td>
                   <td>{r.partyName ?? r.account ?? '—'}</td>
-                  <td>
+                  <td className="ltr num">
                     {r.legacy
                       ? <>{ar(r.added)} <Pill kind="warn">قديم</Pill></>
                       : ar(r.linkedRows)}
@@ -613,7 +613,7 @@ function UploadedFilesSection({ rows, loading, error, onDeleted, onPickFiles }: 
                   </td>
                   <td>
                     <button
-                      className="btn"
+                      className="btn sm"
                       disabled={!r.canDelete || busyId === r.id}
                       title={r.canDelete ? 'حذف حركات هذا الملف' : 'يُدار من شاشته الخاصة'}
                       onClick={() => openConfirm(r)}
@@ -636,11 +636,11 @@ function UploadedFilesSection({ rows, loading, error, onDeleted, onPickFiles }: 
             {' '}— البيانات اليدوية لا تُمس.
           </p>
           {deleteErr && <div className="callout bad">{deleteErr}</div>}
-          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-            <button className="btn primary" onClick={() => doDelete(false)} disabled={busyId === target.id}>
+          <div className="modal-foot">
+            <button className="btn" onClick={() => setTarget(null)}>إلغاء</button>
+            <button className="btn danger" onClick={() => doDelete(false)} disabled={busyId === target.id}>
               {busyId === target.id ? 'جارٍ الحذف…' : 'حذف'}
             </button>
-            <button className="btn" onClick={() => setTarget(null)}>إلغاء</button>
           </div>
         </Modal>
       )}
@@ -653,11 +653,11 @@ function UploadedFilesSection({ rows, loading, error, onDeleted, onPickFiles }: 
             {' '}أُنشئت خلال ٣ دقائق من وقت رفع «{target.fileName}» — قد يشمل ذلك حركات لا علاقة لها بهذا الملف تحديداً.
           </p>
           {deleteErr && <div className="callout bad">{deleteErr}</div>}
-          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-            <button className="btn primary" onClick={() => doDelete(true)} disabled={busyId === target.id}>
+          <div className="modal-foot">
+            <button className="btn" onClick={() => { setTarget(null); setForceStep(false); }}>إلغاء</button>
+            <button className="btn danger" onClick={() => doDelete(true)} disabled={busyId === target.id}>
               {busyId === target.id ? 'جارٍ الحذف…' : 'حذف تقريبي — متابعة'}
             </button>
-            <button className="btn" onClick={() => { setTarget(null); setForceStep(false); }}>إلغاء</button>
           </div>
         </Modal>
       )}

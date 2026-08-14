@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { ar, arDate, invoiceCount, k, sar } from '@/lib/format';
 import { Card, Money, Pill, State } from '@/components/ui';
@@ -22,16 +22,27 @@ export function CalendarPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<DayDetail | null>(null);
   const [detailErr, setDetailErr] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const [projects, setProjects] = useState<string[]>([]);
+  const project = params.get('project') || '';
 
-  useEffect(() => { api.dashboard().then(setD); }, []);
+  useEffect(() => { api.dashboard({ project: project || undefined }).then(setD); }, [project]);
+
+  useEffect(() => { api.projects().then((r: any) => setProjects((r.rows ?? []).map((row: any) => row.project))).catch(() => {}); }, []);
 
   useEffect(() => {
     if (!selected) { setDetail(null); return; }
     setDetail(null); setDetailErr(null);
-    api.calendarDay(selected)
+    api.calendarDay(selected, { project: project || undefined })
       .then(setDetail)
       .catch((e) => setDetailErr(e instanceof Error ? e.message : String(e)));
-  }, [selected]);
+  }, [selected, project]);
+
+  function setProject(value: string) {
+    const p = new URLSearchParams(params);
+    if (value) p.set('project', value); else p.delete('project');
+    setParams(p, { replace: true });
+  }
 
   if (!d) return <State>جارٍ التحميل…</State>;
 
@@ -72,6 +83,13 @@ export function CalendarPage() {
         <button className="btn" onClick={() => setOffset(offset - 1)}>الشهر السابق</button>
         <button className="btn" onClick={() => setOffset(0)}>اليوم</button>
         <button className="btn" onClick={() => setOffset(offset + 1)}>الشهر التالي</button>
+      </div>
+
+      <div className="toolbar">
+        <select value={project} onChange={(e) => setProject(e.target.value)} style={{ minWidth: 180 }}>
+          <option value="">كل المشاريع</option>
+          {projects.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
       </div>
 
       <Card>

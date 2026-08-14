@@ -14,9 +14,33 @@
   --bg: #FBFAF7;
   --card: #FFFFFF;
 
+  /* الروابط لها رمز خاص — أزرق المتصفح الافتراضي كان يكسر اللوحة الذهبية ويختفي في الوضع الليلي.
+     Links get their own token; the browser default blue broke the palette and vanished on dark. */
+  --link: #9A6416;
+  --link-hover: #B87A28;
+
+  /* الشريط الجانبي رموز مستقلة — كان يقرأ var(--ink) فينقلب أبيض في الوضع الليلي.
+     The sidebar owns its own tokens; reading --ink flipped it white in dark mode. */
+  --sidebar-bg: #211D16;
+  --sidebar-fg: #EFE1CB;
+  --sidebar-fg-strong: #FFFFFF;
+  --sidebar-active-fg: #211D16;
+  --sidebar-hover: rgba(255, 255, 255, .06);
+  --sidebar-hover-strong: rgba(255, 255, 255, .16);
+  --sidebar-rule: rgba(255, 255, 255, .14);
+
+  /* طبقات شفافة للحالات — تُستعمل في الشرائط والتنبيهات وخلفيات النوافذ */
+  --wash-red: rgba(192, 39, 26, .10);
+  --wash-ok: rgba(46, 125, 50, .10);
+  --wash-gold: rgba(217, 148, 60, .14);
+  --overlay: rgba(33, 29, 22, .45);
+  --surface-2: #F5F2EC;
+
   --r-card: 10px;
   --r-control: 6px;
   --sidebar: 248px;
+
+  color-scheme: light;
   /* Cairo is the design font (macOS/Figma). Windows has neither Cairo nor SF Arabic,
      so Segoe UI then Tahoma carry the Arabic there — both ship with Windows and
      render Arabic correctly. Install Cairo on Windows to match the design exactly. */
@@ -32,6 +56,26 @@
   --ok: #5CB860;
   --bg: #16140F;
   --card: #1E1B15;
+
+  --link: #E0A85C;
+  --link-hover: #F0C489;
+
+  --sidebar-bg: #100E0A;
+  --sidebar-fg: #C9C2B2;
+  --sidebar-fg-strong: #F7F4EE;
+  --sidebar-active-fg: #16140F;
+  --sidebar-hover: rgba(255, 255, 255, .07);
+  --sidebar-hover-strong: rgba(255, 255, 255, .14);
+  --sidebar-rule: rgba(255, 255, 255, .12);
+
+  --wash-red: rgba(224, 85, 74, .14);
+  --wash-ok: rgba(92, 184, 96, .13);
+  --wash-gold: rgba(217, 148, 60, .15);
+  --overlay: rgba(0, 0, 0, .62);
+  --surface-2: #262218;
+
+  /* يجعل شريط التمرير وحقول التاريخ ومربعات الاختيار الأصلية تتبع الوضع الليلي */
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -46,6 +90,24 @@ body {
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
 }
+
+/* الروابط تتبع اللوحة الذهبية — الأزرق الافتراضي كان يختفي تماماً على خلفية الوضع الليلي.
+   Links follow the palette; the default blue was unreadable on the dark surface. */
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+a:hover { color: var(--link-hover); text-decoration: underline; }
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: var(--r-control);
+}
+
+::selection { background: var(--wash-gold); }
 
 /* الأرقام تُعرض دائماً من اليسار لليمين بأرقام جدولية داخل النص العربي —
    إهمال هذه القاعدة يُفسد محاذاة كل جدول مالي. */
@@ -62,9 +124,11 @@ td.num, th.num, td.ltr, th.ltr { display: table-cell; }
 /* ---------------- layout ---------------- */
 .app { display: flex; height: 100%; }
 .main { flex: 1; overflow-y: auto; padding: 26px 32px; }
-.page-head { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
-.page-head .grow { flex: 1; }
-.page-head h1 { font-size: 20px; margin: 0; letter-spacing: -0.3px; }
+/* يلتف عند الازدحام — أسماء المقاولين طويلة وستة أزرار كانت تدفع العنوان خارج السطر.
+   Wraps under pressure: long contractor names plus six buttons used to squeeze the title. */
+.page-head { display: flex; align-items: center; gap: 10px 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.page-head .grow { flex: 1 1 260px; min-width: 0; }
+.page-head h1 { font-size: 20px; margin: 0; letter-spacing: -0.3px; overflow-wrap: anywhere; }
 .page-head p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
 
 /* ---------------- sidebar ---------------- */
@@ -80,7 +144,8 @@ td.num, th.num, td.ltr, th.ltr { display: table-cell; }
 .sidebar {
   width: var(--sidebar-w);
   flex: 0 0 var(--sidebar-w);
-  background: var(--ink);
+  background: var(--sidebar-bg);
+  color: var(--sidebar-fg);
   padding: 20px 14px;
   display: flex;
   flex-direction: column;
@@ -102,30 +167,31 @@ td.num, th.num, td.ltr, th.ltr { display: table-cell; }
   padding: 0 6px 18px;
 }
 .side-head .brand { flex: 1; min-width: 0; text-align: right; }
-.brand b { color: #fff; font-size: 16px; display: block; white-space: nowrap; }
+.brand b { color: var(--sidebar-fg-strong); font-size: 16px; display: block; white-space: nowrap; }
 .brand span { color: var(--gold); font-size: 11px; white-space: nowrap; }
 
 .side-toggle {
   display: flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; flex: 0 0 30px;
   border: 0; border-radius: var(--r-control); cursor: pointer;
-  background: rgba(255,255,255,.08); color: var(--tint);
+  background: var(--sidebar-hover); color: var(--sidebar-fg);
   transition: background var(--motion-fast) var(--ease-base),
               color var(--motion-fast) var(--ease-base);
 }
-.side-toggle:hover { background: rgba(255,255,255,.16); color: #fff; }
+.side-toggle:hover { background: var(--sidebar-hover-strong); color: var(--sidebar-fg-strong); }
 .side-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 .nav-group { display: flex; flex-direction: column; gap: 3px; }
 .sidebar .section {
-  color: var(--muted); font-size: 11px;
+  color: var(--sidebar-fg);
+  opacity: .62; font-size: 11px;
   padding: 14px 10px 5px;
   white-space: nowrap;
 }
 /* عند الطي يتحوّل عنوان القسم إلى خط فاصل — الإيقاع البصري يبقى فلا يضيع المكان */
 .section-rule {
   display: block; height: 1px; width: 28px; margin: 6px auto 0;
-  background: rgba(255,255,255,.14);
+  background: var(--sidebar-rule);
 }
 
 .nav-item {
@@ -133,14 +199,15 @@ td.num, th.num, td.ltr, th.ltr { display: table-cell; }
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px;
   border-radius: var(--r-control);
-  color: var(--tint); text-decoration: none; font-size: 13px;
+  color: var(--sidebar-fg); text-decoration: none; font-size: 13px;
   white-space: nowrap;
   transition: background var(--motion-fast) var(--ease-base),
               color var(--motion-fast) var(--ease-base),
               padding var(--motion-base) var(--ease-base);
 }
-.nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
-.nav-item.active { background: var(--gold); color: var(--ink); font-weight: 600; }
+.nav-item:hover { background: var(--sidebar-hover); color: var(--sidebar-fg-strong); text-decoration: none; }
+.nav-item.active,
+.nav-item.active:hover { background: var(--gold); color: var(--sidebar-active-fg); font-weight: 600; }
 .nav-item:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 /* الترتيب في RTL: الأيقونة يميناً ثم النص ثم النقطة أقصى اليسار */
@@ -192,6 +259,19 @@ td.num, th.num, td.ltr, th.ltr { display: table-cell; }
 .kpi .value { font-size: 28px; font-weight: 700; letter-spacing: -1px; margin-top: 2px; }
 .kpi .unit { font-size: 11px; color: var(--muted); }
 
+/* ---------------- explain-this-number ---------------- */
+.explain-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; margin-inline-start: 4px;
+  border: 1px solid var(--hair); border-radius: 50%;
+  background: transparent; color: var(--muted);
+  font-size: 10px; line-height: 1; cursor: pointer; padding: 0;
+  vertical-align: middle;
+}
+.explain-dot:hover, .explain-dot:focus-visible {
+  border-color: var(--gold); color: var(--gold);
+}
+
 /* ---------------- tables ---------------- */
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { padding: 10px 12px; text-align: right; }
@@ -211,39 +291,102 @@ tfoot tr { background: var(--tint); font-weight: 600; }
 td.num, td.nowrap, th { white-space: nowrap; }
 
 /* ---------------- bits ---------------- */
-.pill { display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 99px; background: var(--tint); }
-.pill.red { background: rgba(192,39,26,.12); color: var(--red); }
-.pill.gold { background: rgba(217,148,60,.16); color: var(--bronze); }
-.pill.ok { background: rgba(46,125,50,.12); color: var(--ok); }
-.pill.warn { background: rgba(217,148,60,.16); color: var(--bronze); }
-/* وسم الطرف — كل صفّ يقول لمن هو: مورد أم مقاول */
-.pill.party { font-size: 10px; padding: 1px 7px; margin-inline-start: 6px; vertical-align: middle; white-space: nowrap; }
-.pill.party.supplier { background: rgba(217,148,60,.16); color: var(--bronze); }
-.pill.party.contractor { background: rgba(46,125,50,.12); color: var(--ok); }
-
-.btn {
-  font: inherit; font-size: 13px; padding: 9px 18px; border-radius: var(--r-control);
-  border: 1px solid var(--hair); background: transparent; color: var(--ink); cursor: pointer;
+/* شارة واحدة بمقاس واحد — الارتفاع ثابت مهما كان المحتوى «✓» أو جملة كاملة */
+.pill {
+  display: inline-block; font-size: 11px; line-height: 18px; padding: 0 9px;
+  border-radius: 99px; background: var(--tint); color: var(--ink);
+  white-space: nowrap; vertical-align: middle;
 }
-.btn:hover { border-color: var(--gold); }
-.btn.primary { background: var(--gold); border-color: var(--gold); color: #fff; }
-.btn.primary:hover { filter: brightness(1.05); }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
+.pill.red { background: var(--wash-red); color: var(--red); }
+.pill.gold { background: var(--wash-gold); color: var(--bronze); }
+.pill.ok { background: var(--wash-ok); color: var(--ok); }
+.pill.warn { background: var(--wash-gold); color: var(--bronze); }
+/* وسم الطرف — كل صفّ يقول لمن هو: مورد أم مقاول */
+.pill.party { font-size: 10px; line-height: 16px; padding: 0 7px; margin-inline-start: 6px; }
+.pill.party.supplier { background: var(--wash-gold); color: var(--bronze); }
+.pill.party.contractor { background: var(--wash-ok); color: var(--ok); }
 
-input, select {
+/* زرّ واحد لكل الأشكال — و«a.btn» يجب أن يفقد لون الرابط وتسطيره وإلا بدا نصاً أزرق داخل إطار.
+   One button for every shape; an <a class="btn"> must shed link colour/underline. */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font: inherit; font-size: 13px; line-height: 1.4; padding: 9px 18px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--hair); background: transparent; color: var(--ink);
+  cursor: pointer; text-decoration: none; white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-base),
+              border-color var(--motion-fast) var(--ease-base),
+              color var(--motion-fast) var(--ease-base);
+}
+a.btn, a.btn:hover { color: var(--ink); text-decoration: none; }
+.btn:hover:not(:disabled) { border-color: var(--gold); background: var(--wash-gold); }
+.btn.primary { background: var(--gold); border-color: var(--gold); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: var(--bronze); border-color: var(--bronze); color: #fff; }
+/* الزر الخطر — الحذف النهائي لا يجوز أن يرتدي لون الإجراء الأساسي الذهبي */
+.btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn.danger:hover:not(:disabled) { filter: brightness(1.08); background: var(--red); border-color: var(--red); }
+/* زر مصغّر داخل صفوف الجداول والبطاقات — كان يُكرَّر كأسلوب سطري في خمس شاشات */
+.btn.sm { padding: 4px 9px; font-size: 12px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+input, select, textarea {
   font: inherit; font-size: 13px; padding: 8px 12px;
   border: 1px solid var(--hair); border-radius: var(--r-control);
   background: var(--card); color: var(--ink);
 }
-input:focus, select:focus { outline: none; border-color: var(--gold); }
+textarea { width: 100%; resize: vertical; line-height: 1.8; padding: 10px 12px; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 2px var(--wash-gold); }
+input:disabled, select:disabled, textarea:disabled { opacity: .55; cursor: not-allowed; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); }
 
 .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 .toolbar .count { font-size: 12px; color: var(--muted); margin-right: auto; }
 
-.callout { padding: 12px 16px; border-radius: 8px; border: 1px solid; font-size: 13px; }
-.callout.ok { border-color: var(--ok); color: var(--ok); }
-.callout.bad { border-color: var(--red); color: var(--red); }
-.callout.note { border-color: var(--hair); color: var(--muted); }
+/* التنبيه: إطار + طبقة لون خفيفة، والنص يبقى بلون الحبر ليُقرأ في الوضعين.
+   نصّ ملوّن بالكامل على خلفية داكنة كان يهبط تحت حدّ التباين. */
+.callout {
+  padding: 12px 16px; border-radius: 8px; border: 1px solid var(--hair);
+  font-size: 13px; color: var(--ink); line-height: 1.7;
+}
+.callout.ok { border-color: var(--ok); background: var(--wash-ok); }
+.callout.bad { border-color: var(--red); background: var(--wash-red); }
+.callout.warn { border-color: var(--gold); background: var(--wash-gold); }
+.callout.note { border-color: var(--hair); background: var(--surface-2); }
+/* السطر الأول من التنبيه يحمل لون حالته — إشارة اللون بلا فقدان القراءة */
+.callout.ok > b:first-child, .callout.ok .lede { color: var(--ok); }
+.callout.bad > b:first-child, .callout.bad .lede { color: var(--red); }
+
+/* صفّ التنبيهات في لوحة القيادة — عمودان على الشاشات العريضة بدل ستة أشرطة
+   تبتلع الطية الأولى قبل أن يرى المستخدم رقماً واحداً. */
+.alerts { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 18px; }
+@media (min-width: 1180px) { .alerts { grid-template-columns: 1fr 1fr; } }
+
+/* جسم البطاقة — كان يُكتب كأسلوب سطري بثلاث قيم مختلفة عبر الشاشات */
+.card-body { padding: 0 20px 16px; }
+.card-body.top { padding-top: 14px; }
+.card-body.flow { display: flex; flex-direction: column; gap: 12px; }
+
+/* كتلة نتيجة الذكاء الاصطناعي — سطح داخلي لا بطاقة داخل بطاقة.
+   AiBlock used to render a .card inside a .card: doubled border and mismatched padding. */
+.ai-block {
+  background: var(--surface-2); border: 1px solid var(--hair);
+  border-radius: var(--r-control); padding: 14px 16px;
+}
+.ai-block > :first-child { margin-top: 0; }
+.ai-block > :last-child { margin-bottom: 0; }
+.ai-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+/* نص المساعد قد يخلط عربية بلاتينية — سطر قصير واتجاه تلقائي يمنع القفز */
+.ai-text {
+  margin: 0; white-space: pre-wrap; overflow-wrap: anywhere;
+  max-width: 74ch; line-height: 1.9; unicode-bidi: plaintext;
+}
+.ai-sql {
+  font-size: 11px; white-space: pre-wrap; direction: ltr; text-align: left;
+  margin: 8px 0 0; padding: 8px 10px; border-radius: var(--r-control);
+  background: var(--surface-2); border: 1px solid var(--hair); overflow-x: auto;
+}
+details > summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+details > summary:hover { color: var(--ink); }
 
 .state { padding: 60px 20px; text-align: center; color: var(--muted); font-size: 14px; }
 .red { color: var(--red); }
@@ -281,7 +424,7 @@ hr { border: 0; border-top: 1px solid var(--hair); margin: 16px 0; }
 .rpt-section > div { display: flex; align-items: center; gap: 8px; }
 .rpt-section b { font-size: 15px; }
 .rpt-section p { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
-.badge { background: var(--gold); color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 4px; }
+.badge { background: var(--gold); color: #fff; print-color-adjust: exact; -webkit-print-color-adjust: exact; font-size: 10px; padding: 2px 7px; border-radius: 4px; }
 .rpt-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
 .rpt-kpi { border: 1px solid var(--hair); padding: 12px; }
 .rpt-kpi span { display: block; font-size: 10px; color: var(--muted); }
@@ -299,7 +442,7 @@ hr { border: 0; border-top: 1px solid var(--hair); margin: 16px 0; }
 .rpt-foot .muted { font-size: 10px; margin-top: 10px; }
 
 @media print {
-  .sidebar, .no-print { display: none !important; }
+  .sidebar, .no-print, .explain-dot { display: none !important; }
   .main { padding: 0; overflow: visible; }
   .sheet { border: 0; border-radius: 0; padding: 0; max-width: none; }
   body { background: #fff; }
@@ -416,7 +559,9 @@ tbody tr.row-due-soon > td:first-child::before {
   content: ''; position: absolute; inset-inline-start: 0; top: 0; bottom: 0;
   width: 3px; background: var(--gold);
 }
-tbody tr.row-settled { opacity: 0.55; }
+/* الصف المسدَّد يهدأ ولا يختفي — 0.55 كانت تُنزل نصّه تحت حدّ التباين في الوضع الليلي */
+tbody tr.row-settled { opacity: 0.72; }
+tbody tr.row-settled:hover { opacity: 1; }
 
 /* ---------------- المقاولون ---------------- */
 /* شرائح المشاريع — تلتف على أكثر من سطر عند الازدحام */
@@ -493,3 +638,65 @@ tbody tr.row-settled { opacity: 0.55; }
   .budget-doc-bar .fill { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
 /* ==================== نهاية كتلة وثيقة الموازنة ==================== */
+
+/* ==================== نافذة منبثقة موحّدة ==================== */
+/* كل النوافذ ترث نفس العرض والحشو وترتيب الأزرار — كانت تُبنى بأساليب سطرية متفرقة. */
+.modal-scrim {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--overlay);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.modal-box {
+  background: var(--card); color: var(--ink);
+  border: 1px solid var(--hair); border-radius: var(--r-card);
+  padding: 22px 24px; width: 100%; max-height: 88vh; overflow-y: auto;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .22);
+}
+.modal-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.modal-head h2 { font-size: 16px; margin: 0; flex: 1; }
+.modal-box > :last-child { margin-bottom: 0; }
+/* ترتيب واحد في كل النوافذ: الإلغاء ثم الإجراء الأساسي، مصفوفَين لجهة النهاية */
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.modal-foot.split { justify-content: space-between; }
+.modal-foot .group { display: flex; gap: 8px; }
+
+/* صفّ الحقول في النماذج — بديل التكرار السطري */
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+.form-stack { display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 620px) {
+  .field-grid, .field-grid.three { grid-template-columns: 1fr; }
+}
+
+/* ==================== الطباعة ==================== */
+/* الوثيقة المطبوعة تُقرأ دائماً بحبر داكن على ورق أبيض، حتى لو كانت الشاشة ليلية */
+@media print {
+  :root, :root[data-theme="dark"] {
+    --bg: #FFFFFF; --card: #FFFFFF; --ink: #211D16; --muted: #6B665B;
+    --hair: #CFC9BE; --tint: #EFE1CB; --surface-2: #F5F2EC;
+    --red: #C0271A; --ok: #2E7D32; --link: #211D16;
+    color-scheme: light;
+  }
+  /* عناصر التحكم لا تُطبع؛ نص الملاحظات يُطبع كنص لا كصندوق إدخال */
+  .no-print-controls .no-print { display: none !important; }
+  .no-print-controls textarea {
+    border: 0; padding: 0; resize: none; background: transparent;
+    height: auto; overflow: visible; font-size: 12px;
+  }
+  .no-print-controls textarea:placeholder-shown { display: none; }
+  .btn, .toolbar { display: none !important; }
+}
+
+/* ==================== قصّ الأسماء الطويلة ==================== */
+/* أسماء المقاولين والملفات طويلة — تُقصّ بثلاث نقاط بدل أن تدفع بقية الأعمدة خارج الجدول.
+   Long names get an ellipsis instead of shoving the rest of the row off the table. */
+.truncate {
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+td.truncate { max-width: 260px; }
+
+/* اسم الطرف في صفوف الجداول لا يتجاوز عرضاً معقولاً */
+tbody td > a { overflow-wrap: anywhere; }

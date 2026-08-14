@@ -78,7 +78,7 @@ export function ManualEntryForm({ mode, initial, onSubmit, busy, error }: {
         <input value={reference} onChange={(e) => setReference(e.target.value)} />
       </label>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+      <div className="modal-foot">
         <button type="submit" className="btn primary" disabled={!canSubmit}>
           {busy ? 'جارٍ الحفظ…' : 'حفظ'}
         </button>

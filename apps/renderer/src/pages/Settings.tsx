@@ -14,9 +14,12 @@ export function Settings() {
     window.egco?.info().then(setInfo);
   }, []);
 
+  // الاختيار يُحفظ محلياً — كان يضيع مع كل إعادة تشغيل فيعود التطبيق نهارياً بلا سبب.
+  // The choice is persisted; it used to reset to light on every reload.
   function toggleTheme() {
     const next = theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('egco-theme', next); } catch { /* وضع خاص */ }
     setTheme(next);
   }
 
@@ -33,7 +36,7 @@ export function Settings() {
 
       <div className="stack">
         <Card title="البيانات">
-          <div style={{ padding: '0 20px 16px' }}>
+          <div className="card-body">
             <Row label="مكان قاعدة البيانات" value={health.db} />
             <Row label="مجلد التطبيق" value={info?.dataDir ?? '—'} />
             <Row label="نظام التشغيل" value={info?.platform ?? 'متصفح'} />
@@ -45,7 +48,7 @@ export function Settings() {
         </Card>
 
         <Card title="النقل إلى جهاز آخر">
-          <div style={{ padding: '0 20px 16px' }}>
+          <div className="card-body">
             <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 0 }}>
               كل بياناتك في ملف واحد. صدّره هنا، وانقله للجهاز الآخر، واستورده من نفس
               الشاشة — لا حاجة للبحث عن الملفات في النظام، ولا إنترنت ولا حساب.
@@ -89,7 +92,7 @@ export function Settings() {
         </Card>
 
         <Card title="الافتراضات">
-          <div style={{ padding: '0 20px 16px' }}>
+          <div className="card-body">
             <Row label="مدة السداد عند غياب القيمة" value="كاش — استحقاق فوري" />
             <Row label="طريقة توزيع الدفعات" value="الأقدم أولاً (FIFO)" />
             <Row label="نافذة التنبيه" value="٧ أيام" />
@@ -104,7 +107,7 @@ export function Settings() {
         <AiCard />
 
         <Card title="عن التطبيق">
-          <div style={{ padding: '0 20px 16px' }}>
+          <div className="card-body">
             <Row label="إصدار الخدمة" value={health.version} />
             <Row label="الاتصال بالشبكة" value="لا يوجد — يعمل دون إنترنت" cls="ok" />
           </div>
@@ -127,7 +130,7 @@ function AiCard() {
   if (!s) {
     return (
       <Card title="مساعد قراءة الملفات (ذكاء اصطناعي)">
-        <div style={{ padding: '0 20px 16px' }}>
+        <div className="card-body">
           {note ? <div className="callout bad">{note.text}</div> : <State>جارٍ التحميل…</State>}
         </div>
       </Card>
@@ -164,7 +167,7 @@ function AiCard() {
 
   return (
     <Card title="مساعد قراءة الملفات (ذكاء اصطناعي)">
-      <div style={{ padding: '0 20px 16px' }}>
+      <div className="card-body">
         <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 0 }}>
           عندما يفشل التعرف التلقائي على ملف كشف أو موازنة، يمكن لمساعد ذكاء اصطناعي
           استخراج السطور. أدخل بيانات مزود سحابي متوافق مع OpenAI —
@@ -179,7 +182,7 @@ function AiCard() {
           <span>تفعيل المساعد</span>
         </label>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div className="field-grid">
           <Field label="المزود">
             <input value={s.provider} placeholder="OpenAI / DeepSeek / Groq …"
                    onChange={(e) => set({ provider: e.target.value })} />

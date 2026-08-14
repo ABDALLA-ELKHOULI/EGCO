@@ -8,7 +8,7 @@ export type IconName =
   | 'dashboard' | 'payables' | 'cashflow' | 'projects' | 'reports'
   | 'calendar' | 'suppliers' | 'coverage' | 'upload' | 'settings'
   | 'contractors' | 'budget'
-  | 'collapse' | 'expand';
+  | 'collapse' | 'expand' | 'revenue';
 
 const PATHS: Record<IconName, JSX.Element> = {
   dashboard: (
@@ -94,6 +94,12 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14,2 14,8 20,8" />
       <path d="M8 18v-4M12 18v-6M16 18v-3" />
+    </>
+  ),
+  revenue: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v10M8.5 10.5C8.5 9 10 8.2 12 8.2s3.5.8 3.5 2.3-1.5 2-3.5 2-3.5.7-3.5 2.2 1.5 2.3 3.5 2.3 3.5-.8 3.5-2.3" />
     </>
   ),
   collapse: (

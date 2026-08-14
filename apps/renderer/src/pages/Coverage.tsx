@@ -79,7 +79,7 @@ export function CoveragePage() {
       </div>
 
       <Card>
-        <div style={{ padding: '14px 20px 0' }}>
+        <div className="card-body top" style={{ paddingBottom: 0 }}>
           <div className="toolbar">
             <select value={filter} onChange={(e) => setFilter(e.target.value)}>
               {FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}

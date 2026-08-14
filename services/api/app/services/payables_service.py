@@ -31,11 +31,14 @@ def _supplier(row: models.Supplier) -> P.Supplier:
 
 def positions(db: Session, today: Optional[dt.date] = None,
               account: Optional[str] = None,
+              project: Optional[str] = None,
               include_empty: bool = False) -> list:
     today = today or dt.date.today()
     q = db.query(models.Supplier).filter(models.Supplier.deleted_at.is_(None))
     if account:
         q = q.filter(models.Supplier.account == account)
+    if project:
+        q = q.filter(models.Supplier.project == project)
 
     out: list = []
     for row in q.all():
@@ -159,10 +162,11 @@ def status_of(p) -> str:
 
 def dashboard(db: Session, today: Optional[dt.date] = None,
               date_from: Optional[dt.date] = None,
-              date_to: Optional[dt.date] = None) -> dict:
+              date_to: Optional[dt.date] = None,
+              project: Optional[str] = None) -> dict:
     """لوحة اليوم — the numbers على S1."""
     today = today or dt.date.today()
-    ps = positions(db, today)
+    ps = positions(db, today, project=project)
 
     rows = []
     for p in ps:

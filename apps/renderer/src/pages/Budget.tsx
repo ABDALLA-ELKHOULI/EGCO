@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, ApiError, type BudgetMonth, type BudgetProject, type BudgetResponse } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
 import { Card, EmptyState, Kpi, Money, Pill, State } from '@/components/ui';
+import { ExplainDot } from '@/components/Explain';
 import { useAiEnabled } from '@/lib/useAi';
 import type { PickedFile } from '@/types/global';
 
@@ -323,9 +324,7 @@ function BudgetNotesSection({ project, initial }: { project: string; initial: st
         onChange={(e) => setNotes(e.target.value)}
         placeholder="ملاحظات مالية عن هذا المشروع…"
         rows={4}
-        style={{ width: '100%', resize: 'vertical', font: 'inherit', fontSize: 12, padding: 8,
-                 border: '1px solid var(--hair)', borderRadius: 'var(--r-control)',
-                 background: 'var(--card)', color: 'var(--ink)', whiteSpace: 'pre-wrap' }}
+        style={{ fontSize: 12 }}
       />
     </div>
   );
@@ -396,7 +395,7 @@ function ProjectBudget({ p }: { p: BudgetProject }) {
     <Card
       title={p.project}
       sub={latest
-        ? `آخر تقرير: ${latest.month}${latest.serial != null ? ` · تقرير رقم ${ar(latest.serial)}` : ''}${latest.issuedOn ? ` · صدر ${arDate(latest.issuedOn)}` : ''}`
+        ? `آخر تقرير: ${arDate(latest.month, true)}${latest.serial != null ? ` · تقرير رقم ${ar(latest.serial)}` : ''}${latest.issuedOn ? ` · صدر ${arDate(latest.issuedOn)}` : ''}`
         : undefined}
       actions={delta != null ? (
         <Pill kind={delta < 0 ? 'ok' : 'red'}>
@@ -408,15 +407,22 @@ function ProjectBudget({ p }: { p: BudgetProject }) {
         <EmptyState kind="no-data" title="لا تقارير لهذا المشروع"
           body="لم تُرفع تقارير انحراف لهذا المشروع بعد." />
       ) : (
-        <div style={{ padding: '0 20px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 18 }}>
           <div className="kpi-row" style={{ marginBottom: 0 }}>
             <Kpi label="حجم العمل الفعلي للشهر" value={sar(latest.actualMonth)} unit="ر.س" />
             <Kpi label="المخطط للشهر" value={sar(latest.plannedMonth)} unit="ر.س" />
             <Kpi label="انحراف الشهر" value={sar(latest.deviationMonth)} unit="ر.س"
                  tone={latest.deviationMonth < 0 ? 'red' : latest.deviationMonth > 0 ? 'ok' : 'muted'} />
             <Kpi label="نسبة الإنجاز" value={`${sar(latest.completionPct * 100)}٪`}
-                 tone={latest.delayPct > 0.10 ? 'red' : ''} alert={latest.delayPct > 0.10} />
+                 tone={latest.delayPct > 0.10 ? 'red' : ''} alert={latest.delayPct > 0.10}
+                 explain={<ExplainDot metric="budgetCompletion"
+                   values={{ actualCum: latest.cumActual, plannedTotal: latest.cumPlanned, completionPct: latest.completionPct }} />} />
           </div>
+          <p className="muted" style={{ fontSize: 11, margin: 0, display: 'flex', alignItems: 'center', gap: 2 }}>
+            نسبة التأخر
+            <ExplainDot metric="budgetDelay"
+              values={{ plannedCum: latest.cumPlanned, actualCum: latest.cumActual, delayPct: latest.delayPct }} />
+          </p>
 
           {/* مقارنة التراكمي — أعمدة CSS بسيطة بلا مكتبة رسوم */}
           <div>
@@ -429,7 +435,7 @@ function ProjectBudget({ p }: { p: BudgetProject }) {
           </div>
 
           {p.months.length > 0 && (
-            <table>
+            <div className="table-scroll"><table>
               <thead>
                 <tr>
                   <th>الشهر</th>
@@ -443,7 +449,7 @@ function ProjectBudget({ p }: { p: BudgetProject }) {
               <tbody>
                 {p.months.map((m) => (
                   <tr key={m.month}>
-                    <td>{m.month}</td>
+                    <td className="nowrap">{arDate(m.month)}</td>
                     <td className="ltr"><Money v={m.actualMonth} /></td>
                     <td className="ltr muted"><Money v={m.plannedMonth} /></td>
                     <td className="ltr">
@@ -454,7 +460,7 @@ function ProjectBudget({ p }: { p: BudgetProject }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
 
           {latest.claims.length > 0 && (

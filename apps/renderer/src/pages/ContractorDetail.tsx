@@ -8,6 +8,7 @@ import {
 } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
 import { Card, EmptyState, Kpi, Money, Pill, State } from '@/components/ui';
+import { ExplainDot } from '@/components/Explain';
 import { Modal } from '@/components/Modal';
 import { ContractorForm, type ContractorFormValues } from '@/components/ContractorForm';
 import { balanceView } from '@/pages/Contractors';
@@ -33,8 +34,6 @@ const DUE_STATUS: Record<GuaranteeDueStatus, { label: string; cls: string }> = {
   released:  { label: 'صُرف',        cls: 'ok' },
 };
 
-const fieldStyle = { display: 'flex', flexDirection: 'column' as const, gap: 4, fontSize: 13 };
-const smallBtn = { padding: '4px 9px', fontSize: 12 } as const;
 
 export function ContractorDetail() {
   const { code } = useParams();
@@ -118,23 +117,25 @@ export function ContractorDetail() {
           </p>
           {d.notes && <p className="muted" style={{ fontSize: 12 }}>{d.notes}</p>}
         </div>
-        <button className="btn" onClick={() => { setFormErr(null); setEditOpen(true); }}>تعديل</button>
-        <button className="btn" onClick={() => { setFormErr(null); setEntryModal({}); }}>إضافة حركة</button>
+        <button className="btn sm" onClick={() => { setFormErr(null); setEditOpen(true); }}>تعديل</button>
+        <button className="btn sm primary" onClick={() => { setFormErr(null); setEntryModal({}); }}>إضافة حركة</button>
         {!aiLoading && aiEnabled && (
           <>
-            <button className="btn" onClick={() => setRemindOpen(true)}>صياغة مطالبة</button>
-            <button className="btn" onClick={() => setParseTextOpen(true)}>قيد من نص</button>
+            <button className="btn sm" onClick={() => setRemindOpen(true)}>صياغة مطالبة</button>
+            <button className="btn sm" onClick={() => setParseTextOpen(true)}>قيد من نص</button>
           </>
         )}
-        <Link to="/contractors"><button className="btn">رجوع</button></Link>
+        <Link to="/contractors"><button className="btn sm">رجوع</button></Link>
       </div>
 
       <div className="kpi-row">
         <Kpi label={`الرصيد (${v.label})`} value={sar(d.balance)} unit="ر.س" tone={v.cls}
-             alert={d.balance < 0} />
+             alert={d.balance < 0}
+             explain={<ExplainDot metric="contractorBalance" values={{ duesTotal, paidTotal, balance: d.balance }} />} />
         <Kpi label="إجمالي المستخلصات" value={sar(duesTotal)} unit="ر.س" />
         <Kpi label="إجمالي المدفوع" value={sar(paidTotal)} unit="ر.س" tone="ok" />
-        <Kpi label="الضمان المحتجز" value={sar(retentionHeld)} unit="ر.س" />
+        <Kpi label="الضمان المحتجز" value={sar(retentionHeld)} unit="ر.س"
+             explain={<ExplainDot metric="retentionHeld" values={{ retentionHeld }} />} />
       </div>
       <p className="muted" style={{ fontSize: 11, margin: '-12px 0 18px' }}>
         الرصيد يشمل أيضاً الخصومات والتأمينات والفواتير المحمّلة — لذا لا يساوي المدفوع ناقص المستخلصات بالضرورة
@@ -166,7 +167,7 @@ export function ContractorDetail() {
           title={projectFilter ? `الدفتر — ${projectFilter}` : 'دفتر الحساب'}
           sub="مدين = دفعنا له أو خُصم منه · دائن = استحق له"
           actions={projectFilter
-            ? <button className="btn" onClick={() => setProjectFilter('')}>إظهار الكل</button>
+            ? <button className="btn sm" onClick={() => setProjectFilter('')}>إظهار الكل</button>
             : undefined}
         >
           {entries.length === 0 ? (
@@ -213,14 +214,14 @@ export function ContractorDetail() {
                       <td className="ltr">
                         {e.source === 'manual' ? (
                           <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                            <button className="btn" style={smallBtn}
-                                    onClick={() => { setFormErr(null); setEntryModal({ entry: e }); }}>✎</button>
-                            <button className="btn" style={smallBtn}
-                                    onClick={() => { setFormErr(null); setDeleteEntry(e); }}>🗑</button>
+                            <button className="btn sm"
+                                    onClick={() => { setFormErr(null); setEntryModal({ entry: e }); }} aria-label="تعديل" title="تعديل">✎</button>
+                            <button className="btn sm"
+                                    onClick={() => { setFormErr(null); setDeleteEntry(e); }} aria-label="حذف" title="حذف">🗑</button>
                           </div>
                         ) : (
-                          <button className="btn" style={{ ...smallBtn, opacity: .4, cursor: 'not-allowed' }}
-                                  disabled title="من كشف الحساب">🗑</button>
+                          <button className="btn sm" disabled aria-label="حذف — غير متاح"
+                                  title="حركة من كشف الحساب — تُحذف من «الملفات المرفوعة»">🗑</button>
                         )}
                       </td>
                     </tr>
@@ -235,7 +236,7 @@ export function ContractorDetail() {
           title="المستخلصات"
           sub={`${ar(d.claims.length)} مستخلصاً`}
           actions={
-            <button className="btn" onClick={() => { setFormErr(null); setClaimModal({}); }}>
+            <button className="btn sm" onClick={() => { setFormErr(null); setClaimModal({}); }}>
               إضافة مستخلص
             </button>
           }
@@ -277,10 +278,10 @@ export function ContractorDetail() {
                     <td className="ltr">
                       {c.source === 'manual' ? (
                         <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                          <button className="btn" style={smallBtn}
-                                  onClick={() => { setFormErr(null); setClaimModal({ claim: c }); }}>✎</button>
-                          <button className="btn" style={smallBtn}
-                                  onClick={() => { setFormErr(null); setDeleteClaim(c); }}>🗑</button>
+                          <button className="btn sm"
+                                  onClick={() => { setFormErr(null); setClaimModal({ claim: c }); }} aria-label="تعديل" title="تعديل">✎</button>
+                          <button className="btn sm"
+                                  onClick={() => { setFormErr(null); setDeleteClaim(c); }} aria-label="حذف" title="حذف">🗑</button>
                         </div>
                       ) : (
                         <span className="muted" style={{ fontSize: 11 }} title="من كشف الحساب">كشف</span>
@@ -297,7 +298,7 @@ export function ContractorDetail() {
           title="الضمانات"
           sub="تأمين الأعمال — يُصرف بعد انتهاء مدة الضمان من تاريخ إنهاء الأعمال"
           actions={
-            <button className="btn" onClick={() => { setFormErr(null); setGuaranteeModal({}); }}>
+            <button className="btn sm" onClick={() => { setFormErr(null); setGuaranteeModal({}); }}>
               إضافة ضمان
             </button>
           }
@@ -332,10 +333,10 @@ export function ContractorDetail() {
                       {g.notes && <>{g.notes}</>}
                     </div>
                     <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                      <button className="btn" style={smallBtn}
-                              onClick={() => { setFormErr(null); setGuaranteeModal({ guarantee: g }); }}>✎</button>
-                      <button className="btn" style={smallBtn}
-                              onClick={() => { setFormErr(null); setDeleteGuarantee(g); }}>🗑</button>
+                      <button className="btn sm"
+                              onClick={() => { setFormErr(null); setGuaranteeModal({ guarantee: g }); }} aria-label="تعديل" title="تعديل">✎</button>
+                      <button className="btn sm"
+                              onClick={() => { setFormErr(null); setDeleteGuarantee(g); }} aria-label="حذف" title="حذف">🗑</button>
                     </div>
                   </div>
                 );
@@ -508,12 +509,9 @@ function ParseTextModal({ onClose, onProposal }: {
           placeholder="الصق رسالة واتساب أو بريد…"
           rows={8}
           disabled={busy}
-          style={{ width: '100%', resize: 'vertical', font: 'inherit', fontSize: 13, padding: 10,
-                   border: '1px solid var(--hair)', borderRadius: 'var(--r-control)',
-                   background: 'var(--card)', color: 'var(--ink)' }}
         />
         {error && <div className="callout bad">{error}</div>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <div className="modal-foot">
           <button className="btn" onClick={onClose}>إلغاء</button>
           <button className="btn primary" onClick={submit} disabled={busy || !text.trim()}>
             {busy ? 'جارٍ التحليل…' : 'تحليل واقتراح'}
@@ -532,9 +530,9 @@ function ConfirmDelete({ text, busy, error, onClose, onConfirm }: {
     <Modal title="تأكيد الحذف" onClose={onClose}>
       <p>{text}</p>
       {error && <div className="callout bad">{error}</div>}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+      <div className="modal-foot">
         <button className="btn" onClick={onClose}>إلغاء</button>
-        <button className="btn primary" disabled={busy} onClick={onConfirm}>
+        <button className="btn danger" disabled={busy} onClick={onConfirm}>
           {busy ? 'جارٍ الحذف…' : 'حذف'}
         </button>
       </div>
@@ -548,7 +546,7 @@ function ProjectField({ value, onChange, projects }: {
   const known = value === '' || projects.includes(value);
   const [free, setFree] = useState(!known);
   return (
-    <label style={fieldStyle}>
+    <label className="field">
       المشروع
       {!free ? (
         <select value={value} onChange={(e) => {
@@ -600,36 +598,36 @@ function EntryForm({ initial, draft, projects, busy, error, onSubmit }: {
   }
 
   return (
-    <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <label style={fieldStyle}>
+    <form onSubmit={submit} className="form-stack">
+      <label className="field">
         التاريخ
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
       </label>
-      <label style={fieldStyle}>
+      <label className="field">
         نوع الحركة
         <select value={side} onChange={(e) => setSide(e.target.value as 'debit' | 'credit')}>
           <option value="debit">مدين (دفعة/خصم)</option>
           <option value="credit">دائن (مستخلص)</option>
         </select>
       </label>
-      <label style={fieldStyle}>
+      <label className="field">
         المبلغ
         <input type="number" step="0.01" min="0" value={amount}
                onChange={(e) => setAmount(e.target.value)} required dir="ltr" />
       </label>
-      <label style={fieldStyle}>
+      <label className="field">
         الوصف
         <input value={description} onChange={(e) => setDescription(e.target.value)} required />
       </label>
       <ProjectField value={project} onChange={setProject} projects={projects} />
-      <label style={fieldStyle}>
+      <label className="field">
         التصنيف
         <select value={kind} onChange={(e) => setKind(e.target.value)}>
           {Object.entries(KIND).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
         </select>
       </label>
       {error && <div className="callout bad">{error}</div>}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+      <div className="modal-foot">
         <button className="btn primary" type="submit" disabled={busy}>
           {busy ? 'جارٍ الحفظ…' : 'حفظ'}
         </button>
@@ -690,32 +688,32 @@ function ClaimForm({ initial, projects, defaultRetentionRate, busy, error, onSub
   }
 
   return (
-    <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+    <form onSubmit={submit} className="form-stack">
+      <div className="field-grid">
         <ProjectField value={project} onChange={setProject} projects={projects} />
-        <label style={fieldStyle}>
+        <label className="field">
           رقم المستخلص
           <input value={number} onChange={(e) => setNumber(e.target.value)} required />
         </label>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <label style={fieldStyle}>
+      <div className="field-grid">
+        <label className="field">
           التاريخ
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
         </label>
-        <label style={fieldStyle}>
+        <label className="field">
           نسبة التأمين ٪
           <input type="number" step="0.1" min="0" max="100" value={rate}
                  onChange={(e) => setRate(e.target.value)} dir="ltr" />
         </label>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <label style={fieldStyle}>
+      <div className="field-grid">
+        <label className="field">
           إجمالي الأعمال التراكمي
           <input type="number" step="0.01" min="0" value={gross}
                  onChange={(e) => setGross(e.target.value)} required dir="ltr" />
         </label>
-        <label style={fieldStyle}>
+        <label className="field">
           التراكمي السابق
           <input type="number" step="0.01" min="0" value={previous}
                  onChange={(e) => setPrevious(e.target.value)} dir="ltr" />
@@ -729,20 +727,20 @@ function ClaimForm({ initial, projects, defaultRetentionRate, busy, error, onSub
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-        <label style={fieldStyle}>
+      <div className="field-grid three">
+        <label className="field">
           مبلغ التأمين
           <input type="number" step="0.01" min="0"
                  value={retentionTouched ? retention : String(round2(suggestedRetention))}
                  onChange={(e) => { setRetentionTouched(true); setRetention(e.target.value); }}
                  dir="ltr" />
         </label>
-        <label style={fieldStyle}>
+        <label className="field">
           خصومات أخرى
           <input type="number" step="0.01" min="0" value={deductions}
                  onChange={(e) => setDeductions(e.target.value)} dir="ltr" />
         </label>
-        <label style={fieldStyle}>
+        <label className="field">
           الصافي المستحق
           <input type="number" step="0.01"
                  value={netTouched ? netDue : String(round2(suggestedNet))}
@@ -751,12 +749,12 @@ function ClaimForm({ initial, projects, defaultRetentionRate, busy, error, onSub
         </label>
       </div>
 
-      <label style={fieldStyle}>
+      <label className="field">
         الوصف
         <input value={description} onChange={(e) => setDescription(e.target.value)} />
       </label>
       {error && <div className="callout bad">{error}</div>}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+      <div className="modal-foot">
         <button className="btn primary" type="submit" disabled={busy || !project.trim() || !number.trim()}>
           {busy ? 'جارٍ الحفظ…' : 'حفظ'}
         </button>
@@ -795,46 +793,46 @@ function GuaranteeForm({ initial, projects, busy, error, onSubmit }: {
   }
 
   return (
-    <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <form onSubmit={submit} className="form-stack">
       <ProjectField value={project} onChange={setProject} projects={projects} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <label style={fieldStyle}>
+      <div className="field-grid">
+        <label className="field">
           المبلغ
           <input type="number" step="0.01" min="0" value={amount}
                  onChange={(e) => setAmount(e.target.value)} dir="ltr" />
         </label>
-        <label style={fieldStyle}>
+        <label className="field">
           نسبة التأمين ٪
           <input type="number" step="0.1" min="0" max="100" value={rate}
                  onChange={(e) => setRate(e.target.value)} dir="ltr" />
         </label>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <label style={fieldStyle}>
+      <div className="field-grid">
+        <label className="field">
           تاريخ إنهاء الأعمال
           <input type="date" value={finishedOn} onChange={(e) => setFinishedOn(e.target.value)} />
         </label>
-        <label style={fieldStyle}>
+        <label className="field">
           مدة الضمان (يوم)
           <input type="number" min="0" value={days} onChange={(e) => setDays(e.target.value)} dir="ltr" />
         </label>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <label style={fieldStyle}>
+      <div className="field-grid">
+        <label className="field">
           تاريخ استحقاق الصرف
           <input type="date" value={releaseDue} onChange={(e) => setReleaseDue(e.target.value)} />
         </label>
-        <label style={fieldStyle}>
+        <label className="field">
           تاريخ الصرف الفعلي
           <input type="date" value={releasedOn} onChange={(e) => setReleasedOn(e.target.value)} />
         </label>
       </div>
-      <label style={fieldStyle}>
+      <label className="field">
         ملاحظات
         <input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
       {error && <div className="callout bad">{error}</div>}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+      <div className="modal-foot">
         <button className="btn primary" type="submit" disabled={busy || !project.trim()}>
           {busy ? 'جارٍ الحفظ…' : 'حفظ'}
         </button>

@@ -14,15 +14,17 @@ router = APIRouter()
 @router.get('')
 def dashboard(date_from: Optional[str] = Query(None),
              date_to: Optional[str] = Query(None),
+             project: Optional[str] = Query(None),
              db: Session = Depends(get_session)) -> dict:
     """لوحة اليوم."""
     df = dt.date.fromisoformat(date_from) if date_from else None
     dtt = dt.date.fromisoformat(date_to) if date_to else None
-    return payables_service.dashboard(db, date_from=df, date_to=dtt)
+    return payables_service.dashboard(db, date_from=df, date_to=dtt, project=project)
 
 
 @router.get('/day')
-def day_detail(date: str = Query(...), db: Session = Depends(get_session)) -> dict:
+def day_detail(date: str = Query(...), project: Optional[str] = Query(None),
+              db: Session = Depends(get_session)) -> dict:
     """تفاصيل يوم في التقويم — كل ما يستحق فيه، مع ما يلزم للانتقال إلى صاحبه.
 
     Two kinds of obligations can land on a day: supplier invoices falling due,
@@ -36,7 +38,7 @@ def day_detail(date: str = Query(...), db: Session = Depends(get_session)) -> di
     today = dt.date.today()
 
     suppliers = []
-    ps = payables_service.positions(db)
+    ps = payables_service.positions(db, project=project)
     # horizon wide enough that any clickable month is covered either way
     span = abs((day - today).days) + 40
     for bucket in payment_schedule(ps, today, horizon_days=span):
@@ -49,8 +51,11 @@ def day_detail(date: str = Query(...), db: Session = Depends(get_session)) -> di
 
     guarantees = []
     from app.db import models
-    for g in db.query(models.ContractorGuarantee).filter(
-            models.ContractorGuarantee.deleted_at.is_(None)).all():
+    gq = db.query(models.ContractorGuarantee).filter(
+        models.ContractorGuarantee.deleted_at.is_(None))
+    if project:
+        gq = gq.filter(models.ContractorGuarantee.project == project)
+    for g in gq.all():
         release_due, status = contractors_service.guarantee_release(g, today)
         if release_due == day and status != 'released':
             c = g.contractor

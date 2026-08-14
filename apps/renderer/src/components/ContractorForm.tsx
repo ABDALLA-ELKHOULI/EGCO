@@ -38,7 +38,7 @@ export function ContractorForm({ initial, codeLocked = false, onSubmit, busy, er
   const field = { display: 'flex', flexDirection: 'column' as const, gap: 4, fontSize: 13 };
 
   return (
-    <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <form onSubmit={submit} className="form-stack">
       <label style={field}>
         الرمز
         <input value={code} onChange={(e) => setCode(e.target.value)} required disabled={codeLocked} />
@@ -51,7 +51,7 @@ export function ContractorForm({ initial, codeLocked = false, onSubmit, busy, er
         الهاتف
         <input value={phone} onChange={(e) => setPhone(e.target.value)} dir="ltr" />
       </label>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div className="field-grid">
         <label style={field}>
           نسبة الضمان الافتراضية ٪
           <input type="number" step="0.1" min="0" max="100" value={retention}
@@ -68,7 +68,7 @@ export function ContractorForm({ initial, codeLocked = false, onSubmit, busy, er
         <input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
       {error && <div className="callout bad">{error}</div>}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+      <div className="modal-foot">
         <button className="btn primary" type="submit" disabled={busy || !code.trim() || !name.trim()}>
           {busy ? 'جارٍ الحفظ…' : 'حفظ'}
         </button>

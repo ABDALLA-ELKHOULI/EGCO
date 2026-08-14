@@ -73,7 +73,7 @@ export function Suppliers() {
           <p>مرتبون بالمتأخر ثم بالمديونية المفتوحة</p>
         </div>
         {!aiLoading && aiEnabled && (
-          <button className="btn" onClick={() => setPrioritiesOpen((v) => !v)}>
+          <button className="btn sm" onClick={() => setPrioritiesOpen((v) => !v)}>
             {prioritiesOpen ? 'إخفاء أولويات السداد' : 'أولويات السداد'}
           </button>
         )}
@@ -163,10 +163,10 @@ export function Suppliers() {
                     </td>
                     <td className="ltr">
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                        <button className="btn" style={{ padding: '4px 9px', fontSize: 12 }}
-                                onClick={() => { setFormErr(null); setEditRow(r); }}>✎</button>
-                        <button className="btn" style={{ padding: '4px 9px', fontSize: 12 }}
-                                onClick={() => setDeleteRow(r)}>🗑</button>
+                        <button className="btn sm"
+                                onClick={() => { setFormErr(null); setEditRow(r); }} aria-label="تعديل" title="تعديل">✎</button>
+                        <button className="btn sm"
+                                onClick={() => setDeleteRow(r)} aria-label="حذف" title="حذف">🗑</button>
                       </div>
                     </td>
                   </tr>
@@ -242,7 +242,7 @@ function PrioritiesPanel() {
 
   return (
     <Card title="أولويات السداد" sub="الترتيب محسوب بقواعد حتمية، والشرح فقط من المساعد" >
-      <div style={{ padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="card-body flow">
         <div className="toolbar" style={{ marginBottom: 0 }}>
           <label style={{ fontSize: 13, color: 'var(--muted)' }}>
             ميزانية متاحة
@@ -335,9 +335,9 @@ function DeleteSupplierModal({ row, onClose, onDeleted }:
       {error && <div className="callout bad">{error}</div>}
 
       {!needForce ? (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+        <div className="modal-foot">
           <button className="btn" onClick={onClose}>إلغاء</button>
-          <button className="btn primary" disabled={busy} onClick={() => tryDelete(false)}>
+          <button className="btn danger" disabled={busy} onClick={() => tryDelete(false)}>
             {busy ? 'جارٍ الحذف…' : 'حذف'}
           </button>
         </div>
@@ -352,9 +352,9 @@ function DeleteSupplierModal({ row, onClose, onDeleted }:
             onChange={(e) => setTyped(e.target.value)}
             placeholder={row.account}
           />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+          <div className="modal-foot">
             <button className="btn" onClick={onClose}>إلغاء</button>
-            <button className="btn primary" disabled={busy || typed !== row.account}
+            <button className="btn danger" disabled={busy || typed !== row.account}
                     onClick={() => tryDelete(true)}>
               {busy ? 'جارٍ الحذف…' : 'حذف نهائي'}
             </button>

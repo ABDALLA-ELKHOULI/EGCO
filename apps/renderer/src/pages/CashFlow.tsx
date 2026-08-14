@@ -1,27 +1,51 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
-import { Card, Kpi, Money, Pill, State } from '@/components/ui';
+import { Card, EmptyState, Kpi, Money, Pill, State } from '@/components/ui';
 import { AiBlock } from '@/components/Ai';
 import { useAiEnabled } from '@/lib/useAi';
+import { ExplainDot } from '@/components/Explain';
+
+type PartiesFilter = 'suppliers' | 'contractors' | 'both';
 
 /** التدفق النقدي — الداخل مقابل الخارج، بالفترات. */
 export function CashFlow() {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
 
   const [opening, setOpening] = useState(0);
   const [weeksSel, setWeeksSel] = useState<13 | 26>(26);
+  const project = params.get('project') || '';
+  // الواجهة تفتح افتراضياً على «كلاهما» حتى مع بقاء افتراضي الخادم «الموردون فقط»
+  // للتوافق الخلفي مع أي مستدعٍ قديم للـ API — لذا نُرسل parties=both صراحةً من هنا.
+  const rawParties = params.get('parties') as PartiesFilter | null;
+  const parties: PartiesFilter =
+    rawParties === 'suppliers' || rawParties === 'contractors' || rawParties === 'both' ? rawParties : 'both';
   const [applied, setApplied] = useState<{ weeks: 13 | 26; opening: number }>({ weeks: 26, opening: 0 });
 
-  const load = (weeks: number, opening_balance: number) => {
-    api.cashflow({ weeks, opening_balance }).then(setD).catch((e) => setErr(e.message));
+  const load = (weeks: number, opening_balance: number, projectFilter: string, partiesFilter: PartiesFilter) => {
+    api.cashflow({ weeks, opening_balance, project: projectFilter || undefined, parties: partiesFilter })
+      .then(setD).catch((e) => setErr(e.message));
   };
 
-  useEffect(() => { load(applied.weeks, applied.opening); }, [applied]);
+  useEffect(() => { load(applied.weeks, applied.opening, project, parties); }, [applied, project, parties]);
 
   function apply() {
     setApplied({ weeks: weeksSel, opening: Number(opening) || 0 });
+  }
+
+  function setProject(value: string) {
+    const p = new URLSearchParams(params);
+    if (value) p.set('project', value); else p.delete('project');
+    setParams(p, { replace: true });
+  }
+
+  function setParties(value: PartiesFilter) {
+    const p = new URLSearchParams(params);
+    if (value === 'both') p.delete('parties'); else p.set('parties', value);
+    setParams(p, { replace: true });
   }
 
   if (err) return <State>تعذّر التحميل: {err}</State>;
@@ -32,6 +56,9 @@ export function CashFlow() {
   const hasReceivables = summary.hasReceivables !== false;
   const warnings: string[] = d.warnings ?? [];
   const maxAmt = Math.max(1, ...periods.map((p: any) => Math.max(p.inflow || 0, p.outflow || 0)));
+  const undatedContractorDues: number = d.undatedContractorDues ?? 0;
+  const allZero = periods.length > 0
+    && periods.every((p: any) => (p.inflow ?? 0) === 0 && (p.outflow ?? 0) === 0);
 
   return (
     <>
@@ -51,15 +78,29 @@ export function CashFlow() {
       )}
 
       <div className="toolbar">
+        <select value={project} onChange={(e) => setProject(e.target.value)} style={{ minWidth: 180 }}>
+          <option value="">كل المشاريع</option>
+          {(d.projects ?? []).map((p: string) => <option key={p} value={p}>{p}</option>)}
+        </select>
         <label style={{ fontSize: 13, color: 'var(--muted)' }}>
           الرصيد الافتتاحي
           <input type="number" value={opening} onChange={(e) => setOpening(Number(e.target.value))}
                  style={{ marginInlineStart: 8, width: 140 }} />
         </label>
         <select value={weeksSel} onChange={(e) => setWeeksSel(Number(e.target.value) as 13 | 26)}>
-          <option value={13}>١٣ فترة</option>
-          <option value={26}>٢٦ فترة</option>
+          <option value={13}>٣ أشهر قادمة (١٣ أسبوعاً)</option>
+          <option value={26}>٦ أشهر قادمة (٢٦ أسبوعاً)</option>
         </select>
+        <ExplainDot metric="cashflowHorizon" values={{}} />
+        <label style={{ fontSize: 13, color: 'var(--muted)' }}>
+          الأطراف
+          <select value={parties} onChange={(e) => setParties(e.target.value as PartiesFilter)}
+                  style={{ marginInlineStart: 8 }}>
+            <option value="both">كلاهما</option>
+            <option value="suppliers">الموردون فقط</option>
+            <option value="contractors">المقاولون فقط</option>
+          </select>
+        </label>
         <button className="btn primary" onClick={apply}>تطبيق</button>
       </div>
 
@@ -79,10 +120,20 @@ export function CashFlow() {
         </div>
       )}
 
+      {parties !== 'suppliers' && undatedContractorDues > 0 && (
+        <div className="callout warn" style={{ marginBottom: 14 }}>
+          مستحق للمقاولين بلا تواريخ استحقاق: {sar(undatedContractorDues)} ر.س — غير موزّع على الجدول
+          لأن دفاتر المقاولين لا تحمل تواريخ
+        </div>
+      )}
+
       <div className="stack">
         <Card title="الداخل مقابل الخارج">
           {periods.length === 0 ? (
             <State>لا توجد بيانات لهذه الفترة.</State>
+          ) : allZero ? (
+            <EmptyState kind="no-data" title="لا حركة نقدية في هذا الأفق"
+              body="لا داخل ولا خارج مسجَّل لأي فترة ضمن هذا الأفق — راجع شاشة التحصيلات وتأكد من رفع الملفات اللازمة." />
           ) : (
             <>
               <div className="bars">
@@ -113,7 +164,7 @@ export function CashFlow() {
                 {periods.map((p: any) => (
                   <div key={p.label} style={{
                     flex: '1 0 60px', textAlign: 'center', fontSize: 11, padding: '4px 2px',
-                    borderRadius: 4, background: p.balance < 0 ? 'rgba(192,39,26,.12)' : 'var(--tint)',
+                    borderRadius: 4, background: p.balance < 0 ? 'var(--wash-red)' : 'var(--tint)',
                   }}>
                     <div className={'num' + (p.balance < 0 ? ' red' : '')}>{sar(p.balance ?? 0, 0)}</div>
                   </div>
@@ -124,6 +175,7 @@ export function CashFlow() {
         </Card>
 
         <Card title="جدول الفترات">
+          <p className="muted" style={{ fontSize: 11, margin: '0 20px 8px' }}>كل صف = فترة أسبوعين</p>
           {periods.length === 0 ? (
             <State>لا توجد بيانات.</State>
           ) : (
@@ -200,8 +252,8 @@ function WhatIfCard() {
   if (!loading && !enabled) return null;
 
   return (
-    <Card title="ماذا لو؟" sub="أثر تأجيل أو تقديم دفعة طرف معيّن على التدفق النقدي">
-      <div style={{ padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <Card title="ماذا لو؟" sub="أثر تأجيل أو تقديم دفعة طرف معيّن على التدفق النقدي — على مستوى الشركة كاملة، بصرف النظر عن فلتر المشروع أعلاه">
+      <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div className="toolbar" style={{ marginBottom: 0 }}>
           <select value={partyValue} onChange={(e) => setPartyValue(e.target.value)} style={{ minWidth: 220 }}
                   disabled={!parties}>

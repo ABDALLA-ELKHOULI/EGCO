@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { ar, arDate, dueLabel, dueTone, sar } from '@/lib/format';
 import { Card, Kpi, Money, Pill, State } from '@/components/ui';
+import { ExplainDot } from '@/components/Explain';
 import { Modal } from '@/components/Modal';
 import { ManualEntryForm, type ManualEntryValues } from '@/components/ManualEntryForm';
 import { RemindModal } from '@/components/RemindModal';
@@ -138,19 +139,19 @@ export function SupplierDetail() {
             {' '}{ar(d.invoiceCount)} فاتورة
           </p>
         </div>
-        <button className="btn" onClick={() => { setFormErr(null); setAddInvoiceOpen(true); }}>
+        <button className="btn sm" onClick={() => { setFormErr(null); setAddInvoiceOpen(true); }}>
           إضافة مديونية
         </button>
-        <button className="btn" onClick={() => { setFormErr(null); setAddPaymentOpen(true); }}>
+        <button className="btn sm" onClick={() => { setFormErr(null); setAddPaymentOpen(true); }}>
           تسجيل دفعة
         </button>
         <button className="btn primary" onClick={() => nav(`/report?account=${d.account}`)}>
           استخراج التحليل
         </button>
         {!aiLoading && aiEnabled && (
-          <button className="btn" onClick={() => setRemindOpen(true)}>صياغة مطالبة</button>
+          <button className="btn sm" onClick={() => setRemindOpen(true)}>صياغة مطالبة</button>
         )}
-        <Link to="/suppliers"><button className="btn">رجوع</button></Link>
+        <Link to="/suppliers"><button className="btn sm">رجوع</button></Link>
       </div>
 
       {d.needsManualDueDate && (
@@ -163,8 +164,10 @@ export function SupplierDetail() {
       <div className="kpi-row">
         <Kpi label="إجمالي المفوتر" value={sar(d.totalInvoiced)} unit="ر.س" />
         <Kpi label="المسدد" value={sar(d.totalPaid)} unit="ر.س" tone="ok" />
-        <Kpi label="المتبقي" value={sar(d.outstanding)} unit="ر.س" />
-        <Kpi label="متأخر" value={sar(d.overdue)} unit="ر.س" tone="red" alert={d.overdue > 0} />
+        <Kpi label="المتبقي" value={sar(d.outstanding)} unit="ر.س"
+             explain={<ExplainDot metric="outstanding" values={{ totalInvoiced: d.totalInvoiced, totalPaid: d.totalPaid, outstanding: d.outstanding }} />} />
+        <Kpi label="متأخر" value={sar(d.overdue)} unit="ر.س" tone="red" alert={d.overdue > 0}
+             explain={<ExplainDot metric="overdue" values={{ overdue: d.overdue }} />} />
       </div>
 
       <div className="stack">
@@ -172,7 +175,7 @@ export function SupplierDetail() {
           title={showPaid ? 'كل الفواتير' : 'الفواتير المفتوحة'}
           sub="السداد يُوزَّع بطريقة الأقدم أولاً (FIFO) — كما في كشف الحساب"
           actions={
-            <button className="btn" onClick={() => setShowPaid(!showPaid)}>
+            <button className="btn sm" onClick={() => setShowPaid(!showPaid)}>
               {showPaid ? 'المفتوحة فقط' : 'إظهار المسددة'}
             </button>
           }
@@ -203,16 +206,15 @@ export function SupplierDetail() {
                   <td className="ltr">
                     {i.source === 'manual' && (
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                        <button className="btn" style={{ padding: '4px 9px', fontSize: 12 }}
-                                onClick={() => { setFormErr(null); setEditInvoice(i); }}>✎</button>
-                        <button className="btn" style={{ padding: '4px 9px', fontSize: 12 }}
-                                onClick={() => { setFormErr(null); setDeleteInvoice(i); }}>🗑</button>
+                        <button className="btn sm"
+                                onClick={() => { setFormErr(null); setEditInvoice(i); }} aria-label="تعديل" title="تعديل">✎</button>
+                        <button className="btn sm"
+                                onClick={() => { setFormErr(null); setDeleteInvoice(i); }} aria-label="حذف" title="حذف">🗑</button>
                       </div>
                     )}
                     {i.source === 'statement' && (
-                      <button
-                        className="btn"
-                        style={{ padding: '4px 9px', fontSize: 12 }}
+                      <button className="btn sm"
+
                         onClick={() => {
                           setFormErr(null);
                           setDueDateValue(i.dueDate ?? '');
@@ -241,8 +243,8 @@ export function SupplierDetail() {
                   <td className="ltr"><Money v={p.amount} cls="ok" /></td>
                   <td className="ltr">
                     {p.source === 'manual' && p.id && (
-                      <button className="btn" style={{ padding: '4px 9px', fontSize: 12 }}
-                              onClick={() => { setFormErr(null); setDeletePayment(p); }}>🗑</button>
+                      <button className="btn sm"
+                              onClick={() => { setFormErr(null); setDeletePayment(p); }} aria-label="حذف" title="حذف">🗑</button>
                     )}
                   </td>
                 </tr>
@@ -286,9 +288,9 @@ export function SupplierDetail() {
         <Modal title="حذف مديونية" onClose={() => setDeleteInvoice(null)}>
           <p>هل تريد حذف هذه المديونية اليدوية بمبلغ <Money v={deleteInvoice.amount} />؟</p>
           {formErr && <div className="callout bad">{formErr}</div>}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+          <div className="modal-foot">
             <button className="btn" onClick={() => setDeleteInvoice(null)}>إلغاء</button>
-            <button className="btn primary" disabled={busy} onClick={confirmDeleteInvoice}>
+            <button className="btn danger" disabled={busy} onClick={confirmDeleteInvoice}>
               {busy ? 'جارٍ الحذف…' : 'حذف'}
             </button>
           </div>
@@ -311,7 +313,7 @@ export function SupplierDetail() {
               />
             </label>
             {formErr && <div className="callout bad">{formErr}</div>}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+            <div className="modal-foot">
               <button className="btn" onClick={() => setDueDateInvoice(null)}>إلغاء</button>
               <button className="btn primary" disabled={busy} onClick={handleSaveDueDate}>
                 {busy ? 'جارٍ الحفظ…' : 'حفظ'}
@@ -329,9 +331,9 @@ export function SupplierDetail() {
         <Modal title="حذف دفعة" onClose={() => setDeletePayment(null)}>
           <p>هل تريد حذف هذه الدفعة اليدوية بمبلغ <Money v={deletePayment.amount} />؟</p>
           {formErr && <div className="callout bad">{formErr}</div>}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+          <div className="modal-foot">
             <button className="btn" onClick={() => setDeletePayment(null)}>إلغاء</button>
-            <button className="btn primary" disabled={busy} onClick={confirmDeletePayment}>
+            <button className="btn danger" disabled={busy} onClick={confirmDeletePayment}>
               {busy ? 'جارٍ الحذف…' : 'حذف'}
             </button>
           </div>

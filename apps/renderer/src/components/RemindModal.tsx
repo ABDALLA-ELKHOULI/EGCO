@@ -35,7 +35,7 @@ export function RemindModal({ partyKind, partyKey, onClose }: {
 
   return (
     <Modal title="صياغة مطالبة" onClose={onClose} maxWidth={560}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="form-stack">
         {error && <div className="callout bad">{error}</div>}
         <textarea
           value={text}
@@ -43,17 +43,15 @@ export function RemindModal({ partyKind, partyKey, onClose }: {
           placeholder={busy ? 'جارٍ الصياغة…' : ''}
           disabled={busy}
           rows={8}
-          style={{ width: '100%', resize: 'vertical', font: 'inherit', fontSize: 13, padding: 10,
-                   border: '1px solid var(--hair)', borderRadius: 'var(--r-control)',
-                   background: 'var(--card)', color: 'var(--ink)' }}
-        />
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  />
+        <div className="modal-foot split">
           <button className="btn" onClick={load} disabled={busy}>
             {busy ? 'جارٍ إعادة الصياغة…' : 'إعادة الصياغة'}
           </button>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <CopyButton text={text} />
+          <div className="group">
             <button className="btn" onClick={onClose}>إغلاق</button>
+            {/* النسخ هو الإجراء الأساسي هنا — المسودة لا تُحفظ في أي مكان */}
+            <CopyButton text={text} primary />
           </div>
         </div>
       </div>

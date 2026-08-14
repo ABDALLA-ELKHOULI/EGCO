@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, ApiError, type PartyScope } from '@/lib/api';
 import { ar, arDate, invoiceCount, sar } from '@/lib/format';
 import { Kpi, Money, State } from '@/components/ui';
+import { ExplainDot } from '@/components/Explain';
 import { PeriodBar } from '@/components/PeriodBar';
 import { ScopeBar, scopeParams, type Scope } from '@/components/ScopeBar';
 import { Present, type Slide } from '@/components/Present';
@@ -230,13 +231,24 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
         {hasOpening && (
           <>
             <div className="rpt-kpis" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-              <RKpi label="الرصيد الافتتاحي" value={sar(m.opening_balance)} />
+              <RKpi label="الرصيد الافتتاحي" value={sar(m.opening_balance)}
+                    explain={<ExplainDot metric="openingBalance" values={{ openingBalance: m.opening_balance }} />} />
               {/* الحركة من داخل الفترة لا من الإجماليات التاريخية، وإلا لم يعد
                   «افتتاحي + حركة = ختامي» صحيحاً على الوثيقة. */}
               <RKpi label="حركة الفترة (مفوتر − مسدد)"
                     value={sar((m.invoiced_in_period ?? s.total_invoiced ?? 0)
-                               - (m.paid_in_period ?? s.total_paid ?? 0))} />
-              <RKpi label="الرصيد الختامي" value={sar(m.closing_balance)} cls="ok" />
+                               - (m.paid_in_period ?? s.total_paid ?? 0))}
+                    explain={<ExplainDot metric="periodMovement" values={{
+                      invoicedInPeriod: m.invoiced_in_period ?? s.total_invoiced,
+                      paidInPeriod: m.paid_in_period ?? s.total_paid,
+                      openingBalance: m.opening_balance, closingBalance: m.closing_balance,
+                    }} />} />
+              <RKpi label="الرصيد الختامي" value={sar(m.closing_balance)} cls="ok"
+                    explain={<ExplainDot metric="closingBalance" values={{
+                      openingBalance: m.opening_balance,
+                      periodMovement: (m.invoiced_in_period ?? s.total_invoiced ?? 0) - (m.paid_in_period ?? s.total_paid ?? 0),
+                      closingBalance: m.closing_balance,
+                    }} />} />
             </div>
             <p className="muted" style={{ fontSize: 11, margin: '0 0 12px' }}>
               الافتتاحي محسوب من كل الحركات المسجلة قبل {arDate(m.period_from ?? from)}
@@ -250,7 +262,8 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
           <RKpi label="إجمالي المفوتر" value={sar(s.total_invoiced)} />
           <RKpi label="المسدد" value={sar(s.total_paid)} cls="ok" />
           <RKpi label="المديونية المفتوحة" value={sar(s.outstanding)} />
-          <RKpi label="المتأخر عن موعده" value={sar(s.overdue)} cls="red" />
+          <RKpi label="المتأخر عن موعده" value={sar(s.overdue)} cls="red"
+                explain={<ExplainDot metric="overdue" values={{ overdue: s.overdue }} />} />
         </div>
         <p className="rpt-lede">
           يغطي هذا التقرير {ar(s.supplier_count)} مورداً
@@ -467,8 +480,9 @@ function formatLastPayment(lp: any): string {
 const Meta = ({ label, value }: { label: string; value: string }) => (
   <div><span>{label}</span><b>{value}</b></div>
 );
-const RKpi = ({ label, value, cls }: { label: string; value: string; cls?: string }) => (
-  <div className="rpt-kpi"><span>{label}</span><b className={'num ' + (cls || '')}>{value}</b><i>ر.س</i></div>
+const RKpi = ({ label, value, cls, explain }:
+  { label: string; value: string; cls?: string; explain?: ReactNode }) => (
+  <div className="rpt-kpi"><span>{label}{explain}</span><b className={'num ' + (cls || '')}>{value}</b><i>ر.س</i></div>
 );
 const Section = ({ num, title, sub }: { num: string; title: string; sub?: string }) => (
   <div className="rpt-section">
@@ -872,7 +886,7 @@ function reportSlides(d: any, parties: PartyScope = 'suppliers'): Slide[] {
             display: 'flex', alignItems: 'center', gap: 12,
             padding: '14px 18px', borderRadius: 8,
             border: `1px solid ${a.tone === 'red' ? 'var(--red)' : a.tone === 'ok' ? 'var(--ok)' : 'var(--hair)'}`,
-            background: a.tone === 'red' ? 'rgba(192,39,26,.06)' : a.tone === 'ok' ? 'rgba(46,125,50,.06)' : 'transparent',
+            background: a.tone === 'red' ? 'var(--wash-red)' : a.tone === 'ok' ? 'var(--wash-ok)' : 'transparent',
           }}>
             <span style={{
               fontSize: 20, fontWeight: 700, color: 'var(--gold)', minWidth: 26,

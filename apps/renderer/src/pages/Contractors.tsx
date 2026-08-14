@@ -186,10 +186,10 @@ export function Contractors() {
                     <td>{r.lastActivity ? arDate(r.lastActivity) : <span className="muted">—</span>}</td>
                     <td className="ltr">
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                        <button className="btn" style={{ padding: '4px 9px', fontSize: 12 }}
-                                onClick={() => { setFormErr(null); setEditRow(r); }}>✎</button>
-                        <button className="btn" style={{ padding: '4px 9px', fontSize: 12 }}
-                                onClick={() => setDeleteRow(r)}>🗑</button>
+                        <button className="btn sm"
+                                onClick={() => { setFormErr(null); setEditRow(r); }} aria-label="تعديل" title="تعديل">✎</button>
+                        <button className="btn sm"
+                                onClick={() => setDeleteRow(r)} aria-label="حذف" title="حذف">🗑</button>
                       </div>
                     </td>
                   </tr>
@@ -259,9 +259,9 @@ function DeleteContractorModal({ row, onClose, onDeleted }:
       {error && <div className="callout bad">{error}</div>}
 
       {!needForce ? (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+        <div className="modal-foot">
           <button className="btn" onClick={onClose}>إلغاء</button>
-          <button className="btn primary" disabled={busy} onClick={() => tryDelete(false)}>
+          <button className="btn danger" disabled={busy} onClick={() => tryDelete(false)}>
             {busy ? 'جارٍ الحذف…' : 'حذف'}
           </button>
         </div>
@@ -276,9 +276,9 @@ function DeleteContractorModal({ row, onClose, onDeleted }:
             onChange={(e) => setTyped(e.target.value)}
             placeholder={row.code}
           />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+          <div className="modal-foot">
             <button className="btn" onClick={onClose}>إلغاء</button>
-            <button className="btn primary" disabled={busy || typed !== row.code}
+            <button className="btn danger" disabled={busy || typed !== row.code}
                     onClick={() => tryDelete(true)}>
               {busy ? 'جارٍ الحذف…' : 'حذف نهائي'}
             </button>

@@ -12,6 +12,8 @@ publish:
   provider: github
   owner: ABDALLA-ELKHOULI
   repo: EGCO
+  # بدون هذا يُنشأ الإصدار كمسودة لا يراها المحدّث التلقائي في التطبيقات المثبتة.
+  releaseType: release
 
 # Only the compiled shell and the built renderer ship — no source, no node_modules.
 files:

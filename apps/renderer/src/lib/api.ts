@@ -64,9 +64,10 @@ export interface ReportScopeParams {
 export const api = {
   health: () => call<{ status: string; db: string; version: string }>('/health'),
 
-  dashboard: (p: Period = {}) => call<any>('/api/v1/dashboard' + qs({ ...p })),
+  dashboard: (p: Period & { project?: string } = {}) => call<any>('/api/v1/dashboard' + qs({ ...p })),
   /** تفاصيل يوم في التقويم — فواتير مستحقة وضمانات تُصرف، مع روابط أصحابها */
-  calendarDay: (date: string) => call<any>('/api/v1/dashboard/day' + qs({ date })),
+  calendarDay: (date: string, p: { project?: string } = {}) =>
+    call<any>('/api/v1/dashboard/day' + qs({ date, ...p })),
 
   suppliers: (p: { q?: string; project?: string; status?: string } = {}) =>
     call<any>('/api/v1/suppliers' + qs(p)),
@@ -124,8 +125,21 @@ export const api = {
   projects: () => call<any>('/api/v1/projects'),
   project: (name: string) => call<any>(`/api/v1/projects/${encodeURIComponent(name)}`),
 
+  /* ---- v0.5: التحصيلات (الإيراد) يدوياً ---- */
+  revenues: (p: { q?: string; project?: string; status?: string } = {}) =>
+    call<any>('/api/v1/revenues' + qs(p)),
+  createRevenue: (b: { project?: string; unit?: string; client: string; amount: number;
+                       dueDate?: string; status?: string; collectedOn?: string; notes?: string }) =>
+    post<any>('/api/v1/revenues', b),
+  updateRevenue: (id: string, b: Partial<{ project: string; unit: string; client: string;
+                       amount: number; dueDate: string | null; status: string;
+                       collectedOn: string | null; notes: string }>) =>
+    put<any>(`/api/v1/revenues/${id}`, b),
+  deleteRevenue: (id: string) => del<{ deleted: boolean }>(`/api/v1/revenues/${id}`),
+
   /* ---- v0.3: التدفق النقدي ---- */
-  cashflow: (p: { weeks?: number; from?: string; opening_balance?: number } = {}) =>
+  cashflow: (p: { weeks?: number; from?: string; opening_balance?: number; project?: string;
+    parties?: 'suppliers' | 'contractors' | 'both' } = {}) =>
     call<any>('/api/v1/cashflow' + qs({ ...p })),
 
   /* ---- v0.3: لوحة القيادة ---- */

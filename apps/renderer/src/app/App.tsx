@@ -12,6 +12,7 @@ import { ContractorDetail } from '@/pages/ContractorDetail';
 import { Budget } from '@/pages/Budget';
 import { ProjectDetail } from '@/pages/ProjectDetail';
 import { CashFlow } from '@/pages/CashFlow';
+import { Revenues } from '@/pages/Revenues';
 import { CoveragePage } from '@/pages/Coverage';
 import { CalendarPage } from '@/pages/Calendar';
 import { ImportPage } from '@/pages/Import';
@@ -83,6 +84,7 @@ export function App() {
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:project" element={<ProjectDetail />} />
             <Route path="/cashflow" element={<CashFlow />} />
+            <Route path="/revenues" element={<Revenues />} />
             <Route path="/coverage" element={<CoveragePage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/import" element={<ImportPage />} />

@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 import { sar } from '@/lib/format';
 
-export function Kpi({ label, value, unit, tone, alert }:
-  { label: string; value: string; unit?: string; tone?: string; alert?: boolean }) {
+export function Kpi({ label, value, unit, tone, alert, explain }:
+  { label: string; value: string; unit?: string; tone?: string; alert?: boolean; explain?: ReactNode }) {
   return (
     <div className={'kpi' + (alert ? ' alert' : '')}>
-      <div className="label">{label}</div>
+      <div className="label">{label}{explain}</div>
       <div className={'value num ' + (tone || '')}>{value}</div>
       {unit && <div className="unit">{unit}</div>}
     </div>

@@ -4,7 +4,7 @@ from fastapi import APIRouter
 
 from app.api.routes import (ai, budget, cashflow, contractors, coverage,
                             dashboard, imports, invoices, manual, overview,
-                            projects, reports, suppliers)
+                            projects, reports, revenues, suppliers)
 from app.core.config import settings
 
 api_router = APIRouter(prefix=settings.API_PREFIX)
@@ -24,3 +24,4 @@ api_router.include_router(contractors.router, prefix='/contractors', tags=['cont
 api_router.include_router(budget.router, prefix='/budget', tags=['budget'])
 # ---- v0.5
 api_router.include_router(ai.router, prefix='/ai', tags=['ai'])
+api_router.include_router(revenues.router, prefix='/revenues', tags=['revenues'])

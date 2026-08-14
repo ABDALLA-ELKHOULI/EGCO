@@ -38,6 +38,7 @@ const GROUPS: { section: string; items: NavItem[] }[] = [
     items: [
       { to: '/suppliers', icon: 'suppliers', label: 'الموردون' },
       { to: '/coverage', icon: 'coverage', label: 'تغطية الكشوفات', alert: 'coverage' },
+      { to: '/revenues', icon: 'revenue', label: 'التحصيلات' },
       { to: '/import', icon: 'upload', label: 'رفع الملفات' },
     ],
   },

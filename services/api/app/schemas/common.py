@@ -77,3 +77,36 @@ class PaymentIn(BaseModel):
     date: str
     description: str = ''
     reference: Optional[str] = None
+
+
+# ---------------------------------------------------------------- التحصيلات (الإيراد)
+
+class RevenueIn(BaseModel):
+    """إضافة تحصيل يدوياً — نفس شكل السجل المستورد من الملفات."""
+    project: str = ''
+    unit: str = ''
+    client: str = Field(min_length=1, max_length=300)
+    amount: float = Field(gt=0)
+    due_date: Optional[str] = Field(default=None, alias='dueDate')
+    status: str = 'open'
+    collected_on: Optional[str] = Field(default=None, alias='collectedOn')
+    notes: str = ''
+
+    class Config:
+        populate_by_name = True
+
+
+class RevenueUpdate(BaseModel):
+    """تعديل جزئي — الحقول غير المُرسلة لا تُلمس؛ dueDate/collectedOn قد تُرسل صراحة
+    كـ null لمسحها (يُميَّز ذلك عبر exclude_unset عند القراءة في المسار)."""
+    project: Optional[str] = None
+    unit: Optional[str] = None
+    client: Optional[str] = Field(default=None, min_length=1, max_length=300)
+    amount: Optional[float] = Field(default=None, gt=0)
+    due_date: Optional[str] = Field(default=None, alias='dueDate')
+    status: Optional[str] = None
+    collected_on: Optional[str] = Field(default=None, alias='collectedOn')
+    notes: Optional[str] = None
+
+    class Config:
+        populate_by_name = True

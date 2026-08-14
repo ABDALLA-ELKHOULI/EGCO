@@ -63,7 +63,7 @@ export function SupplierForm({ initial, onSubmit, busy, error }: {
         />
       </label>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+      <div className="modal-foot">
         <button type="submit" className="btn primary" disabled={!canSubmit}>
           {busy ? 'جارٍ الحفظ…' : 'حفظ'}
         </button>

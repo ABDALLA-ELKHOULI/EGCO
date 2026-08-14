@@ -3,6 +3,10 @@ import { useState, type ReactNode } from 'react';
 /**
  * كتلة عرض موحّدة لمزايا الذكاء الاصطناعي — عنوان، حالة انتظار، خطأ نصي inline
  * (رسائل ApiError تأتي جاهزة بالعربية من الخادم)، أو المحتوى.
+ *
+ * سطح داخلي (.ai-block) لا بطاقة: كانت تُصيّر <div class="card"> داخل بطاقة أخرى،
+ * فيظهر إطاران متداخلان بحشوين مختلفين في كل شاشة يظهر فيها المساعد.
+ * An inner surface, not a card — nesting .card inside .card doubled the border.
  */
 export function AiBlock({ title, busy, error, children }: {
   title?: string;
@@ -11,17 +15,17 @@ export function AiBlock({ title, busy, error, children }: {
   children?: ReactNode;
 }) {
   return (
-    <div className="card" style={{ padding: '14px 16px' }}>
+    <div className="ai-block">
       {title && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <b style={{ fontSize: 13 }}>{title}</b>
-          {busy && <span className="muted" style={{ fontSize: 12 }}>جارٍ التحميل…</span>}
+        <div className="ai-head">
+          <b>{title}</b>
+          {busy && <span className="muted">جارٍ التحميل…</span>}
         </div>
       )}
       {error ? (
-        <div className="callout bad">{error}</div>
+        <div className="callout bad" role="alert">{error}</div>
       ) : busy && !children ? (
-        <div className="muted" style={{ fontSize: 13 }}>جارٍ التحميل…</div>
+        <div className="muted" style={{ fontSize: 13 }} aria-live="polite">جارٍ التحميل…</div>
       ) : (
         children
       )}
@@ -30,7 +34,7 @@ export function AiBlock({ title, busy, error, children }: {
 }
 
 /** زر نسخ نص إلى الحافظة — يومض «نُسخ ✓» لثانية ونصف ثم يعود. */
-export function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text, primary }: { text: string; primary?: boolean }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -44,7 +48,7 @@ export function CopyButton({ text }: { text: string }) {
   }
 
   return (
-    <button type="button" className="btn" onClick={copy} disabled={!text}>
+    <button type="button" className={'btn' + (primary ? ' primary' : '')} onClick={copy} disabled={!text}>
       {copied ? 'نُسخ ✓' : 'نسخ'}
     </button>
   );
