@@ -33,7 +33,7 @@ export function Projects() {
       </div>
 
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
-        <Kpi label="إجمالي المديونية" value={sar(d.totals?.outstanding ?? 0)} unit="ر.س"
+        <Kpi label="إجمالي المديونية" value={sar(d.totals?.outstanding ?? 0)} unit="ر.س" hero
              explain={<ExplainDot metric="projectsTotals" values={{ projectsOutstanding: d.totals?.outstanding }} />} />
         <Kpi label="المتأخر" value={sar(d.totals?.overdue ?? 0)} unit="ر.س" tone="red" alert={(d.totals?.overdue ?? 0) > 0}
              explain={<ExplainDot metric="overdue" values={{ overdue: d.totals?.overdue }} />} />

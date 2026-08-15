@@ -158,6 +158,8 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
   // تكون الثلاثة أصفاراً فتقرأ كأن الحسابات فارغة — فلا تُعرض أصلاً.
   const hasOpening = showSuppliers &&
     m.opening_balance !== undefined && m.opening_balance !== null;
+  // رصيد لنا (مقدم) — يظهر فقط إن وُجد فعلاً، وإلا فالسطر الإضافي ضجيج على تقرير سليم.
+  const hasCreditBalance = (s.credit_balances ?? 0) > 0;
   const scopeLabel: string = m.scope_label ?? defaultScopeLabel(parties);
   // ترقيم الأقسام يتبع ما ظهر فعلاً — قسم مخفي لا يترك فجوة في الترقيم
   const shown = [1, ...(showSuppliers ? [2, 3] : []), ...(con ? [4] : []), ...(d.notes?.length ? [5] : [])];
@@ -266,10 +268,24 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
           </>
         )}
 
-        <div className="rpt-kpis">
+        <div className="rpt-kpis" style={hasCreditBalance ? { gridTemplateColumns: 'repeat(3, 1fr)' } : undefined}>
           <RKpi label="إجمالي المفوتر" value={sar(s.total_invoiced)} />
           <RKpi label="المسدد" value={sar(s.total_paid)} cls="ok" />
           <RKpi label="المديونية المفتوحة" value={sar(s.outstanding)} />
+          {hasCreditBalance && (
+            <>
+              <RKpi label="أرصدة لنا (مقدمة)" value={sar(s.credit_balances)} cls="ok"
+                    explain={<ExplainDot metric="netOutstanding" values={{
+                      outstanding: s.outstanding, creditBalances: s.credit_balances,
+                      netOutstanding: s.net_outstanding,
+                    }} />} />
+              <RKpi label="الصافي" value={sar(s.net_outstanding)}
+                    explain={<ExplainDot metric="netOutstanding" values={{
+                      outstanding: s.outstanding, creditBalances: s.credit_balances,
+                      netOutstanding: s.net_outstanding,
+                    }} />} />
+            </>
+          )}
           <RKpi label="المتأخر عن موعده" value={sar(s.overdue)} cls="red"
                 explain={<ExplainDot metric="overdue" values={{ overdue: s.overdue }} />} />
         </div>
@@ -279,6 +295,12 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
           <span className="num">{sar(s.outstanding)}</span> ر.س، منها{' '}
           <span className="num">{sar(s.overdue)}</span> ر.س تجاوزت موعد استحقاقها، و
           <span className="num">{sar(s.due_within_7)}</span> ر.س تستحق خلال سبعة أيام.
+          {hasCreditBalance && (
+            <> بعد خصم أرصدة موردين دفعنا لهم أكثر من فواتيرهم البالغة{' '}
+              <span className="num">{sar(s.credit_balances)}</span> ر.س، يصبح الصافي{' '}
+              <span className="num">{sar(s.net_outstanding)}</span> ر.س.
+            </>
+          )}
           {con && (
             <> يضاف إلى ذلك مستحقات المقاولين البالغة{' '}
               <span className="num">{sar(con.owed)}</span> ر.س، فيصبح إجمالي الالتزام على الشركة{' '}

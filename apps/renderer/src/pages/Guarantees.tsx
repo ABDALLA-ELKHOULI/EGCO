@@ -47,7 +47,7 @@ export function Guarantees() {
 
       {d && (
         <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-          <Kpi label="المحتجز حسب الكشوف" value={sar(d.totals.statementsHeld)} unit="ر.س"
+          <Kpi label="المحتجز حسب الكشوف" value={sar(d.totals.statementsHeld)} unit="ر.س" hero
                explain={<ExplainDot metric="guaranteeStatementsHeld"
                                     values={{ guaranteeStatementsHeld: d.totals.statementsHeld }} />} />
           <Kpi label="المحتجز حسب المستخلصات" value={sar(d.totals.trackedHeld)} unit="ر.س"

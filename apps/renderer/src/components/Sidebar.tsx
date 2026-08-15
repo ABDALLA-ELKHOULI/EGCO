@@ -14,16 +14,45 @@ interface NavItem {
   alert?: 'overdue' | 'dueSoon' | 'coverage';
 }
 
+/**
+ * التجميع بالمعنى المالي لا بنوع الشاشة.
+ *
+ * The old grouping (تشغيل/تحليل/بيانات) put «مديونية الموردين» and «الموردون» in
+ * different sections under near-identical names — the user hit that confusion
+ * directly. Grouping by what the money IS (owed out / liquidity / project) gives
+ * every screen one obvious home, and gives the pages still to come an obvious
+ * home too, which is the point: this list only grows.
+ */
 const GROUPS: { section: string; items: NavItem[] }[] = [
   {
-    section: 'التشغيل',
+    section: 'نظرة عامة',
     items: [
       { to: '/', end: true, icon: 'dashboard', label: 'لوحة القيادة' },
-      { to: '/payables', icon: 'payables', label: 'مديونية الموردين', alert: 'overdue' },
-      { to: '/cashflow', icon: 'cashflow', label: 'التدفق النقدي', alert: 'dueSoon' },
-      { to: '/projects', icon: 'projects', label: 'المشاريع' },
+    ],
+  },
+  {
+    section: 'التزاماتنا',
+    items: [
+      // «المستحقات القادمة» بدل «مديونية الموردين» — الاسم القديم كان يُخلط
+      // مع صفحة «الموردون» وهما شاشتان مختلفتان تماماً.
+      { to: '/payables', icon: 'payables', label: 'المستحقات القادمة', alert: 'overdue' },
+      { to: '/suppliers', icon: 'suppliers', label: 'الموردون' },
       { to: '/contractors', icon: 'contractors', label: 'المقاولون' },
-      { to: '/guarantees', icon: 'guarantee', label: 'ضمانات المقاولين' },
+      { to: '/guarantees', icon: 'guarantee', label: 'الضمانات' },
+    ],
+  },
+  {
+    section: 'السيولة',
+    items: [
+      { to: '/cashflow', icon: 'cashflow', label: 'التدفق النقدي', alert: 'dueSoon' },
+      { to: '/revenues', icon: 'revenue', label: 'التحصيلات' },
+    ],
+  },
+  {
+    section: 'المشاريع',
+    items: [
+      { to: '/projects', icon: 'projects', label: 'المشاريع' },
+      { to: '/budget', icon: 'budget', label: 'الموازنة' },
     ],
   },
   {
@@ -31,16 +60,13 @@ const GROUPS: { section: string; items: NavItem[] }[] = [
     items: [
       { to: '/report', icon: 'reports', label: 'التقارير التحليلية' },
       { to: '/calendar', icon: 'calendar', label: 'التقويم المالي' },
-      { to: '/budget', icon: 'budget', label: 'الموازنة' },
     ],
   },
   {
     section: 'البيانات',
     items: [
-      { to: '/suppliers', icon: 'suppliers', label: 'الموردون' },
-      { to: '/coverage', icon: 'coverage', label: 'تغطية الكشوفات', alert: 'coverage' },
-      { to: '/revenues', icon: 'revenue', label: 'التحصيلات' },
       { to: '/import', icon: 'upload', label: 'رفع الملفات' },
+      { to: '/coverage', icon: 'coverage', label: 'تغطية الكشوفات', alert: 'coverage' },
     ],
   },
 ];

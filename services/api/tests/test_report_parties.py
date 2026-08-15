@@ -13,7 +13,8 @@ BASE = '/api/v1/reports'
 #: exactly this shape, no key removed, so old frontends keep rendering.
 LEGACY_TOP_KEYS = {'meta', 'summary', 'ageing', 'schedule', 'suppliers', 'notes'}
 LEGACY_SUMMARY_KEYS = {'total_invoiced', 'total_paid', 'outstanding', 'overdue',
-                       'due_within_7', 'supplier_count'}
+                       'due_within_7', 'supplier_count',
+                       'credit_balances', 'net_outstanding'}
 
 
 # ---------------------------------------------------------------- seeding

@@ -169,7 +169,7 @@ export function SupplierDetail() {
       <div className="kpi-row">
         <Kpi label="إجمالي المفوتر" value={sar(d.totalInvoiced)} unit="ر.س" />
         <Kpi label="المسدد" value={sar(d.totalPaid)} unit="ر.س" tone="ok" />
-        <Kpi label="المتبقي" value={sar(d.outstanding)} unit="ر.س"
+        <Kpi label="المتبقي" value={sar(d.outstanding)} unit="ر.س" hero
              explain={<ExplainDot metric="outstanding" values={{ totalInvoiced: d.totalInvoiced, totalPaid: d.totalPaid, outstanding: d.outstanding }} />} />
         <Kpi label="متأخر" value={sar(d.overdue)} unit="ر.س" tone="red" alert={d.overdue > 0}
              explain={<ExplainDot metric="overdue" values={{ overdue: d.overdue }} />} />

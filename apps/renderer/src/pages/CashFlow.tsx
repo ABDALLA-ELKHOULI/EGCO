@@ -54,7 +54,7 @@ function periodDaysLabel(n: number): string {
 function AmountCell({ amount, cls, onClick }: { amount: number; cls?: string; onClick: () => void }) {
   return (
     <button onClick={onClick} title="اضغط لرؤية الصفوف التي كوّنت هذا الرقم"
-            style={{ all: 'unset', cursor: 'pointer', borderBottom: '1px dashed var(--muted)' }}>
+            className="btn-reset" style={{ borderBottom: '1px dashed var(--muted)' }}>
       <Money v={amount} cls={cls} />
     </button>
   );
@@ -67,7 +67,7 @@ export function CashFlow() {
   const [params, setParams] = useSearchParams();
 
   const [opening, setOpening] = useState(0);
-  const [weeksSel, setWeeksSel] = useState<13 | 26>(26);
+  const [weeksSel, setWeeksSel] = useState<number>(26);
   const project = params.get('project') || '';
   // الواجهة تفتح افتراضياً على «كلاهما» حتى مع بقاء افتراضي الخادم «الموردون فقط»
   // للتوافق الخلفي مع أي مستدعٍ قديم للـ API — لذا نُرسل parties=both صراحةً من هنا.
@@ -80,7 +80,7 @@ export function CashFlow() {
     Number.isFinite(rawPeriodDays) && rawPeriodDays >= PERIOD_DAYS_MIN && rawPeriodDays <= PERIOD_DAYS_MAX
       ? rawPeriodDays : PERIOD_DAYS_DEFAULT;
   const [customPeriodDays, setCustomPeriodDays] = useState(String(periodDays));
-  const [applied, setApplied] = useState<{ weeks: 13 | 26; opening: number }>({ weeks: 26, opening: 0 });
+  const [applied, setApplied] = useState<{ weeks: number; opening: number }>({ weeks: 26, opening: 0 });
   const [breakdownReq, setBreakdownReq] = useState<BreakdownRequest | null>(null);
 
   function openBreakdown(req: BreakdownRequest) {
@@ -157,7 +157,7 @@ export function CashFlow() {
       </div>
 
       {!hasReceivables && (
-        <div className="callout bad" style={{ marginBottom: 14 }}>
+        <div className="callout bad callout-tight">
           {warnings.length > 0
             ? warnings.join(' — ')
             : 'لم تُرفع بيانات التحصيلات بعد — التدفق الداخل أدناه ليس تقديراً فعلياً.'}
@@ -167,7 +167,7 @@ export function CashFlow() {
       {/* تحذيرات الخارج (متأخر الآن / بلا تواريخ) تصل حتى حين تكون بيانات التحصيلات سليمة —
           وإلا لبقيت مخفية خلف شرط «لا توجد تحصيلات» أعلاه. */}
       {hasReceivables && warnings.length > 0 && (
-        <div className="callout warn" style={{ marginBottom: 14 }}>{warnings.join(' — ')}</div>
+        <div className="callout warn callout-tight">{warnings.join(' — ')}</div>
       )}
 
       <div className="toolbar">
@@ -175,16 +175,18 @@ export function CashFlow() {
           <option value="">كل المشاريع</option>
           {(d.projects ?? []).map((p: string) => <option key={p} value={p}>{p}</option>)}
         </select>
-        <label style={{ fontSize: 13, color: 'var(--muted)' }}>
+        <label className="field-inline-label">
           الرصيد الافتتاحي
           <input type="number" value={opening} onChange={(e) => setOpening(Number(e.target.value))}
                  style={{ marginInlineStart: 8, width: 140 }} />
         </label>
-        <select value={weeksSel} onChange={(e) => setWeeksSel(Number(e.target.value) as 13 | 26)}>
+        <select value={weeksSel} onChange={(e) => setWeeksSel(Number(e.target.value))}>
           <option value={13}>٣ أشهر قادمة (١٣ أسبوعاً)</option>
           <option value={26}>٦ أشهر قادمة (٢٦ أسبوعاً)</option>
+          <option value={52}>سنة قادمة (٥٢ أسبوعاً)</option>
+          <option value={104}>سنتان قادمتان (١٠٤ أسابيع)</option>
         </select>
-        <label style={{ fontSize: 13, color: 'var(--muted)' }}>
+        <label className="field-inline-label">
           طول الفترة
           <select value={isCustomPeriodDays ? 'custom' : String(periodDays)}
                   onChange={(e) => onPeriodDaysPresetChange(e.target.value)}
@@ -196,7 +198,7 @@ export function CashFlow() {
           </select>
         </label>
         {isCustomPeriodDays && (
-          <label style={{ fontSize: 13, color: 'var(--muted)' }}>
+          <label className="field-inline-label">
             أيام
             <input type="number" dir="ltr" value={customPeriodDays} min={PERIOD_DAYS_MIN} max={PERIOD_DAYS_MAX}
                    onChange={(e) => setCustomPeriodDays(e.target.value)}
@@ -206,7 +208,7 @@ export function CashFlow() {
           </label>
         )}
         <ExplainDot metric="cashflowHorizon" values={{ periodDays }} />
-        <label style={{ fontSize: 13, color: 'var(--muted)' }}>
+        <label className="field-inline-label">
           الأطراف
           <select value={parties} onChange={(e) => setParties(e.target.value as PartiesFilter)}
                   style={{ marginInlineStart: 8 }}>
@@ -219,44 +221,44 @@ export function CashFlow() {
       </div>
 
       <div className="kpi-row">
-        <button style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }} onClick={() => openBreakdown({
+        <button className="kpi-link-reset" onClick={() => openBreakdown({
           term: 'forecast', titleLabel: 'إجمالي الداخل (متوقّع)', amount: summary.totalInflow ?? 0,
           rule: 'كل تحصيل مفتوح (لم يُحصَّل بعد) له تاريخ استحقاق ضمن الأفق المعروض — هذا توقّع لا تاريخ.',
         })}>
-          <Kpi label="إجمالي الداخل (متوقّع)" value={sar(summary.totalInflow ?? 0)} unit="ر.س" tone="ok" />
+          <Kpi label="إجمالي الداخل (متوقّع)" value={sar(summary.totalInflow ?? 0)} unit="ر.س" tone="ok" hero={false} />
         </button>
-        <button style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }} onClick={() => openBreakdown({
+        <button className="kpi-link-reset" onClick={() => openBreakdown({
           term: 'collected', titleLabel: 'إجمالي المحصّل خلال المدى', amount: d.collections?.inWindow ?? 0,
           rule: 'كل تحصيل بحالة «محصَّل» وتاريخ تحصيله الفعلي يقع داخل الأفق المعروض — هذا تاريخ فعلي لا توقّع.',
         })}>
-          <Kpi label="إجمالي المحصّل خلال المدى" value={sar(d.collections?.inWindow ?? 0)} unit="ر.س" tone="ok" />
+          <Kpi label="إجمالي المحصّل خلال المدى" value={sar(d.collections?.inWindow ?? 0)} unit="ر.س" tone="ok" hero={false} />
         </button>
-        <button style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }} onClick={() => openBreakdown({
+        <button className="kpi-link-reset" onClick={() => openBreakdown({
           term: 'scheduled', titleLabel: 'إجمالي الخارج (مجدول)', amount: summary.totalOutflow ?? 0,
           rule: 'كل فاتورة/ضمان مستحق داخل الأفق المعروض من الجدول الزمني.',
         })}>
-          <Kpi label="إجمالي الخارج" value={sar(summary.totalOutflow ?? 0)} unit="ر.س" />
+          <Kpi label="إجمالي الخارج" value={sar(summary.totalOutflow ?? 0)} unit="ر.س" hero={false} />
         </button>
         <Kpi label="صافي الفترة" value={sar(summary.netTotal ?? 0)} unit="ر.س"
-             tone={(summary.netTotal ?? 0) < 0 ? 'red' : 'ok'} />
-        <Kpi label="أدنى رصيد" value={sar(summary.minBalance ?? 0)} unit="ر.س"
+             tone={(summary.netTotal ?? 0) < 0 ? 'red' : 'ok'} hero />
+        <Kpi label="أدنى رصيد" value={sar(summary.minBalance ?? 0)} unit="ر.س" hero={false}
              tone={(summary.minBalance ?? 0) < 0 ? 'red' : ''} alert={(summary.minBalance ?? 0) < 0} />
       </div>
-      <p className="muted" style={{ fontSize: 11, margin: '0 0 14px', lineHeight: 1.7 }}>
+      <p className="muted text-caption-micro" style={{ margin: '0 0 14px', lineHeight: 1.7 }}>
         «إجمالي الداخل» توقّعٌ لتحصيلات لم تُحصَّل بعد ولها تاريخ استحقاق، أما «إجمالي المحصّل خلال المدى»
         فمبلغ حُصِّل فعلاً بتاريخ فعلي — الاثنان مختلفان ولا يُجمعان في رقم واحد. اضغط أي رقم أعلاه لرؤية
         الصفوف التي كوّنته.
       </p>
 
       {summary.firstDeficit && (
-        <div className="callout bad" style={{ marginBottom: 14 }}>
+        <div className="callout bad callout-tight">
           أول عجز متوقع في {arDate(summary.firstDeficit.from)} — {arDate(summary.firstDeficit.to)}{' '}
           بمقدار {sar(Math.abs(summary.firstDeficit.amount ?? 0))} ر.س
         </div>
       )}
 
       {parties !== 'suppliers' && undatedContractorDues > 0 && (
-        <div className="callout warn" style={{ marginBottom: 14 }}>
+        <div className="callout warn callout-tight">
           مستحق للمقاولين بلا تواريخ استحقاق: {sar(undatedContractorDues)} ر.س — غير موزّع على الجدول
           لأن دفاتر المقاولين لا تحمل تواريخ
         </div>
@@ -289,10 +291,10 @@ export function CashFlow() {
                 ))}
               </div>
               <div style={{ display: 'flex', gap: 14, padding: '0 20px 8px', fontSize: 12 }}>
-                <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--ok)', borderRadius: 2, marginInlineEnd: 4 }} />
+                <span><span className="legend-swatch" style={{ background: 'var(--ok)' }} />
                   {hasReceivables ? 'الداخل' : 'لا توجد بيانات تحصيلات'}</span>
-                <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--gold)', borderRadius: 2, marginInlineEnd: 4 }} />الخارج</span>
-                <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--red)', borderRadius: 2, marginInlineEnd: 4 }} />خارج (عجز)</span>
+                <span><span className="legend-swatch" style={{ background: 'var(--gold)' }} />الخارج</span>
+                <span><span className="legend-swatch" style={{ background: 'var(--red)' }} />خارج (عجز)</span>
               </div>
 
               <div style={{ display: 'flex', gap: 4, padding: '8px 20px 16px', overflowX: 'auto' }}>
@@ -366,7 +368,7 @@ export function CashFlow() {
                 </table>
               </div>
               {periods.length > MAX_RENDERED_PERIOD_ROWS && (
-                <p className="muted" style={{ fontSize: 11, margin: '8px 20px 0' }}>
+                <p className="muted text-caption-micro" style={{ margin: '8px 20px 0' }}>
                   عُرضت أول {ar(MAX_RENDERED_PERIOD_ROWS)} فترة — قصّر الأفق أو أطل الفترة
                 </p>
               )}
@@ -503,7 +505,7 @@ function ReconciliationFooter({ recon, parties, onTermClick }: {
         </div>
       )}
 
-      <p className="muted" style={{ margin: 0, fontSize: 11, lineHeight: 1.7 }}>
+      <p className="muted text-caption-micro" style={{ margin: 0, lineHeight: 1.7 }}>
         «المديونية المفتوحة» و«المستحق المفتوح» هما رقما شاشتَي الموردين/المقاولين والتحصيلات
         نفسهما. الجدول أعلاه يعرض المجدول فقط — «متأخر الآن» مضى استحقاقه فلا دلو له،
         و«بعد نهاية الأفق» يستحق بعد {arDate(recon.horizonEnd)}، و«بلا تواريخ» فواتير
@@ -631,7 +633,7 @@ function BreakdownModal({ req, onClose, project, parties, weeks, periodDays }: {
             </div>
           )}
           {state?.truncated && (
-            <p className="muted" style={{ fontSize: 11, margin: '8px 20px 0' }}>
+            <p className="muted text-caption-micro" style={{ margin: '8px 20px 0' }}>
               عُرض أول 500 صف فقط — الإجمالي أعلاه يشمل كل الصفوف رغم ذلك.
             </p>
           )}
@@ -682,7 +684,7 @@ function WhatIfCard() {
 
   return (
     <Card title="ماذا لو؟" sub="أثر تأجيل أو تقديم دفعة طرف معيّن على التدفق النقدي — على مستوى الشركة كاملة، بصرف النظر عن فلتر المشروع أعلاه">
-      <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="card-body stack-sm">
         <div className="toolbar" style={{ marginBottom: 0 }}>
           <select value={partyValue} onChange={(e) => setPartyValue(e.target.value)} style={{ minWidth: 220 }}
                   disabled={!parties}>
@@ -702,7 +704,7 @@ function WhatIfCard() {
               </optgroup>
             )}
           </select>
-          <label style={{ fontSize: 13, color: 'var(--muted)' }}>
+          <label className="field-inline-label">
             إزاحة الأيام
             <input type="number" value={shiftDays} onChange={(e) => setShiftDays(e.target.value)}
                    style={{ marginInlineStart: 8, width: 100 }} dir="ltr" />
@@ -715,13 +717,13 @@ function WhatIfCard() {
         {(busy || error || result) && (
           <AiBlock busy={busy} error={error}>
             {result && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="stack-sm">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <WhatIfSummary label="قبل" data={result.before} />
                   <WhatIfSummary label="بعد" data={result.after} />
                 </div>
                 <p style={{ margin: 0, fontSize: 13, whiteSpace: 'pre-wrap' }}>{result.narrative}</p>
-                <p className="muted" style={{ fontSize: 11, margin: 0 }}>
+                <p className="muted text-caption-micro" style={{ margin: 0 }}>
                   الأرقام محسوبة من بياناتك؛ النص فقط من المساعد
                 </p>
               </div>

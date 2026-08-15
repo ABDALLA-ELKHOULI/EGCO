@@ -61,7 +61,7 @@ export function CommandCentre() {
       </div>
 
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-        <Kpi label="المديونية المفتوحة" value={sar(payables.outstanding ?? 0)} unit="ر.س"
+        <Kpi label="المديونية المفتوحة" value={sar(payables.outstanding ?? 0)} unit="ر.س" hero
              explain={<ExplainDot metric="outstanding" values={{ outstanding: payables.outstanding }} />} />
         <Kpi
           label="المتأخر"
@@ -80,7 +80,7 @@ export function CommandCentre() {
         />
       </div>
 
-      <div className="two" style={{ marginTop: 18 }}>
+      <div className="two mt-section">
         <Card title="التغطية">
           <div className="card-body">
             <div className="value num" style={{ fontSize: 32, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -137,7 +137,7 @@ export function CommandCentre() {
         </Card>
       </div>
 
-      <div className="stack" style={{ marginTop: 18 }}>
+      <div className="stack mt-section">
         <Card title="أعلى المشاريع مديونية (ر.س)">
           {projects.length === 0 ? (
             <State>لا توجد بيانات مشاريع بعد.</State>
@@ -183,15 +183,15 @@ export function CommandCentre() {
 }
 
 /** قسم مساعد الذكاء الاصطناعي — بطاقة «المساعد» واحدة تجمع السؤال الحر، الموجز
- * الأسبوعي، وفحص الشذوذ كأزرار ثانوية في رأسها؛ نتيجة أي إجراء تُعرض داخل نفس البطاقة. */
+ * الأسبوعي، ومراجعة الحركات غير المعتادة كأزرار ثانوية في رأسها؛ نتيجة أي إجراء تُعرض داخل نفس البطاقة. */
 function AiSection() {
   const { enabled, loading } = useAiEnabled();
 
   if (loading) return null;
-  if (!enabled) return <div style={{ marginTop: 18 }}><AiDisabledHint /></div>;
+  if (!enabled) return <div className="mt-section"><AiDisabledHint /></div>;
 
   return (
-    <div className="stack" style={{ marginTop: 18 }}>
+    <div className="stack mt-section">
       <AssistantCard />
     </div>
   );
@@ -264,7 +264,7 @@ function AssistantCard() {
           </button>
           <button className={'btn sm' + (mode === 'anomalies' ? ' primary' : '')}
                   onClick={() => { switchMode('anomalies'); runAnomalies(); }} disabled={busy}>
-            فحص الشذوذ
+            مراجعة الحركات غير المعتادة
           </button>
         </div>
       }

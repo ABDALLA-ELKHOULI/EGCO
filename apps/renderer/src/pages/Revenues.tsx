@@ -101,7 +101,7 @@ export function Revenues() {
 
       {d && (
         <div className="kpi-row">
-          <Kpi label="المستحق المفتوح" value={sar(d.totals.open)} unit="ر.س" tone="gold"
+          <Kpi label="المستحق المفتوح" value={sar(d.totals.open)} unit="ر.س" tone="gold" hero
                explain={<ExplainDot metric="revenuesOpen" values={{ revenuesOpen: d.totals.open }} />} />
           <Kpi label="المحصّل" value={sar(d.totals.collected)} unit="ر.س" tone="ok"
                explain={<ExplainDot metric="revenuesCollected" values={{ revenuesCollected: d.totals.collected }} />} />

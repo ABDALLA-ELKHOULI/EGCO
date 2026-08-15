@@ -416,7 +416,7 @@ function ProjectBudget({ p }: { p: BudgetProject }) {
                  tone={latest.deviationMonth < 0 ? 'red' : latest.deviationMonth > 0 ? 'ok' : 'muted'}
                  explain={<ExplainDot metric="budgetDelay"
                    values={{ plannedCum: latest.cumPlanned, actualCum: latest.cumActual, delayPct: latest.delayPct }} />} />
-            <Kpi label="نسبة الإنجاز" value={`${sar(latest.completionPct * 100)}٪`}
+            <Kpi label="نسبة الإنجاز" value={`${sar(latest.completionPct * 100)}٪`} hero
                  tone={latest.delayPct > 0.10 ? 'red' : ''} alert={latest.delayPct > 0.10}
                  explain={<ExplainDot metric="budgetCompletion"
                    values={{ actualCum: latest.cumActual, plannedTotal: latest.cumPlanned, completionPct: latest.completionPct }} />} />

@@ -76,7 +76,7 @@ export function CoveragePage() {
           value={ar(d.totals?.stale ?? 0)}
           tone="gold"
         />
-        <Kpi label="نسبة التغطية" value={`${ar(d.totals?.coveredPct ?? 0)}٪`} />
+        <Kpi label="نسبة التغطية" value={`${ar(d.totals?.coveredPct ?? 0)}٪`} hero />
       </div>
 
       <div className="callout note" style={{ marginBottom: 14 }}>

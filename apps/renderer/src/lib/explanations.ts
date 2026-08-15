@@ -93,6 +93,24 @@ export const EXPLANATIONS: Record<string, Explanation> = {
     source: 'من مجموع الفواتير والمدفوعات المسجّلة لكل الموردين في النطاق المعروض.',
   },
 
+  netOutstanding: {
+    title: 'الصافي',
+    meaning:
+      'المديونية المفتوحة بعد خصم أرصدة موردين دفعنا لهم أكثر من فواتيرهم (رصيد لنا مقدَّم). '
+      + 'هذا هو الرقم الذي يتصالح فعلاً مع «الافتتاحي + حركة الفترة»؛ المديونية المفتوحة وحدها '
+      + 'لا تفعل، لأنها تُصفِّر فائض كل مورد عند الصفر بدل أن تطرحه.',
+    formula: 'الصافي = المديونية المفتوحة − أرصدة لنا (مقدَّمة)',
+    compute: (v) => {
+      const outstanding = v.outstanding, credit = v.creditBalances, net = v.netOutstanding;
+      if (outstanding == null || credit == null) return { substitution: null, result: money(net) };
+      return {
+        substitution: `${sar(outstanding)} − ${sar(credit)}`,
+        result: money(net ?? outstanding - credit),
+      };
+    },
+    source: 'من مجموع المديونية المفتوحة وأرصدة الموردين المدفوعة أكثر من فواتيرهم في النطاق المعروض.',
+  },
+
   overdue: {
     title: 'المتأخر عن موعده',
     meaning: 'مجموع المتبقي من الفواتير التي تجاوز تاريخ استحقاقها اليوم. الاستحقاق = تاريخ الفاتورة + مدة سداد المورد.',

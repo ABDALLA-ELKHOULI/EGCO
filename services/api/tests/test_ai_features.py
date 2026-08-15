@@ -307,6 +307,25 @@ def test_commit_extract_validation_bad_rows(api_client):
     assert '1' in detail and '2' in detail and '3' in detail
 
 
+def test_commit_extract_malformed_date_returns_422_arabic(api_client):
+    """A non-ISO date (e.g. dd/mm/yyyy from a model or user paste) must 422, not 500,
+    with an Arabic detail naming the offending row — see fromisoformat guard in
+    ai.commit_extract."""
+    rows = [
+        {'date': '2026-01-01', 'debit': 100, 'credit': 0, 'description': 'ok'},   # 1: fine
+        {'date': '14/08/2026', 'debit': 200, 'credit': 0, 'description': 'bad'},  # 2: bad date
+    ]
+    r = api_client.post('/api/v1/ai/commit-extract', json={
+        'partyKind': 'contractor',
+        'newContractor': {'code': 'ai-baddate', 'name': 'x'},
+        'rows': rows, 'sourceFile': '/tmp/baddate.pdf',
+    })
+    assert r.status_code == 422, r.text
+    detail = r.json()['detail']
+    assert any('؀' <= ch <= 'ۿ' for ch in detail)  # Arabic text present
+    assert '2' in detail  # names the offending row index
+
+
 def test_commit_extract_409_existing_code(api_client):
     _contractor(api_client, code='ai-dup')
     r = api_client.post('/api/v1/ai/commit-extract', json={

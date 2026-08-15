@@ -1,12 +1,15 @@
 import type { ReactNode } from 'react';
 import { sar } from '@/lib/format';
 
-export function Kpi({ label, value, unit, tone, alert, explain }:
-  { label: string; value: string; unit?: string; tone?: string; alert?: boolean; explain?: ReactNode }) {
+// hero غير مُمرَّرة إطلاقاً = السلوك الأصلي (28px) لأي شاشة لم تُطبَّق عليها هرمية
+// KPI بعد بعد — hero=true رقم بطل (30px)، hero=false رقم ثانوي صريح (22px).
+export function Kpi({ label, value, unit, tone, alert, explain, hero }:
+  { label: string; value: string; unit?: string; tone?: string; alert?: boolean; explain?: ReactNode; hero?: boolean }) {
+  const sizeCls = hero === undefined ? '' : hero ? 'text-figure' : 'text-figure-sm';
   return (
     <div className={'kpi' + (alert ? ' alert' : '')}>
       <div className="label">{label}{explain}</div>
-      <div className={'value num ' + (tone || '')}>{value}</div>
+      <div className={'value num ' + sizeCls + ' ' + (tone || '')}>{value}</div>
       {unit && <div className="unit">{unit}</div>}
     </div>
   );
@@ -21,12 +24,12 @@ export function Card({ title, sub, children, actions }:
   return (
     <section className="card">
       {(title || actions) && (
-        <div className="cap" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="cap card-header">
           <div style={{ flex: 1 }}>
-            {title && <h2>{title}</h2>}
-            {sub && <p>{sub}</p>}
+            {title && <h2 className="title">{title}</h2>}
+            {sub && <p className="sub">{sub}</p>}
           </div>
-          {actions}
+          {actions && <div className="actions">{actions}</div>}
         </div>
       )}
       {children}

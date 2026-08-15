@@ -45,6 +45,72 @@
      so Segoe UI then Tahoma carry the Arabic there — both ship with Windows and
      render Arabic correctly. Install Cairo on Windows to match the design exactly. */
   --font: "Cairo", "SF Arabic", "Segoe UI", Tahoma, "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  /* ==================== سلّم المسافات والطباعة — المصدر الوحيد للحقيقة ====================
+     كل حشو/فجوة/هامش جديد يجب أن يستعمل أحد هذه المتغيرات بدل أرقام حرة.
+     Spacing (4pt scale) and type ramp: the single source of truth for spacing/type.
+     New code must resolve to these instead of ad-hoc px values. */
+  --space-xs4: 4px;
+  --space-sm8: 8px;
+  --space-md12: 12px;
+  --space-lg16: 16px;
+  --space-xl20: 20px;
+  --space-xxl24: 24px;
+  --space-xxxl32: 32px;
+  --space-section40: 40px;
+  --space-block48: 48px;
+  --space-page64: 64px;
+
+  --radius-control: 6px;
+  --radius-card: 10px;
+  --radius-pill: 999px;
+  --row-height: 44px;
+  --control-height: 34px;
+  --reading-max-width: 720px;
+
+  /* Type ramp (Cairo) */
+  --text-figure: 30px;
+  --lh-figure: 1.2;
+  --ls-figure: 0.6px;
+  --weight-figure: 700;
+
+  --text-figure-sm: 22px;
+  --lh-figure-sm: 1.25;
+  --ls-figure-sm: 0.4px;
+  --weight-figure-sm: 700;
+
+  --text-heading-page: 20px;
+  --lh-heading-page: 1.3;
+  --ls-heading-page: 0.3px;
+  --weight-heading-page: 700;
+
+  --text-heading-section: 16px;
+  --lh-heading-section: 1.4;
+  --weight-heading-section: 600;
+
+  --text-heading-card: 14px;
+  --lh-heading-card: 1.4;
+  --weight-heading-card: 600;
+
+  --text-body-default: 15px;
+  --lh-body-default: 1.65;
+
+  --text-body-table: 13px;
+  --lh-body-table: 1.4;
+
+  --text-body-emphasis: 13px;
+  --lh-body-emphasis: 1.4;
+  --weight-body-emphasis: 600;
+
+  --text-caption-default: 12px;
+  --lh-caption-default: 1.4;
+
+  --text-caption-micro: 11px;
+  --lh-caption-micro: 1.3;
+
+  --text-label-field: 12px;
+  --lh-label-field: 1.4;
+  --weight-label-field: 500;
 }
 
 :root[data-theme="dark"] {
@@ -128,8 +194,9 @@ td.num, th.num, td.ltr, th.ltr { display: table-cell; }
    Wraps under pressure: long contractor names plus six buttons used to squeeze the title. */
 .page-head { display: flex; align-items: center; gap: 10px 12px; margin-bottom: 18px; flex-wrap: wrap; }
 .page-head .grow { flex: 1 1 260px; min-width: 0; }
-.page-head h1 { font-size: 20px; margin: 0; letter-spacing: -0.3px; overflow-wrap: anywhere; }
-.page-head p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.page-head h1 { font-size: var(--text-heading-page); font-weight: var(--weight-heading-page); margin: 0; letter-spacing: -0.3px; overflow-wrap: anywhere; }
+/* -0.3px تركت كما هي: ls-heading-page (0.6+) موجب أما هذا العنوان فمصمم بتباعد سلبي أصلاً — لا نغيّر قيمة بصرية قائمة. */
+.page-head p { margin: 2px 0 0; font-size: var(--text-body-table); color: var(--muted); }
 
 /* ---------------- sidebar ---------------- */
 /* مدة الانتقال ومنحناه من لوح مواصفات الحركة في Figma — مصدر واحد للاثنين. */
@@ -251,8 +318,8 @@ td.num, th.num, td.ltr, th.ltr { display: table-cell; }
   overflow: hidden;
 }
 .card > .cap { padding: 14px 20px 10px; }
-.card > .cap h2 { font-size: 16px; margin: 0; }
-.card > .cap p { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
+.card > .cap h2 { font-size: var(--text-heading-section); margin: 0; }
+.card > .cap p { margin: 2px 0 0; font-size: var(--text-caption-micro); color: var(--muted); }
 
 .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
 .kpi {
@@ -260,9 +327,63 @@ td.num, th.num, td.ltr, th.ltr { display: table-cell; }
   border-radius: var(--r-card); padding: 16px 18px;
 }
 .kpi.alert { border-color: var(--red); border-width: 1.5px; }
-.kpi .label { font-size: 12px; color: var(--muted); }
+.kpi .label { font-size: var(--text-label-field); color: var(--muted); }
+/* 28px مقصودة لهذه البطاقة — لا تطابق أي مقاس في السلّم (30 الأقرب) فتُركت كما هي */
 .kpi .value { font-size: 28px; font-weight: 700; letter-spacing: -1px; margin-top: 2px; }
-.kpi .unit { font-size: 11px; color: var(--muted); }
+.kpi .unit { font-size: var(--text-caption-micro); color: var(--muted); }
+
+/* هرم أرقام الـKPI: رقم بطل واحد لكل شاشة (30px) والبقية أصغر (22px) */
+.kpi .value.text-figure {
+  font-size: var(--text-figure);
+  line-height: var(--lh-figure);
+  letter-spacing: var(--ls-figure);
+  font-weight: var(--weight-figure);
+}
+.kpi .value.text-figure-sm {
+  font-size: var(--text-figure-sm);
+  line-height: var(--lh-figure-sm);
+  letter-spacing: var(--ls-figure-sm);
+  font-weight: var(--weight-figure-sm);
+}
+
+/* ==================== الكتلة المرجعية الموحّدة للأنماط الشائعة (Canonical utility block) ====================
+   دمج ما أضافه عاملان متزامنان سابقاً في مجموعة واحدة بلا تكرار — أي صنف جديد متكرر
+   عبر أكثر من صفحتين يُضاف هنا، لا كأسلوب سطري. */
+/* ---------------- utility: نصوص متكررة ---------------- */
+.text-caption { font-size: var(--text-caption-default); color: var(--muted); }
+.text-caption-micro { font-size: var(--text-caption-micro); color: var(--muted); }
+.text-label { font-size: var(--text-label-field); font-weight: var(--weight-label-field, 500); color: var(--muted); }
+.text-emphasis { font-size: var(--text-body-emphasis); font-weight: 600; }
+.text-body-table { font-size: var(--text-body-table); }
+
+/* ---------------- utility: إيقاع المسافات بين الأقسام ---------------- */
+.section-gap { margin-bottom: var(--space-xxl24); }
+.section-gap-lg { margin-bottom: var(--space-xxxl32); }
+.row-gap-sm { display: flex; gap: var(--space-sm8); }
+.row-gap-md { display: flex; gap: var(--space-md12); }
+
+/* ---------------- card header: عنوان + سطر فرعي رمادي + إجراءات ---------------- */
+/* الشكل الموحّد الوحيد لرأس البطاقة: .card-header مع .title/.sub/.actions —
+   استُخدمت سابقاً باسمين مختلفين (card-header-row وأسماء card-header-title/-sub/-actions)
+   حتى تصادم عاملان؛ هذا هو الاسم الباقي الآن، وCard في ui.tsx يستعمله مباشرة. */
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md12);
+  padding: 14px 20px 10px;
+}
+.card-header .title { font-size: var(--text-heading-card); font-weight: var(--weight-heading-card); margin: 0; }
+.card-header .sub { margin: 2px 0 0; font-size: var(--text-caption-micro); color: var(--muted); }
+.card-header .actions { display: flex; align-items: center; gap: var(--space-sm8); flex: none; }
+
+/* ---------------- utility: أنماط متكررة إضافية (CashFlow وغيرها) ---------------- */
+/* زر شفاف يغلّف بطاقة KPI كاملة بلا تغيير شكلي — يفتح نافذة التفاصيل */
+.kpi-link-reset { all: unset; cursor: pointer; display: block; width: 100%; }
+/* تسمية حقل توولبار صغيرة رمادية — 13px لا تطابق درجة في السلّم فتُركت رقماً صريحاً هنا فقط */
+.field-inline-label { font-size: 13px; color: var(--muted); }
+.callout-tight { margin-bottom: 14px; }
+.stack-sm { display: flex; flex-direction: column; gap: var(--space-md12); }
 
 /* ---------------- explain-this-number ---------------- */
 .explain-dot {
@@ -278,10 +399,11 @@ td.num, th.num, td.ltr, th.ltr { display: table-cell; }
 }
 
 /* ---------------- tables ---------------- */
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-size: var(--text-body-table); }
+/* 10px 12px: عمودي غير مطابق للسلّم عمداً — يضبط ارتفاع الصف 44px، لا يُلمس */
 th, td { padding: 10px 12px; text-align: right; }
 thead tr { background: var(--tint); }
-th { font-size: 11px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+th { font-size: var(--text-caption-micro); color: var(--muted); font-weight: 600; white-space: nowrap; }
 tbody tr { border-top: 1px solid var(--hair); }
 tbody tr:hover { background: var(--tint); }
 td.ltr, th.ltr { text-align: left; }
@@ -659,7 +781,7 @@ tbody tr.row-settled:hover { opacity: 1; }
   box-shadow: 0 18px 48px rgba(0, 0, 0, .22);
 }
 .modal-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-.modal-head h2 { font-size: 16px; margin: 0; flex: 1; }
+.modal-head h2 { font-size: var(--text-heading-section); margin: 0; flex: 1; }
 .modal-box > :last-child { margin-bottom: 0; }
 /* ترتيب واحد في كل النوافذ: الإلغاء ثم الإجراء الأساسي، مصفوفَين لجهة النهاية */
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
@@ -705,3 +827,31 @@ td.truncate { max-width: 260px; }
 
 /* اسم الطرف في صفوف الجداول لا يتجاوز عرضاً معقولاً */
 tbody td > a { overflow-wrap: anywhere; }
+
+/* ==================== أنماط سطرية مشتركة (Track B — استبدال style={{}} المتكرر) ==================== */
+/* تسمية حقل نموذج داخل شريط أدوات — كانت تتكرر سطرياً بنفس المقاس واللون في خمس شاشات على الأقل */
+.field-inline { font-size: var(--text-body-emphasis); color: var(--muted); }
+/* زرّ يخلع كل مظهر الزر ليصبح غلافاً شفافاً لعنصر آخر (بطاقة مؤشر قابلة للنقر مثلاً) */
+.btn-reset { all: unset; cursor: pointer; }
+.btn-reset.block { display: block; width: 100%; }
+/* هامش سفلي موحّد بين كتل الصفحة (تنبيهات/أقسام) — يستبدل قيماً حرة متفرقة مثل 14px */
+.mb-section { margin-bottom: var(--space-lg16); }
+/* هامش علوي موحّد بين كتل الصفحة — كان يتكرر كـ marginTop: 18 سطرياً في أكثر من شاشة */
+.mt-section { margin-top: var(--space-lg16); }
+/* فقرة توضيحية صغيرة تحت جدول أو بطاقة */
+.text-note { font-size: var(--text-caption-micro); color: var(--muted); line-height: 1.7; }
+/* عمود عناصر بفجوة متوسطة — بديل تكرار display:flex;flex-direction:column;gap
+   (مطابق تماماً لـ .stack-sm أعلاه؛ أُبقي على .stack-sm وحُذف هذا الاسم المكرر) */
+/* ---------------- تراتب مؤشرات الأداء (KPI hierarchy) ---------------- */
+/* رقم واحد "بطل" لكل شاشة بحجم أكبر — يُطبَّق عبر Kpi({hero:true}) في ui.tsx الذي
+   يضيف .text-figure مباشرة على .value؛ لا حاجة لمسار ثانٍ عبر .kpi.hero أو .kpi-value-hero
+   (كانا بلا استخدام فعلي في أي صفحة — أُزيلا هنا). */
+
+/* مربّع دلالة الألوان في مخطط التدفق — يتكرر ثلاث مرات بلون مختلف فقط،
+   فاللون يبقى داخل السطر والشكل ينتقل إلى هنا. */
+.legend-swatch {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 2px;
+  margin-inline-end: var(--space-xs4);
+}

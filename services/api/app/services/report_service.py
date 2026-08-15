@@ -54,6 +54,11 @@ def build(positions: Sequence[SupplierPosition], today: dt.date,
     total_invoiced = sum((p.total_invoiced for p in positions), zero)
     total_paid = sum((p.total_paid for p in positions), zero)
     outstanding = sum((p.outstanding for p in positions), zero)
+    # رصيد لنا (مقدم) — surplus that position() floors out of `outstanding` per supplier.
+    # opening + invoiced_in_period − paid_in_period must reconcile to a single number on
+    # the printed page; net_outstanding is that number (outstanding net of credit surplus).
+    credit_balances = sum((p.credit_balance for p in positions), zero)
+    net_outstanding = outstanding - credit_balances
     overdue = sum((p.overdue for p in positions), zero)
     within7 = sum((p.due_within_7 for p in positions), zero)
 
@@ -163,6 +168,8 @@ def build(positions: Sequence[SupplierPosition], today: dt.date,
         summary=dict(total_invoiced=_money_dec(total_invoiced + c_invoiced),
                      total_paid=_money_dec(total_paid + c_paid),
                      outstanding=_money_dec(outstanding + c_outstanding),
+                     credit_balances=_money_dec(credit_balances),
+                     net_outstanding=_money_dec(net_outstanding),
                      overdue=_money_dec(overdue),
                      due_within_7=_money_dec(within7),
                      supplier_count=len(positions)),

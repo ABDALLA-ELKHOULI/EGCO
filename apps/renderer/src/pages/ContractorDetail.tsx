@@ -135,7 +135,7 @@ export function ContractorDetail() {
       </div>
 
       <div className="kpi-row">
-        <Kpi label={`الرصيد (${v.label})`} value={sar(d.balance)} unit="ر.س" tone={v.cls}
+        <Kpi label={`الرصيد (${v.label})`} value={sar(d.balance)} unit="ر.س" tone={v.cls} hero
              alert={d.balance < 0}
              explain={<ExplainDot metric="contractorBalance" values={{ duesTotal, paidTotal, balance: d.balance }} />} />
         <Kpi label="إجمالي المستخلصات" value={sar(duesTotal)} unit="ر.س" />
