@@ -18,10 +18,13 @@ from __future__ import annotations
 import datetime as dt
 import re
 import unicodedata
+from typing import List, Optional
 
 from app.domain.payables import Invoice, Payment
 
-BLOCK_MARKER = 'CompanyCode='
+#: يُقسَّم قبل العلامة لا عليها، فيبقى سطر العلامة هو lines[0] في كلا التخطيطين
+#: وتظل فهارس بقية السطور كما هي.
+BLOCK_MARKER = r'(?=ID=0\dTrxType=)'
 ACCOUNT_RE = re.compile(r'\b(\d{7})\b')
 INVOICE_NO_RE = re.compile(r'رقم\s*(\d+)')
 TOTAL_RE = re.compile(r'اجمالي\s*الحساب\s*(-?[\d,]+\.\d{2})')
@@ -57,13 +60,88 @@ def extract_text(path: str) -> str:
     return '\n'.join(page.get_text() for page in doc)
 
 
+#: النظام المحاسبي يطبع تخطيطين مختلفين لنفس الكشف. الفاصل بينهما هو صيغة التاريخ:
+#:
+#:   «المفكوك»  — التاريخ dd-mm-yyyy في سطر مستقل، ثم مدين، دائن، المستند، الرصيد،
+#:                ثم الوصف في سطر لاحق.        (مؤسسة انظمة الطلاء)
+#:   «الملتصق» — التاريخ yyyy-mm-dd ملتصقاً بالوصف وبالمبلغ في سطر واحد، ثم المبلغ
+#:                الثاني، المستند، الرصيد.      (سامي سويد المهندية · الكهربائية المتقدمة)
+#:
+#: كلا التخطيطين يبدأ بنفس العلامة ID=0…TrxNo، وهذه هي العلامة التي نقسّم عليها —
+#: العلامة القديمة CompanyCode= غائبة تماماً عن التخطيط الملتصق، فكانت ملفاته تُرفض
+#: بحجة «لم يُعثر على أي حركة» وهي مليئة بالحركات.
+GLUED_DATE_RE = re.compile(r'^(\d{4}-\d{2}-\d{2})')
+#: الوصف ثم مدين ثم دائن ثم المستند. يُطبَّق على بقية الكتلة مجتمعةً لا على سطر بعينه،
+#: لأن الوصف قد ينسكب على سطرين أو ثلاثة متى انتهى برقم أو حوى قوساً — «جزء من حوالھ25»
+#: تدفع المبلغ إلى السطر التالي، وقراءةٌ بالفهرس تُسقط الحركة بأكملها بلا صوت.
+GLUED_BODY_RE = re.compile(
+    r'^(?P<desc>.*?)(?P<debit>[\d,]+\.\d{2})\s*(?P<credit>[\d,]+\.\d{2})\s*'
+    r'(?P<doc>\d{6,10})\s*\(?(?P<balance>-?[\d,]+\.\d{2})\)?',
+    re.DOTALL)
+
+
+HEADER_WORDS = {'الحساب', 'التاريخ', 'الوصف', 'مدين', 'دائن', 'الرقم', 'رصيد',
+                'الفرع', 'تقرير كشف حساب', 'مطبوع بواسطة', 'مدير النظام'}
+
+
+def header_name(header_norm: str, account: Optional[str]) -> str:
+    """اسم الطرف من ترويسة الكشف — أول سطر عربي طويل بعد رقم الحساب وليس عنوان عمود.
+
+    Lives here rather than in contractor_statement because SUPPLIER statements need it
+    too: when a statement arrives for an account we have never seen, this name is the
+    only thing that lets us offer to create the account instead of silently dropping a
+    fully-reconciled file on the floor.
+    """
+    lines = [ln.strip() for ln in header_norm.split('\n') if ln.strip()]
+    start = 0
+    if account:
+        for i, ln in enumerate(lines):
+            if account in ln:
+                start = i
+                break
+    norm_ar = lambda s: re.sub('[يیى]', 'ي', s)  # noqa: E731 — الياء الفارسية والمقصورة
+    header_set = {norm_ar(w) for w in HEADER_WORDS}
+    for ln in lines[start:]:
+        base = norm_ar(ln.lstrip(': ').strip())
+        if base in header_set:
+            continue
+        if len(base) > 10 and re.search(r'[؀-ۿ]', base) and 'افتتاح' not in base:
+            return ln.lstrip(': ').strip()
+    return ''
+
+
+def _read_block(lines: List[str]):
+    """(date, debit, credit, doc, balance, desc) من كتلة حركة، أياً كان تخطيطها."""
+    md = GLUED_DATE_RE.match(lines[1])
+    if md:
+        tail = '\n'.join(lines[1:])[len(md.group(1)):]
+        m = GLUED_BODY_RE.match(tail)
+        if m is None:
+            raise ValueError('كتلة ملتصقة بلا مبالغ')
+        bal = m.group('balance')
+        # القوس علامة سالب في هذا النظام — نفس اصطلاح _money.
+        return (dt.date.fromisoformat(md.group(1)),
+                _money(m.group('debit')), _money(m.group('credit')),
+                m.group('doc'),
+                _money(bal if bal.startswith('-') else '(%s)' % bal
+                       if tail[m.end('doc'):].lstrip().startswith('(') else bal),
+                _norm(m.group('desc').strip()))
+    date = _date(lines[1])
+    debit = _money(lines[2])
+    credit = _money(lines[3])
+    doc = lines[4]
+    balance = _money(lines[5])
+    return date, debit, credit, doc, balance, _norm(
+        next((x for x in lines[6:] if len(x) > 8), ''))
+
+
 def parse(path: str) -> dict:
     """Return {account, invoices, payments, statement_balance, issues}."""
     text = extract_text(path)
     norm = _norm(text)
     issues: list[dict] = []
 
-    blocks = text.split(BLOCK_MARKER)
+    blocks = re.split(BLOCK_MARKER, text)
     # A statement with NO transaction blocks is legal: an account whose whole balance
     # is carried forward prints only the «رصيد افتتاحي» line and its footer total
     # (شركة بي سي في جلوبال is a real example). Rejecting it here used to push such
@@ -93,6 +171,11 @@ def parse(path: str) -> dict:
     # Arabic yeh (ي U+064A) — accept both or the line is silently missed.
     ob = re.search(r'([\d,]+\.\d{2})\s*\n\s*([\d,]+\.\d{2})\s*\n\s*\(?(-?[\d,]+\.\d{2})\)?\s*رص[يی]د\s*افتتاح',
                    header_norm)
+    if ob is None:
+        # التخطيط الملتصق يعكس الترتيب: التسمية أولاً ثم مدين ودائن والرصيد
+        # (رصيد افتتاحي0.00 \n 1,676.88 \n (1,676.88)).
+        ob = re.search(r'رص[يی]د\s*افتتاح[^\d\n]*([\d,]+\.\d{2})\s*\n\s*([\d,]+\.\d{2})'
+                       r'\s*\n\s*\(?(-?[\d,]+\.\d{2})\)?', header_norm)
     opening_debit = opening_credit = None
     if ob:
         opening_debit, opening_credit = _money(ob.group(1)), _money(ob.group(2))
@@ -118,19 +201,14 @@ def parse(path: str) -> dict:
 
     for i, block in enumerate(blocks[1:], start=1):
         lines = [ln.strip() for ln in block.split('\n') if ln.strip()]
-        if len(lines) < 6:
+        if len(lines) < 5:
             issues.append(dict(severity='warning', row=i, message='سطر ناقص — تم تجاهله'))
             continue
         try:
-            date = _date(lines[1])
-            debit = _money(lines[2])
-            credit = _money(lines[3])
-            doc = lines[4]
+            date, debit, credit, doc, _bal, desc = _read_block(lines)
         except (ValueError, IndexError):
             issues.append(dict(severity='warning', row=i, message='تعذّرت قراءة السطر'))
             continue
-
-        desc = _norm(next((x for x in lines[6:] if len(x) > 8), ''))
 
         if credit > 0:
             num = INVOICE_NO_RE.search(desc)
@@ -164,5 +242,6 @@ def parse(path: str) -> dict:
             if row.doc == 'OPENING' and row.date == dt.date.min:
                 row.date = fallback
 
-    return dict(account=account, invoices=invoices, payments=payments,
+    return dict(account=account, name=header_name(header_norm, account),
+                invoices=invoices, payments=payments,
                 statement_balance=balance, issues=issues)

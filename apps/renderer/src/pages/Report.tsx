@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, ApiError, type PartyScope } from '@/lib/api';
+import { api, apiBase, ApiError, type PartyScope } from '@/lib/api';
 import { ar, arDate, invoiceCount, sar } from '@/lib/format';
-import { ErrorState, Kpi, Money, State } from '@/components/ui';
+import { ErrorState, Kpi, Money, Pill, State } from '@/components/ui';
 import { ExplainDot } from '@/components/Explain';
 import { PeriodBar } from '@/components/PeriodBar';
 import { ScopeBar, scopeParams, type Scope } from '@/components/ScopeBar';
@@ -17,6 +17,9 @@ export function ReportPage() {
   const [params] = useSearchParams();
   const account = params.get('account') ?? undefined;
   const [tab, setTab] = useState<'period' | 'periodic'>('period');
+  // تفصيلي (تقرير الفترة الحالي) / ملخّص بالمشروع (سطر واحد لكل شركة) — يظهر فقط
+  // داخل تبويب «تقرير الفترة»، فالتحليل الدوري تنسيق مختلف تماماً لا علاقة له بهذا.
+  const [format, setFormat] = useState<'detailed' | 'projectSummary'>('detailed');
 
   return (
     <>
@@ -32,7 +35,18 @@ export function ReportPage() {
         <button className={'btn' + (tab === 'periodic' ? ' primary' : '')} onClick={() => setTab('periodic')}>التحليل الدوري</button>
       </div>
 
-      {tab === 'period' ? <PeriodTab /> : <PeriodicTab account={account} />}
+      {tab === 'period' && (
+        <div className="toolbar no-print" style={{ marginBottom: 18 }}>
+          <button className={'btn' + (format === 'detailed' ? ' primary' : '')}
+                  onClick={() => setFormat('detailed')}>تفصيلي</button>
+          <button className={'btn' + (format === 'projectSummary' ? ' primary' : '')}
+                  onClick={() => setFormat('projectSummary')}>ملخّص بالمشروع</button>
+        </div>
+      )}
+
+      {tab === 'period'
+        ? (format === 'detailed' ? <PeriodTab /> : <ProjectSummaryTab />)
+        : <PeriodicTab account={account} />}
     </>
   );
 }
@@ -111,6 +125,159 @@ function PeriodTab() {
   );
 }
 
+/* ==================== تنسيق «ملخّص بالمشروع» — سطر واحد لكل شركة ==================== */
+
+/** ملخّص بالمشروع — سطر واحد لكل شركة. */
+function ProjectSummaryTab() {
+  const [projects, setProjects] = useState<string[]>([]);
+  const [project, setProject] = useState('');
+  const [parties, setParties] = useState<PartyScope>('both');
+  const [d, setD] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const seq = useRef(0);
+
+  useEffect(() => {
+    api.reportScopes().then((r) => {
+      const ps: string[] = r.projects || [];
+      setProjects(ps);
+      setProject((cur) => cur || ps[0] || '');
+    }).catch(() => { /* قائمة المشاريع فارغة تكفي رسالة الحالة أدناه */ });
+  }, []);
+
+  const load = () => {
+    if (!project) return;
+    const my = ++seq.current;
+    setLoading(true); setErr(null); setD(null);
+    api.projectSummary(project, parties)
+      .then((r) => { if (my === seq.current) { setD(r); setLoading(false); } })
+      .catch((e) => { if (my === seq.current) { setErr(e.message); setLoading(false); } });
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, parties]);
+
+  const exportUrl = project
+    ? api.projectSummaryExportUrl(project, parties)
+    : undefined;
+  const stamp = new Date().toISOString().slice(0, 10);
+
+  // نفس آلية تصدير PDF المستخدمة في تقرير الفترة بالضبط — حوار حفظ أصلي داخل
+  // التطبيق، وwindow.print() في المتصفح.
+  async function exportPdf() {
+    if (!window.egco?.exportPdf) { window.print(); return; }
+    await window.egco.exportPdf({ filename: `EGCO-ملخص-مشروع-${stamp}.pdf`, landscape: true });
+  }
+
+  return (
+    <>
+      <div className="toolbar no-print" style={{ marginBottom: 18, gap: 12 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
+          المشروع
+          <select value={project} onChange={(e) => setProject(e.target.value)}>
+            {projects.length === 0 && <option value="">لا مشاريع</option>}
+            {projects.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
+          الأطراف
+          <select value={parties} onChange={(e) => setParties(e.target.value as PartyScope)}>
+            <option value="both">الموردون والمقاولون</option>
+            <option value="suppliers">الموردون فقط</option>
+            <option value="contractors">المقاولون فقط</option>
+          </select>
+        </label>
+        <div style={{ flex: 1 }} />
+        {exportUrl && <a className="btn" href={exportUrl} download>تصدير Excel</a>}
+        <button className="btn primary" onClick={exportPdf}>طباعة / حفظ PDF</button>
+      </div>
+
+      {err && <ErrorState message={err} onRetry={load} />}
+      {!err && loading && <State>جارٍ إعداد الملخّص…</State>}
+      {!err && !loading && d && <ProjectSummarySheet d={d} />}
+      {!err && !loading && !d && !project && <State>لا مشاريع للاختيار منها بعد</State>}
+    </>
+  );
+}
+
+/** الجدول القابل للطباعة — سطر واحد لكل شركة، وسطر إجمالي واحد لنفس المجموعة. */
+function ProjectSummarySheet({ d }: { d: any }) {
+  const t = d.totals;
+  return (
+    <div className="sheet">
+      <header className="rpt-head">
+        <div>
+          <b>شركة إعمار الخليج المصرية للمقاولات</b>
+          <span>الإدارة المالية — الفرع الرئيسي</span>
+        </div>
+      </header>
+      <hr className="rule-ink" />
+
+      <h1 className="rpt-title">ملخّص المشروع</h1>
+      <p className="rpt-sub">المشروع: {d.project} · حتى {arDate(d.today)} · جميع الأرقام بالريال السعودي</p>
+      <hr />
+
+      <div className="rpt-kpis" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+        <RKpi label="إجمالي المفوتر" value={sar(t.totalInvoiced)} />
+        <RKpi label="المسدد" value={sar(t.totalPaid)} cls="ok" />
+        <RKpi label="المتبقي" value={sar(t.outstanding)} />
+        <RKpi label="المتأخر (موردون فقط)" value={sar(t.delayedAmount)} cls="red" />
+      </div>
+
+      <div className="table-scroll wide">
+        <table className="rpt-table">
+          <thead><tr>
+            <th>اسم الشركة</th><th>رقم الحساب</th><th>النوع</th>
+            <th className="ltr">إجمالي المفوتر (ر.س)</th><th className="ltr">المسدد (ر.س)</th>
+            <th className="ltr">المتبقي (ر.س)</th><th className="ltr">المتأخر (ر.س)</th>
+            <th>أقصى تأخر</th><th>آخر دفعة</th>
+          </tr></thead>
+          <tbody>
+            {d.rows.map((r: any) => (
+              <tr key={r.partyKind + '-' + r.account}>
+                <td className="nowrap">{r.name}<PartyPill kind={r.partyKind} /></td>
+                <td className="ltr num">{r.account}</td>
+                <td className="nowrap">{r.partyKind === 'contractor' ? 'مقاول' : 'مورد'}</td>
+                <td className="ltr num">{sar(r.totalInvoiced)}</td>
+                <td className="ltr num">{sar(r.totalPaid)}</td>
+                <td className="ltr num">{sar(r.outstanding)}</td>
+                {r.delay ? (
+                  <>
+                    <td className={'ltr num ' + (r.delay.amount > 0 ? 'red' : '')}>{sar(r.delay.amount)}</td>
+                    <td className="nowrap">{r.delay.days > 0 ? `${ar(r.delay.days)} يوم` : '—'}</td>
+                  </>
+                ) : (
+                  // لا تواريخ استحقاق لدفتر المقاول — «—» صريحة بدل صفر يوهم بعدم التأخر
+                  <td className="nowrap muted" colSpan={2}
+                      title="حسابات المقاولين دفتر جارٍ بلا تواريخ استحقاق، فلا يُحسب لها تأخر">
+                    — (لا يُحسب للمقاولين)
+                  </td>
+                )}
+                <td className="nowrap">{formatLastPayment(r.lastPayment)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot><tr>
+            <td>الإجمالي ({ar(t.companyCount)} شركة)</td><td /><td />
+            <td className="ltr num">{sar(t.totalInvoiced)}</td>
+            <td className="ltr num">{sar(t.totalPaid)}</td>
+            <td className="ltr num">{sar(t.outstanding)}</td>
+            <td className="ltr num">{sar(t.delayedAmount)}</td>
+            <td className="nowrap">{t.maxDelayDays > 0 ? `${ar(t.maxDelayDays)} يوم` : '—'}</td>
+            <td />
+          </tr></tfoot>
+        </table>
+      </div>
+      <p className="muted" style={{ fontSize: 11, margin: '10px 0 0' }}>
+        المتأخر يُحسب للموردين فقط من تاريخ استحقاق كل فاتورة؛ حسابات المقاولين دفتر جارٍ
+        مدين/دائن بلا تاريخ استحقاق، فلا معنى محاسبياً لحساب تأخره.
+      </p>
+    </div>
+  );
+}
+
 /** زر «الملخص التنفيذي (AI)» — يمرّر نطاق التقرير الحالي كما يتتبعه Report.tsx بالفعل. */
 function AiSummaryButton({ scopeP, from, to, onResult }: {
   scopeP: Record<string, string | undefined>;
@@ -147,6 +314,118 @@ function AiSummaryButton({ scopeP, from, to, onResult }: {
   );
 }
 
+/**
+ * أولويات السداد — قسم داخل التقرير التحليلي، يعيد استخدام نفس الترتيب الحتمي
+ * الظاهر في لوحة الموردين (Suppliers.tsx → PrioritiesPanel)، بنفس الصياغة العربية.
+ *
+ * حين يكون المساعد الآلي مفعّلاً: يُستدعى POST /api/v1/ai/priorities (نفس مسار
+ * api.aiPriorities المستخدم في لوحة الموردين) فيظهر أيضاً نص narrative تفسيري.
+ * حين يكون متوقفاً أو يفشل الطلب: رجوع فوري إلى GET /api/v1/reports/priorities —
+ * نفس بناء القائمة الحتمي (F.build_priorities) لكن بلا أي استدعاء للمساعد، فيبقى
+ * القسم يعمل بالأرقام وحدها ولا يختفي أو يفرغ أبداً بسبب غياب الذكاء الاصطناعي.
+ */
+function PrioritiesSection() {
+  const { enabled: aiEnabled, loading: aiLoading } = useAiEnabled();
+  const [budget, setBudget] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [items, setItems] = useState<any[] | null>(null);
+  const [narrative, setNarrative] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const seq = useRef(0);
+
+  async function run() {
+    const my = ++seq.current;
+    setBusy(true); setError(null); setNarrative(null); setNote(null);
+    const b = budget.trim() ? Number(budget) : undefined;
+    try {
+      if (!aiEnabled) throw new Error('ai-disabled');
+      const r = await api.aiPriorities(b);
+      if (my !== seq.current) return;
+      setItems(r.items); setNarrative(r.narrative);
+    } catch {
+      // المساعد متوقف أو فشل الطلب — رجوع إلى الترتيب الحتمي وحده بلا شرح آلي
+      try {
+        const r = await api.priorities(b != null ? b : undefined);
+        if (my !== seq.current) return;
+        setItems(r.items);
+        setNote('الشرح الآلي لهذه القائمة غير متاح حالياً — الترتيب والأرقام أدناه محسوبة كودياً وكاملة رغم ذلك.');
+      } catch (e2) {
+        if (my === seq.current) setError(e2 instanceof Error ? e2.message : String(e2));
+      }
+    } finally {
+      if (my === seq.current) setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!aiLoading) run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiLoading]);
+
+  const budgetNum = budget.trim() ? Number(budget) : null;
+  let running = 0;
+
+  return (
+    <>
+      <div className="toolbar no-print" style={{ marginBottom: 10, gap: 12 }}>
+        <label style={{ fontSize: 13, color: 'var(--muted)' }}>
+          ميزانية متاحة
+          <input type="number" value={budget} onChange={(e) => setBudget(e.target.value)}
+                 style={{ marginInlineStart: 8, width: 160 }} dir="ltr" placeholder="اختياري" />
+        </label>
+        <button className="btn" onClick={run} disabled={busy}>
+          {busy ? 'جارٍ الحساب…' : 'تحديث'}
+        </button>
+      </div>
+
+      {error && <p className="red" style={{ fontSize: 12, margin: '0 0 10px' }}>{error}</p>}
+      {!error && busy && !items && <p className="muted" style={{ fontSize: 13 }}>جارٍ الحساب…</p>}
+      {!error && items && (
+        items.length === 0 ? (
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>لا بنود مرشّحة حالياً.</p>
+        ) : (
+          <>
+            <div className="table-scroll">
+              <table className="rpt-table">
+                <thead><tr>
+                  <th>#</th><th>الاسم</th><th className="ltr">المبلغ (ر.س)</th>
+                  <th>السبب</th>{budgetNum != null && <th>ضمن الميزانية</th>}
+                </tr></thead>
+                <tbody>
+                  {items.map((it: any, i: number) => {
+                    const before = running;
+                    running += it.amount || 0;
+                    const fits = budgetNum != null ? before + (it.amount || 0) <= budgetNum : null;
+                    return (
+                      <tr key={it.partyKind + it.key + i}>
+                        <td className="num">{ar(i + 1)}</td>
+                        <td className="nowrap">{it.name}<PartyPill kind={it.partyKind} /></td>
+                        <td className="ltr num">{sar(it.amount)}</td>
+                        <td className="muted">{it.reason}</td>
+                        {budgetNum != null && (
+                          <td>{fits && <Pill kind="ok">ضمن الميزانية</Pill>}</td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {narrative && <p className="muted" style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{narrative}</p>}
+            {note && <p className="muted no-print" style={{ fontSize: 11, margin: '6px 0 0' }}>{note}</p>}
+            {budgetNum != null && (
+              <p className="muted" style={{ fontSize: 11, margin: '4px 0 0' }}>
+                «ضمن الميزانية» تقدير محلي تراكمي بترتيب القائمة — لا يوجد حقل من الخادم يفيد بذلك صراحة.
+              </p>
+            )}
+          </>
+        )
+      )}
+    </>
+  );
+}
+
 function PeriodSheet({ d, from, to, scopeP, parties }:
   { d: any; from: string; to: string;
     scopeP: Record<string, string | undefined>; parties: PartyScope }) {
@@ -162,7 +441,8 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
   const hasCreditBalance = (s.credit_balances ?? 0) > 0;
   const scopeLabel: string = m.scope_label ?? defaultScopeLabel(parties);
   // ترقيم الأقسام يتبع ما ظهر فعلاً — قسم مخفي لا يترك فجوة في الترقيم
-  const shown = [1, ...(showSuppliers ? [2, 3] : []), ...(con ? [4] : []), ...(d.notes?.length ? [5] : [])];
+  const shown = [1, ...(showSuppliers ? [2, 3] : []), ...(con ? [4] : []), 6,
+    ...(d.notes?.length ? [5] : [])];
   const sn = (id: number) => '٠' + ar(shown.indexOf(id) + 1);
   const [presenting, setPresenting] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -394,6 +674,10 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
             </div>
           </>
         )}
+
+        <Section num={sn(6)} title="أولويات السداد"
+                 sub="ترتيب حتمي على مستوى الشركة بالكامل — لا يتقيّد بنطاق هذا التقرير" />
+        <PrioritiesSection />
 
         {d.notes.length > 0 && (
           <>

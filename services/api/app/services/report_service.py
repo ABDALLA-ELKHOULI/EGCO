@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import datetime as dt
 from decimal import Decimal
-from typing import Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
-from app.domain.payables import SupplierPosition, money as _money_dec, payment_schedule
+from app.domain import contractors as _C
+from app.domain.payables import (D as _D, DELAY_BUCKETS, SupplierPosition,
+                                 money as _money_dec, payment_schedule)
 from app.services.payables_service import period_breakdown
 
 AR_MONTHS = {1:'يناير',2:'فبراير',3:'مارس',4:'أبريل',5:'مايو',6:'يونيو',
@@ -197,3 +199,91 @@ def build(positions: Sequence[SupplierPosition], today: dt.date,
                                     if parties == 'contractors'
                                     else 'تقرير تحليل مديونية الموردين والمقاولين')
     return payload
+
+
+# ================================================================== ملخّص المشروع
+#
+# التقرير المختصر — سطر واحد لكل شركة (مورد أو مقاول) ضمن مشروع واحد، بدل سطر لكل
+# فاتورة/حركة. المقاولون ليس لهم تاريخ استحقاق (دفتر جارٍ مدين/دائن)، فلا يُحسب لهم
+# تأخر — الحقل `delay` يكون None بدل اختراع صفر لا يدل على «لا تأخر» فعلاً.
+
+def _project_supplier_row(p: SupplierPosition) -> dict:
+    last_pay = max(p.payments, key=lambda x: x.date, default=None)
+    return dict(
+        partyKind='supplier',
+        account=p.supplier.account, name=p.supplier.name,
+        totalInvoiced=_money_dec(p.total_invoiced), totalPaid=_money_dec(p.total_paid),
+        outstanding=_money_dec(p.outstanding),
+        delay=dict(amount=_money_dec(p.delay.amount), days=p.delay.days,
+                   bucket=p.delay.bucket,
+                   byBucket={k: _money_dec(v) for k, v in p.delay.by_bucket.items()}),
+        lastPayment=(dict(date=last_pay.date.isoformat(), amount=_money_dec(last_pay.amount))
+                    if last_pay is not None else None),
+    )
+
+
+def _project_contractor_row(code: str, name: str, entries: List[dict]) -> dict:
+    """صف مقاول ضمن المشروع — `entries` قيود ذلك المقاول في هذا المشروع فقط.
+
+    `entries` هي قواميس بمفاتيح debit/credit/kind/date (date لآخر دفعة فقط).
+    """
+    pos = _C.position(entries)
+    balance = pos['balance']
+    # نفس تعريف contractor_report_service: outstanding = ما ندين به له فقط.
+    outstanding = -balance if balance < 0 else Decimal('0')
+    pays = [e for e in entries if (e.get('kind') or 'other') == 'payment'
+            and _D(e.get('debit') or 0) > 0]
+    last_pay = None
+    if pays:
+        last = max(pays, key=lambda e: e['date'])
+        last_pay = dict(date=last['date'].isoformat(), amount=_money_dec(_D(last['debit'])))
+    return dict(
+        partyKind='contractor',
+        account=code, name=name,
+        totalInvoiced=_money_dec(pos['credit_total']), totalPaid=_money_dec(pos['payments_total']),
+        outstanding=_money_dec(outstanding),
+        # لا تواريخ استحقاق في دفتر المقاول — لا يوجد تأخر يُحسب، فليس صفراً بل غياب.
+        delay=None,
+        lastPayment=last_pay,
+    )
+
+
+def project_summary(supplier_positions: Sequence[SupplierPosition],
+                    contractor_entries: Sequence[Tuple[str, str, List[dict]]],
+                    project: str, today: dt.date, parties: str = 'both') -> dict:
+    """تقرير المشروع المختصر — سطر واحد لكل شركة + سطر إجمالي واحد لنفس المجموعة.
+
+    `contractor_entries` = [(code, name, [entry_dict, ...]), ...] لمقاولي هذا المشروع
+    فقط (قيودهم فيه فقط)، يجهّزها المستدعي من قاعدة البيانات — هذه الدالة نقية.
+    """
+    rows: List[dict] = []
+    if parties in ('suppliers', 'both'):
+        for p in sorted(supplier_positions, key=lambda x: x.supplier.name):
+            rows.append(_project_supplier_row(p))
+    if parties in ('contractors', 'both'):
+        for code, name, entries in sorted(contractor_entries, key=lambda t: t[1]):
+            rows.append(_project_contractor_row(code, name, entries))
+
+    zero = Decimal('0')
+    total_invoiced = sum((_D(r['totalInvoiced']) for r in rows), zero)
+    total_paid = sum((_D(r['totalPaid']) for r in rows), zero)
+    outstanding = sum((_D(r['outstanding']) for r in rows), zero)
+
+    # الشرائح والتأخر تُجمع من الموردين فقط — سطر المقاول ليس له `delay`.
+    delay_rows = [r for r in rows if r['delay'] is not None]
+    delayed_amount = sum((_D(r['delay']['amount']) for r in delay_rows), zero)
+    max_delay_days = max((r['delay']['days'] for r in delay_rows), default=0)
+    by_bucket_totals: Dict[str, Decimal] = {k: zero for k, _, _ in DELAY_BUCKETS}
+    for r in delay_rows:
+        for k, v in r['delay']['byBucket'].items():
+            by_bucket_totals[k] += _D(v)
+
+    totals = dict(
+        totalInvoiced=_money_dec(total_invoiced), totalPaid=_money_dec(total_paid),
+        outstanding=_money_dec(outstanding),
+        delayedAmount=_money_dec(delayed_amount), maxDelayDays=max_delay_days,
+        byBucket={k: _money_dec(v) for k, v in by_bucket_totals.items()},
+        companyCount=len(rows),
+    )
+    return dict(project=project, parties=parties, today=today.isoformat(),
+                rows=rows, totals=totals)

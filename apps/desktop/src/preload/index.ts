@@ -9,6 +9,15 @@ export interface PickedFile {
   source: 'pdf_statement' | 'suppliers_excel' | 'csv_statement';
 }
 
+export type UpdateStatus =
+  | { state: 'checking' }
+  | { state: 'up-to-date'; version: string }
+  | { state: 'available'; version: string }
+  | { state: 'downloading'; percent: number }
+  | { state: 'downloaded'; version: string }
+  | { state: 'error'; message: string }
+  | { state: 'unavailable-dev' };
+
 contextBridge.exposeInMainWorld('egco', {
   backendUrl: (): Promise<string> => ipcRenderer.invoke('app:backendUrl'),
   info: () => ipcRenderer.invoke('app:info'),
@@ -26,4 +35,14 @@ contextBridge.exposeInMainWorld('egco', {
   exportPdf: (opts: { filename: string; landscape?: boolean }):
     Promise<{ saved?: boolean; path?: string; canceled?: boolean; error?: string }> =>
     ipcRenderer.invoke('export:pdf', opts),
+  /** يبدأ فحصاً يدوياً؛ الرد الفوري «جارٍ الفحص» فقط — النتيجة الحقيقية تصل عبر onUpdateStatus. */
+  checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check'),
+  /** يعيد تشغيل التطبيق لتثبيت تحديث سبق تنزيله. */
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
+  /** يستمع لحالة التحديث (فحص/توفر/تنزيل/اكتمال/خطأ) ويعيد دالة لإلغاء الاستماع. */
+  onUpdateStatus: (cb: (status: UpdateStatus) => void): (() => void) => {
+    const listener = (_e: unknown, status: UpdateStatus) => cb(status);
+    ipcRenderer.on('update:status', listener);
+    return () => ipcRenderer.removeListener('update:status', listener);
+  },
 });

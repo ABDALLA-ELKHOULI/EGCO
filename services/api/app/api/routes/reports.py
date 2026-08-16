@@ -3,6 +3,7 @@
 from typing import List, Optional
 import datetime as dt
 import hashlib
+from decimal import Decimal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,8 +13,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import parse_date
 from app.db import models
 from app.db.session import get_session
-from app.services import (contractor_report_service, export_service, payables_service,
-                          periods_service, report_service)
+from app.services import (ai_features_service, contractor_report_service, export_service,
+                          payables_service, periods_service, report_service)
 
 router = APIRouter()
 
@@ -143,6 +144,74 @@ def analysis(account: Optional[str] = Query(None),
     return _payload(db, today, ps, scope, start, end)
 
 
+@router.get('/project-summary')
+def project_summary(project: str = Query(...),
+                    parties: Optional[str] = Query(None),
+                    db: Session = Depends(get_session)) -> dict:
+    """التقرير المختصر بالمشروع — سطر واحد لكل شركة (مورد/مقاول)، لا لكل فاتورة.
+
+    الافتراضي `both`: هذا التقرير وُلد ليلخّص كل شركاء المشروع في نظرة واحدة، على
+    خلاف /analysis الذي يبقى 'suppliers' افتراضياً للتوافق مع الواجهة القديمة.
+    """
+    if parties is None or parties == '':
+        parties_v = 'both'
+    elif parties in PARTIES:
+        parties_v = parties
+    else:
+        raise HTTPException(422, detail=f'قيمة parties غير صالحة: {parties}')
+
+    today = dt.date.today()
+    ps = (payables_service.positions(db, today, project=project)
+          if parties_v in ('suppliers', 'both') else [])
+
+    contractor_entries: list = []
+    if parties_v in ('contractors', 'both'):
+        rows = db.query(models.Contractor).filter(
+            models.Contractor.deleted_at.is_(None)).all()
+        for r in rows:
+            ents = [dict(debit=e.debit, credit=e.credit, kind=e.kind, date=e.date)
+                    for e in r.entries if e.deleted_at is None and e.project == project]
+            if ents:
+                contractor_entries.append((r.code, r.name, ents))
+
+    if not ps and not contractor_entries:
+        raise HTTPException(404, detail=f'لا توجد بيانات لهذا المشروع: {project}')
+
+    return report_service.project_summary(ps, contractor_entries, project, today, parties_v)
+
+
+@router.get('/project-summary/export.xlsx')
+def export_project_summary_xlsx(project: str = Query(...),
+                                parties: Optional[str] = Query(None),
+                                db: Session = Depends(get_session)):
+    """تصدير ملخّص المشروع — نفس آلية export.xlsx (StreamingResponse + xlsx)، ورقة واحدة."""
+    payload = project_summary(project=project, parties=parties, db=db)
+    content = export_service.build_project_summary_workbook(payload)
+    today = dt.date.today()
+    digest = hashlib.sha1(project.encode('utf-8')).hexdigest()[:6]
+    ascii_name = f'EGCO-project-summary-{digest}-{today:%Y%m%d}.xlsx'
+    pretty = f'EGCO-ملخص-{project}-{today:%Y%m%d}.xlsx'
+    encoded = quote(pretty, safe='')
+    headers = {'Content-Disposition':
+              f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"}
+    return StreamingResponse(
+        iter([content]),
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers=headers,
+    )
+
+
+@router.get('/priorities')
+def priorities(budget: Optional[str] = Query(None), db: Session = Depends(get_session)) -> dict:
+    """أولويات السداد — نفس بناء الترتيب الحتمي في POST /api/v1/ai/priorities
+    (F.build_priorities: كل الترتيب والدرجات والمبالغ كودياً بالكامل)، لكن بلا أي
+    narrative ولا اعتماد على تفعيل المساعد — يعمل دائماً حتى إن كان الذكاء
+    الاصطناعي متوقفاً، وهو ما تستعمله شاشة التقرير التحليلي حين يتعذّر توليد الشرح.
+    """
+    b = Decimal(budget) if budget else None
+    return ai_features_service.build_priorities(db, b)
+
+
 @router.get('/scopes')
 def scopes(db: Session = Depends(get_session)) -> dict:
     """قوائم النطاقات المتاحة للتقرير — يملأ قائمة الاختيار في الواجهة."""
@@ -190,9 +259,16 @@ def export_xlsx(granularity: Optional[str] = Query(None),
     if granularity and year and scope['kind'] != 'contractor':
         periodic_payload = periods_service.periodic(db, granularity, year, account)
 
+    # أولويات السداد قائمة على مستوى الشركة بالكامل، فلا تُدرَج إلا في تصدير عام.
+    # تصديرٌ عنوانه «مقاول C1» يحمل داخله ترتيب سداد موردين لا علاقة لهم به يُقرأ
+    # كأنه جزء من كشف ذلك المقاول — ورقة صحيحة الأرقام في وثيقة تكذب بنطاقها.
+    priorities_payload = (ai_features_service.build_priorities(db, None)
+                          if scope['kind'] == 'company' else None)
+
     content = export_service.build_workbook(
         analysis_payload, periodic_payload,
-        contractors_only=(scope['kind'] == 'contractor'))
+        contractors_only=(scope['kind'] == 'contractor'),
+        priorities=priorities_payload)
     headers = {'Content-Disposition': _disposition(scope, today)}
     return StreamingResponse(
         iter([content]),

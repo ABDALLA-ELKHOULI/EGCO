@@ -16,10 +16,20 @@ class ClassifySuggestRequest(BaseModel):
     path: str
 
 
+class NewSupplierIn(BaseModel):
+    """إنشاء مورد أثناء الرفع — لحساب ظهر في كشف ولم يكن في ملف المدد."""
+    name: Optional[str] = None
+    project: Optional[str] = None
+    #: مدة السداد كما يكتبها المستخدم («٤٥ يوم»، «كاش»…) — تحدّد تواريخ الاستحقاق
+    term: Optional[str] = None
+
+
 class ImportRequest(BaseModel):
     path: str
     source: Literal['pdf_statement', 'suppliers_excel', 'csv_statement', 'receivables_legacy_html', 'receivables_excel']
     allow_unreconciled: bool = False
+    #: يُملأ فقط بعد أن يؤكّد المستخدم إنشاء الحساب الجديد
+    create_supplier: Optional[NewSupplierIn] = None
 
 
 class PreviewRequest(BaseModel):
@@ -54,12 +64,19 @@ class SupplierIn(BaseModel):
     name: str = Field(min_length=1, max_length=300)
     project: str = ''
     term: str = ''
+    #: مشاريع المورد الكاملة — اختياري: لو أُرسل «project» فقط بلا هذا الحقل، يُشتق
+    #: منه (انظر routes/suppliers.py). أُرسل كلاهما؟ project يبقى المرجع الأساسي عبر
+    #: primary() بعد set_projects.
+    projects: Optional[List[str]] = None
 
 
 class SupplierUpdate(BaseModel):
     name: Optional[str] = None
     project: Optional[str] = None
     term: Optional[str] = None
+    #: None تعني «لا تغيّر» — تعديل جزئي (مثلاً تغيير الاسم فقط) يجب ألا يمحو مشاريع
+    #: المورد بصمت (انظر party_projects.set_projects).
+    projects: Optional[List[str]] = None
 
 
 # ---------------------------------------------------------------- المديونية

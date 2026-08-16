@@ -188,18 +188,20 @@ def test_export_sheets_follow_the_party_scope(api_client):
     seed_supplier(api_client)
     seed_contractors(api_client)
 
+    # ورقة «أولويات السداد» تُدرَج في التصدير العام فقط. قائمتها على مستوى الشركة
+    # بالكامل، فوجودها داخل تصدير مقاول بعينه يجعل الوثيقة تكذب بنطاقها.
     r = api_client.get(f'{BASE}/export.xlsx')
     assert r.status_code == 200
     assert load_workbook(io.BytesIO(r.content)).sheetnames == [
-        'الملخص', 'الفترات', 'الموردون']
+        'الملخص', 'الفترات', 'الموردون', 'أولويات السداد']
 
     r = api_client.get(f'{BASE}/export.xlsx?parties=both')
     wb = load_workbook(io.BytesIO(r.content))
-    assert wb.sheetnames == ['الملخص', 'الفترات', 'الموردون', 'المقاولون']
+    assert wb.sheetnames == ['الملخص', 'الفترات', 'الموردون', 'المقاولون', 'أولويات السداد']
     assert wb['المقاولون'].max_row == 4          # header + 2 contractors + totals
 
     r = api_client.get(f'{BASE}/export.xlsx?contractor=C1')
     assert r.status_code == 200
     wb = load_workbook(io.BytesIO(r.content))
-    assert wb.sheetnames == ['المقاولون']
+    assert wb.sheetnames == ['المقاولون']   # نطاق مقاول واحد — بلا أولويات
     assert 'contractor-C1' in r.headers['content-disposition']

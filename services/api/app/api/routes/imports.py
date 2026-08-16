@@ -55,8 +55,10 @@ def run_import(body: ImportRequest, db: Session = Depends(get_session)) -> dict:
         if body.source in import_service.RECEIVABLE_SOURCES:
             # التحصيلات (الداخل) — لا تمر بمطابقة رصيد الكشف لأنها ليست كشف حساب
             return receivables_service.import_receivables(db, body.path, body.source)
-        return import_service.commit_statement(db, body.path, body.allow_unreconciled,
-                                               source=body.source)
+        return import_service.commit_statement(
+            db, body.path, body.allow_unreconciled, source=body.source,
+            create_supplier=(body.create_supplier.model_dump()
+                             if body.create_supplier is not None else None))
     except _PARSE_ERRORS as e:
         raise HTTPException(422, detail=str(e))
 

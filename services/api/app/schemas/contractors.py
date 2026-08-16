@@ -4,7 +4,7 @@
 Field names are the exact camelCase JSON keys the frontend sends — no aliasing layer,
 matching the rest of the API's wire format.
 """
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -19,6 +19,8 @@ class ContractorIn(BaseModel):
     notes: str = ''
     defaultRetentionRate: Optional[float] = None
     defaultGuaranteeDays: Optional[int] = None
+    #: مشاريع المقاول — اختياري عند الإنشاء؛ غيابه يعني «بلا مشاريع بعد».
+    projects: Optional[List[str]] = None
 
 
 class ContractorUpdate(BaseModel):
@@ -28,6 +30,8 @@ class ContractorUpdate(BaseModel):
     notes: Optional[str] = None
     defaultRetentionRate: Optional[float] = None
     defaultGuaranteeDays: Optional[int] = None
+    #: None تعني «لا تغيّر» — نفس عقد SupplierUpdate.projects.
+    projects: Optional[List[str]] = None
 
 
 class EntryIn(BaseModel):

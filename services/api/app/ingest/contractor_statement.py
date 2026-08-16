@@ -27,6 +27,7 @@ from typing import List, Optional
 from app.domain.payables import D
 
 from app.ingest.pdf_statement import (BLOCK_MARKER, StatementParseError, _date,
+                                      _read_block,
                                       _money, _norm, extract_text)
 
 #: 5–9 digits: contractor accounts are 212xxxxx (8), supplier 211xxxxx (7), but
@@ -113,7 +114,7 @@ def parse(path: str) -> dict:
     # opening-balance-only statement prints just the رصيد افتتاحي line and the footer
     # total, with no transactions in the date range. The check for "nothing at all"
     # happens after the opening line is looked for, below.
-    blocks = text.split(BLOCK_MARKER)
+    blocks = re.split(BLOCK_MARKER, text)
     header_norm = _norm(blocks[0])
 
     account = None
@@ -153,11 +154,8 @@ def parse(path: str) -> dict:
             issues.append(dict(severity='warning', row=i, message='سطر ناقص — تم تجاهله'))
             continue
         try:
-            date = _date(lines[1])
-            debit = D(str(_money(lines[2])))
-            credit = D(str(_money(lines[3])))
-            doc = lines[4]
-            printed_run = D(str(_money(lines[5])))
+            date, dbt, crd, doc, bal, glued_desc = _read_block(lines)
+            debit, credit, printed_run = D(str(dbt)), D(str(crd)), D(str(bal))
         except (ValueError, IndexError):
             issues.append(dict(severity='warning', row=i, message='تعذّرت قراءة السطر'))
             continue
@@ -170,7 +168,8 @@ def parse(path: str) -> dict:
             issues.append(dict(severity='info', row=i,
                                message='تصحيح فرق تقريب من عمود الرصيد: %s ر.س' % diff))
         run = run + debit - credit
-        desc = _description(lines[6:])
+        # التخطيط الملتصق يعطي الوصف مباشرة؛ المفكوك يحتاج التقاطه من السطور التالية.
+        desc = glued_desc or _description(lines[6:])
         rows.append(dict(date=date, debit=float(debit), credit=float(credit),
                          doc=doc, description=desc))
 

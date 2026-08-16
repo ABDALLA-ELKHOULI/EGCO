@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db import models
 from app.domain import payables as P
-from app.domain.payables import D, money
+from app.domain.payables import D, money, parse_term
 from decimal import Decimal
 from app.ingest import (contractor_statement, csv_statement, pdf_statement,
                         receivables_excel, receivables_legacy, suppliers_excel)
@@ -262,7 +262,8 @@ def preview_statement(path: str, source: str = 'pdf_statement',
 
 
 def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
-                     source: str = 'pdf_statement', backup: bool = True) -> dict:
+                     source: str = 'pdf_statement', backup: bool = True,
+                     create_supplier: Optional[dict] = None) -> dict:
     """الحفظ — refuses to write when the parse does not reconcile.
 
     Dispatches on dispatch_kind() exactly like preview_statement(): a PDF's account
@@ -299,7 +300,23 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
         return dict(saved=False, reason='no_account', **pre)
     supplier = db.query(models.Supplier).filter_by(account=account).one_or_none()
     if supplier is None:
-        return dict(saved=False, reason='unknown_supplier', **pre)
+        # كشف مطابق تماماً لحساب لم نره من قبل. رفضه صمتاً هو ما جعل ملفاً سليماً
+        # «يُرفع بنجاح» دون أن يتغيّر رقم واحد — أسوأ من رسالة خطأ صريحة.
+        # نعيد اسم الطرف من الترويسة كي يعرضه المستخدم ويقرّر: أضِفه أم لا.
+        # ولا نُنشئه تلقائياً: مدة السداد غير معروفة، وهي التي تحدّد تواريخ
+        # الاستحقاق ومنها التأخر كله — تخمينها يلوّن الشاشة بمتأخرات وهمية.
+        if not create_supplier:
+            return dict(saved=False, reason='unknown_supplier',
+                        suggestedName=parsed.get('name') or '', **pre)
+        supplier = models.Supplier(
+            account=account,
+            name=(create_supplier.get('name') or parsed.get('name') or account),
+            project=(create_supplier.get('project') or ''),
+            term_raw=(create_supplier.get('term') or ''))
+        t = parse_term(supplier.term_raw)
+        supplier.term_kind, supplier.term_days = t.kind, t.days
+        db.add(supplier)
+        db.flush()
 
     if backup:
         backup_db()

@@ -110,9 +110,16 @@ def payment_json(x) -> dict:
 
 def position_json(p, detail: bool = False,
                    date_from: Optional[dt.date] = None,
-                   date_to: Optional[dt.date] = None) -> dict:
+                   date_to: Optional[dt.date] = None,
+                   projects: Optional[List[str]] = None) -> dict:
+    # `projects` — لائحة مشاريع المورد الكاملة (party_projects.projects_of)، يمررها
+    # المستدعي الذي يملك جلسة db. بلا تمرير صريح نتراجع لعمود Supplier.project
+    # المفرد، حتى لا ينكسر مستدعٍ قديم لا يعرف بجدول party_projects بعد.
+    projects = projects if projects is not None else (
+        [p.supplier.project] if p.supplier.project else [])
     d = dict(
         account=p.supplier.account, name=p.supplier.name, project=p.supplier.project,
+        projects=projects,
         term=p.supplier.term.raw or 'كاش', termKind=p.supplier.term.kind,
         termDays=p.supplier.term.days,
         totalInvoiced=money(p.total_invoiced), totalPaid=money(p.total_paid),
@@ -123,6 +130,10 @@ def position_json(p, detail: bool = False,
                     d31_60=money(p.ageing.d31_60), d61_90=money(p.ageing.d61_90),
                     d90_plus=money(p.ageing.d90_plus)),
         invoiceCount=len(p.invoices), openInvoiceCount=len([i for i in p.invoices if i.remaining > 0]),
+        # التأخر — أسوأ رقم للعمود، والتوزيع للنقر عليه. الاثنان من نفس المحرك.
+        delay=dict(days=p.delay.days, bucket=p.delay.bucket,
+                   amount=money(p.delay.amount),
+                   byBucket={k: money(v) for k, v in p.delay.by_bucket.items()}),
     )
     # آخر دفعة — معلومة أساسية في القائمة: متى دُفع لهذا المورد آخر مرة وكم
     last_pay = max(p.payments, key=lambda x: x.date, default=None)

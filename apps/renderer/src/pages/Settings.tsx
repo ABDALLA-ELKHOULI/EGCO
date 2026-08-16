@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { api, ApiError, AiSettings, ImportClassification, LearnedLayout } from '@/lib/api';
 import { Card, ErrorState, Pill, State } from '@/components/ui';
+import type { UpdateStatus } from '@/types/global';
 
 export function Settings() {
   const [info, setInfo] = useState<any>(null);
@@ -110,12 +111,110 @@ export function Settings() {
 
         <Card title="عن التطبيق">
           <div className="card-body">
+            <Row label="إصدار التطبيق" value={info?.version ?? '—'} />
             <Row label="إصدار الخدمة" value={health.version} />
             <Row label="الاتصال بالشبكة" value="لا يوجد — يعمل دون إنترنت" cls="ok" />
           </div>
         </Card>
+
+        <UpdateCard currentVersion={info?.version} />
       </div>
     </>
+  );
+}
+
+/**
+ * فحص تحديث يدوي وصريح — قبل هذا كان الفحص التلقائي عند الإقلاع يبتلع أي خطأ بصمت
+ * («لا إنترنت يعني ببساطة لا تحديث اليوم»)، فلا طريقة للمستخدم ليعرف أنه على إصدار
+ * قديم. هنا كل نتيجة حقيقية تظهر كما هي — بما فيها نص الخطأ الفعلي عند الفشل.
+ */
+function UpdateCard({ currentVersion }: { currentVersion?: string }) {
+  const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    // يلتقط أي حدث يصل لاحقاً (تنزيل جارٍ، اكتمل، إلخ) حتى بعد انتهاء checkForUpdates.
+    return window.egco?.onUpdateStatus((s) => { setStatus(s); setBusy(false); });
+  }, []);
+
+  async function check() {
+    setBusy(true); setStatus(null);
+    const s = await window.egco!.checkForUpdates();
+    // إن كانت النتيجة نهائية فورية (dev/خطأ) اعرضها؛ غير ذلك ننتظر onUpdateStatus.
+    if (s.state !== 'checking') { setStatus(s); setBusy(false); }
+  }
+
+  function renderStatus() {
+    if (!status) return null;
+    switch (status.state) {
+      case 'checking':
+        return <div className="callout" style={{ marginTop: 12 }}>جارٍ الفحص…</div>;
+      case 'unavailable-dev':
+        return (
+          <div className="callout note" style={{ marginTop: 12 }}>
+            فحص التحديثات غير متاح في وضع التطوير — يعمل فقط في النسخة المُثبَّتة.
+          </div>
+        );
+      case 'up-to-date':
+        return (
+          <div className="callout ok" style={{ marginTop: 12 }}>
+            أنت على أحدث إصدار ({status.version})
+          </div>
+        );
+      case 'available':
+        return (
+          <div className="callout" style={{ marginTop: 12 }}>
+            يتوفر إصدار جديد ({status.version}) — جارٍ التنزيل…
+          </div>
+        );
+      case 'downloading':
+        return (
+          <div className="callout" style={{ marginTop: 12 }}>
+            يتوفر إصدار جديد — جارٍ التنزيل… {status.percent}٪
+          </div>
+        );
+      case 'downloaded':
+        return (
+          <div className="callout ok" style={{ marginTop: 12 }}>
+            <div>تم تنزيل الإصدار ({status.version}) — أعد التشغيل للتثبيت</div>
+            <div style={{ marginTop: 8 }}>
+              <button className="btn primary sm" onClick={() => window.egco!.installUpdate()}>
+                إعادة التشغيل والتثبيت الآن
+              </button>
+            </div>
+          </div>
+        );
+      case 'error':
+        return (
+          <div className="callout bad" style={{ marginTop: 12 }}>
+            <div>تعذّر التحقق من التحديثات</div>
+            <div className="ltr" style={{ fontSize: 12, marginTop: 4, opacity: 0.85 }}>
+              {status.message}
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
+  }
+
+  return (
+    <Card title="التحديثات">
+      <div className="card-body">
+        <Row label="الإصدار الحالي" value={currentVersion ?? '—'} />
+        <div style={{ marginTop: 12 }}>
+          <button className="btn" disabled={!window.egco || busy} onClick={check}>
+            {busy ? 'جارٍ الفحص…' : 'تحقق من التحديثات'}
+          </button>
+        </div>
+        {renderStatus()}
+        {!window.egco && (
+          <div className="callout note" style={{ marginTop: 12 }}>
+            متاح داخل التطبيق فقط (وليس في المتصفح).
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 

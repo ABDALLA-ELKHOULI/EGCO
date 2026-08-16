@@ -409,11 +409,90 @@ tbody tr:hover { background: var(--tint); }
 td.ltr, th.ltr { text-align: left; }
 tfoot tr { background: var(--tint); font-weight: 600; }
 
+/* ---- قوائم الأعمدة (ترتيب + تصفية) ---- */
+/* العنوان صار عنصرين: النص وزرّ القائمة. flex يُبقيهما على سطر واحد بارتفاع الصف
+   نفسه — أي padding إضافي هنا يكسر عقد الـ44px أعلاه. */
+.th-inner { display: flex; align-items: center; gap: var(--space-xs4); justify-content: space-between; }
+th.ltr .th-inner { flex-direction: row-reverse; }
+.col-menu-wrap { position: relative; display: inline-flex; }
+.col-menu-btn {
+  border: 0; background: none; cursor: pointer; padding: 0 2px; line-height: 1;
+  font-size: 10px; color: var(--muted); border-radius: 4px; position: relative;
+}
+.col-menu-btn:hover, .col-menu-btn.open { background: var(--hair); color: var(--ink); }
+/* العمود المرتَّب أو المصفَّى يبقى ظاهراً دون فتح القائمة — وإلا صفّى المستخدم
+   عموداً ثم نسي، ورأى إجمالياً ناقصاً ظنّه الحقيقة. */
+.col-menu-btn.on { color: var(--gold); }
+.col-menu-dot {
+  position: absolute; top: -1px; inset-inline-end: -1px; width: 5px; height: 5px;
+  border-radius: 50%; background: var(--gold);
+}
+.col-menu {
+  position: fixed; z-index: 60; min-width: 190px; background: var(--card); border: 1px solid var(--hair);
+  border-radius: var(--radius-control); box-shadow: 0 10px 28px rgba(0, 0, 0, .18);
+  padding: var(--space-xs4); font-size: var(--text-body-table); font-weight: 400;
+  color: var(--ink); white-space: normal;
+}
+.col-menu-sort { display: flex; flex-direction: column; }
+.col-menu-sort button {
+  border: 0; background: none; text-align: right; cursor: pointer; color: var(--ink);
+  padding: 6px 8px; border-radius: 4px; font: inherit;
+}
+.col-menu-sort button:hover { background: var(--tint); }
+.col-menu-sort button.on { background: var(--wash-gold); color: var(--gold); font-weight: 600; }
+.col-menu-filter { border-top: 1px solid var(--hair); margin-top: var(--space-xs4); padding-top: var(--space-sm8); }
+.col-menu-filter input, .col-menu-filter select { width: 100%; }
+.col-menu-pair { display: flex; gap: var(--space-xs4); align-items: center; }
+
+/* ---- شريط شرائح التأخر (صفحة الطرف) ---- */
+/* سبع خلايا متساوية تلتف على الشاشات الضيقة. كل خلية زرّ لأنها تفعل شيئاً:
+   تصفّي الجدول أدناه — والمظهر يجب أن يَعِد بذلك قبل النقر. */
+.bucket-strip { display: flex; flex-wrap: wrap; gap: var(--space-sm8); }
+.bucket-cell {
+  flex: 1 1 118px; display: flex; flex-direction: column; gap: 2px;
+  padding: var(--space-md12); border: 1px solid var(--hair); background: var(--card);
+  border-radius: var(--radius-control); cursor: pointer; text-align: right; font: inherit;
+}
+.bucket-cell:hover:not(:disabled) { border-color: var(--gold); }
+.bucket-cell.on { border-color: var(--gold); background: var(--wash-gold); }
+/* شريحة بلا مال ليست خياراً — تُعتَّم ولا تُنقر، بدل أن تُصفّي إلى جدول فارغ */
+.bucket-cell.empty { opacity: .45; cursor: default; }
+.bucket-label { font-size: var(--text-caption-micro); font-weight: 600; color: var(--ink); }
+.bucket-days { font-size: 11px; color: var(--muted); }
+.bucket-amount { font-size: var(--text-body-table); font-weight: 600; color: var(--muted); direction: ltr; text-align: left; }
+.bucket-amount.red { color: var(--red); }
+
+/* رقم قابل للنقر داخل خلية — يبدو كالنص لا كالزر، ويكشف نفسه عند المرور.
+   يُستعمل حين يكون للرقم تفصيلٌ خلفه؛ رقمٌ نهائي لا يُلبَس هذه الفئة. */
+.link-btn {
+  border: 0; background: none; padding: 0; cursor: pointer; font: inherit;
+  color: inherit; text-align: inherit; border-radius: 4px;
+}
+.link-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.link-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* شريط «فلاتر نشطة» — الرقم المعروض يصف مجموعةً مصفّاة، وهذا يجب أن يُقال. */
+.filter-bar {
+  display: flex; align-items: center; gap: var(--space-sm8); flex-wrap: wrap;
+  padding: var(--space-sm8) var(--space-md12); background: var(--wash-gold);
+  border-bottom: 1px solid var(--hair); font-size: var(--text-caption-micro);
+}
+.filter-chip {
+  display: inline-flex; align-items: center; gap: var(--space-xs4);
+  background: var(--card); border: 1px solid var(--hair); border-radius: var(--radius-pill);
+  padding: 2px 8px;
+}
+.filter-chip button { border: 0; background: none; cursor: pointer; color: var(--muted); line-height: 1; }
+.filter-chip button:hover { color: var(--ink); }
+
 /* الجداول العريضة تنزلق داخل حاويتها بدل أن تلتف وتتكسّر أعمدتها.
    A wide table scrolls inside its own box; it never reflows into stacked cells. */
 .table-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
 .table-scroll > table { min-width: var(--table-min, 760px); }
-.table-scroll.wide > table { --table-min: 980px; }
+.table-scroll.wide > table { --table-min: 1040px; }
+/* اسم الطرف هو مرساة الصف — يحجز عرضاً لا ينزل عنه مهما ازدحمت الأعمدة، وإلا
+   انكسر إلى كلمة في كل سطر فطال الصف وضاع مسحُ العين للعمود. */
+td.party, th.party { min-width: 210px; white-space: normal; }
 /* خلايا الأرقام لا تلتف أبداً — سطر ملفوف يُزحزح الصف كله عن عناوينه */
 td.num, td.nowrap, th { white-space: nowrap; }
 

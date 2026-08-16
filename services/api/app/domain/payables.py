@@ -15,7 +15,7 @@ import datetime as dt
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Iterable, List, Optional, Sequence, Union
+from typing import Dict, Iterable, List, Optional, Sequence, Union
 
 # ---------------------------------------------------------------- decimal helpers
 
@@ -146,6 +146,64 @@ class Ageing:
                (other.current, other.d1_30, other.d31_60, other.d61_90, other.d90_plus)
 
 
+#: شرائح التأخر الشهرية — ستة أشهر ثم ما بعدها.
+#: (المفتاح، الحد الأعلى بالأيام، التسمية) — الحد None يعني «ما بعد ذلك».
+DELAY_BUCKETS = (
+    ('m1', 30, 'شهر'),
+    ('m2', 60, 'شهران'),
+    ('m3', 90, '٣ أشهر'),
+    ('m4', 120, '٤ أشهر'),
+    ('m5', 150, '٥ أشهر'),
+    ('m6', 180, '٦ أشهر'),
+    ('m6_plus', None, 'أكثر من ٦ أشهر'),
+)
+
+
+def bucket_of_days(late: int) -> Optional[str]:
+    """الشريحة التي يقع فيها تأخر بمقدار late يوماً — None إن لم يتأخر بعد."""
+    if late <= 0:
+        return None
+    for key, upper, _ in DELAY_BUCKETS:
+        if upper is None or late <= upper:
+            return key
+    return 'm6_plus'
+
+
+@dataclass
+class Delay:
+    """تأخر السداد — أقصى تأخر، والمبلغ المتأخر موزعاً على الشرائح الشهرية.
+
+    The distinction that matters: `days` answers «كم تأخرنا؟» while `by_bucket`
+    answers «كم مالاً في كل شريحة؟». A supplier with one ancient 100-riyal invoice
+    and two million riyals due last week has days=400 and almost nothing in m6_plus —
+    reporting only the worst number would badly misrank him.
+    """
+    days: int = 0                                   # أقصى تأخر بالأيام (0 = لا تأخر)
+    amount: Decimal = field(default_factory=lambda: Decimal('0'))   # مجموع المتأخر
+    by_bucket: Dict[str, Decimal] = field(default_factory=dict)
+
+    @property
+    def bucket(self) -> Optional[str]:
+        return bucket_of_days(self.days)
+
+
+def compute_delay(invoices: Iterable[Invoice], today: dt.date) -> Delay:
+    """تأخر السداد على المتبقي فقط، من تاريخ الاستحقاق — نفس أساس compute_ageing."""
+    d = Delay(by_bucket={k: Decimal('0') for k, _, _ in DELAY_BUCKETS})
+    for inv in invoices:
+        if inv.remaining <= 0 or inv.due_date is None:
+            continue
+        late = (today - inv.due_date).days
+        if late <= 0:
+            continue
+        key = bucket_of_days(late)
+        d.by_bucket[key] += inv.remaining
+        d.amount += inv.remaining
+        if late > d.days:
+            d.days = late
+    return d
+
+
 @dataclass
 class SupplierPosition:
     supplier: Supplier
@@ -161,6 +219,7 @@ class SupplierPosition:
     overdue: Decimal = field(default_factory=lambda: Decimal('0'))          # strictly past the due date
     due_within_7: Decimal = field(default_factory=lambda: Decimal('0'))
     ageing: Ageing = field(default_factory=Ageing)
+    delay: Delay = field(default_factory=Delay)
     needs_manual_due_date: bool = False
 
 
@@ -237,6 +296,7 @@ def position(supplier: Supplier,
         total_invoiced=sum((D(i.amount) for i in invoices), Decimal('0')),
         total_paid=sum((D(x.amount) for x in payments), Decimal('0')),
         ageing=compute_ageing(invoices, today),
+        delay=compute_delay(invoices, today),
         needs_manual_due_date=supplier.term.is_claim and
             any(i.remaining > 0 and i.due_date is None for i in invoices),
     )

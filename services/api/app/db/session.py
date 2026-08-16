@@ -110,7 +110,51 @@ def init_db() -> None:
         # table only (no ALTER on existing tables), create_all() above already makes it
         # for fresh installs; explicit checkfirst=True create() here covers existing DBs.
         Base.metadata.tables['learned_layouts'].create(bind=conn, checkfirst=True)
+        # `party_projects` is new as of multi-project support — additive table only.
+        Base.metadata.tables['party_projects'].create(bind=conn, checkfirst=True)
+        _seed_party_projects(conn)
     _migrate_211_contractors_to_suppliers()
+
+
+#: marker for the one-time backfill below.
+_SEED_PARTY_PROJECTS_FLAG = 'seed_party_projects_v1'
+
+
+def _seed_party_projects(conn) -> None:
+    """يبذر جدول مشاريع الطرف من المشروع المفرد الموجود.
+
+    Without this backfill every existing supplier would look like it belongs to no
+    project the moment the UI starts reading the new table, and «كل المشاريع» would
+    return nothing — the data is all still there, but the screen would say otherwise,
+    which is the worst kind of failure in this app. Runs once.
+    """
+    if _migration_applied(conn, _SEED_PARTY_PROJECTS_FLAG):
+        return
+    # created_at/updated_at غير قابلين للفراغ ولا يحملان قيمة افتراضية في القاعدة —
+    # إغفالهما في INSERT خام يجعل «OR IGNORE» يبتلع كل صف بصمت، فيبدو البذر ناجحاً
+    # وجدولُه فارغ. تُملأ هنا صراحةً.
+    now = dt.datetime.now(dt.timezone.utc).isoformat(sep=' ')
+    conn.execute(text(
+        "INSERT OR IGNORE INTO party_projects "
+        "(id, party_type, party_id, project, position, created_at, updated_at) "
+        "SELECT lower(hex(randomblob(16))), 'supplier', id, project, 0, :now, :now "
+        "FROM suppliers WHERE project IS NOT NULL AND project <> ''"), {'now': now})
+    # المقاول لا يحمل عمود مشروع مفرد — مشاريعه مستنتجة من حركاته، فتُبذر منها.
+    conn.execute(text(
+        "INSERT OR IGNORE INTO party_projects "
+        "(id, party_type, party_id, project, position, created_at, updated_at) "
+        "SELECT lower(hex(randomblob(16))), 'contractor', contractor_id, project, 0, :now, :now "
+        "FROM (SELECT DISTINCT contractor_id, project FROM contractor_entries "
+        "      WHERE project IS NOT NULL AND project <> '' AND deleted_at IS NULL)"),
+        {'now': now})
+    # لا صفوف = بذرٌ فاشل، لا قاعدة فارغة: يُترك العَلَم بلا وضع فيُعاد في التشغيل
+    # التالي بعد إصلاح السبب، بدل أن يُدفن الخلل خلف علامة «تمّ».
+    seeded = conn.execute(text("SELECT COUNT(*) FROM party_projects")).scalar() or 0
+    has_source = conn.execute(text(
+        "SELECT COUNT(*) FROM suppliers WHERE project IS NOT NULL AND project <> ''")).scalar() or 0
+    if has_source and not seeded:
+        return
+    _mark_migration_applied(conn, _SEED_PARTY_PROJECTS_FLAG)
 
 
 # ---------------------------------------------------------------- one-time data fixes

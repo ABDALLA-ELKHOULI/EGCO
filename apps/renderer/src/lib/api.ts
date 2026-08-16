@@ -70,6 +70,28 @@ export interface ReportScopeParams {
   parties?: PartyScope;
 }
 
+// شرائح التأخر تُعرَّف في lib/delay.ts وتُعاد هنا للتوافق مع من يستوردها من api.
+// نسختان من حدود الشرائح تتباعدان يوماً ما، فتضع فاتورةً في شريحةٍ لا يحتويها
+// إجماليها — وهذا بالضبط نوع الخطأ الذي يجعل رقماً على الشاشة كاذباً.
+export { DELAY_BUCKETS, bucketOfDays, bucketLabel } from '@/lib/delay';
+
+export interface SupplierQuery {
+  q?: string; project?: string; status?: string;
+  min_outstanding?: number; max_outstanding?: number;
+  delay?: string; min_delay_days?: number; max_delay_days?: number;
+  date_from?: string; date_to?: string;
+  sort?: string; dir?: 'asc' | 'desc';
+  [k: string]: string | number | undefined;
+}
+
+/** استعلام قائمة المقاولين — لا يوجد delay هنا: حركات المقاول قيود مدين/دائن
+ * بلا تاريخ استحقاق (انظر app/domain/contractors.py)، فلا معنى لشريحة تأخر. */
+export interface ContractorQuery {
+  q?: string; project?: string; direction?: string; has_guarantees?: boolean;
+  sort?: string; dir?: 'asc' | 'desc';
+  [k: string]: string | number | boolean | undefined;
+}
+
 export const api = {
   health: () => call<{ status: string; db: string; version: string }>('/health'),
 
@@ -78,15 +100,14 @@ export const api = {
   calendarDay: (date: string, p: { project?: string } = {}) =>
     call<any>('/api/v1/dashboard/day' + qs({ date, ...p })),
 
-  suppliers: (p: { q?: string; project?: string; status?: string } = {}) =>
-    call<any>('/api/v1/suppliers' + qs(p)),
+  suppliers: (p: SupplierQuery = {}) => call<any>('/api/v1/suppliers' + qs(p)),
   supplier: (account: string, p: Period = {}) =>
     call<any>(`/api/v1/suppliers/${account}` + qs({ ...p })),
 
   /* ---- CRUD الموردين ---- */
-  createSupplier: (b: { account: string; name: string; project: string; term: string }) =>
+  createSupplier: (b: { account: string; name: string; project: string; term: string; projects?: string[] }) =>
     post<any>('/api/v1/suppliers', b),
-  updateSupplier: (account: string, b: { name?: string; project?: string; term?: string }) =>
+  updateSupplier: (account: string, b: { name?: string; project?: string; term?: string; projects?: string[] }) =>
     put<any>(`/api/v1/suppliers/${account}`, b),
   deleteSupplier: (account: string, force = false) =>
     del<{ deleted: boolean }>(`/api/v1/suppliers/${account}` + (force ? '?force=true' : '')),
@@ -107,8 +128,11 @@ export const api = {
   /* ---- الرفع ---- */
   previewImport: (path: string, source: string) =>
     post<any>('/api/v1/import/preview', { path, source }),
-  runImport: (path: string, source: string, allow_unreconciled = false) =>
-    post<any>('/api/v1/import', { path, source, allow_unreconciled }),
+  /** `create_supplier` يُملأ فقط بعد أن يؤكّد المستخدم إنشاء حساب مورد جديد
+   * ظهر في كشف ولم يكن في ملف المدد (انظر NewSupplierIn في الخادم). */
+  runImport: (path: string, source: string, allow_unreconciled = false,
+    create_supplier?: { name?: string; project?: string; term?: string }) =>
+    post<any>('/api/v1/import', { path, source, allow_unreconciled, create_supplier }),
   /** الملفات المرفوعة — لعرضها وحذف حركاتها */
   importHistory: () => call<ImportHistoryResponse>('/api/v1/import/history'),
   deleteImport: (id: string, force = false) =>
@@ -128,6 +152,14 @@ export const api = {
   report: (account?: string, p: Period & Omit<ReportScopeParams, 'account'> = {}) =>
     call<any>('/api/v1/reports/analysis' + qs({ account, ...p })),
   reportScopes: () => call<any>('/api/v1/reports/scopes'),
+  /** ملخّص بالمشروع — سطر واحد لكل شركة في مشروع بعينه */
+  projectSummary: (project: string, parties: PartyScope = 'both') =>
+    call<any>('/api/v1/reports/project-summary' + qs({ project, parties })),
+  projectSummaryExportUrl: (project: string, parties: PartyScope = 'both') =>
+    base + '/api/v1/reports/project-summary/export.xlsx' + qs({ project, parties }),
+  /** أولويات السداد الحتمية — بلا ذكاء اصطناعي، فتعمل حين يكون معطّلاً */
+  priorities: (budget?: number) =>
+    call<any>('/api/v1/reports/priorities' + qs({ budget })),
   periodic: (granularity: 'quarter' | 'half' | 'year', year: number, account?: string) =>
     call<any>('/api/v1/reports/periodic' + qs({ granularity, year, account })),
   exportExcelUrl: (params: Record<string, string | number | undefined>) =>
@@ -166,6 +198,10 @@ export const api = {
 
   /* ---- v0.4: المقاولون ---- */
   contractors: () => call<ContractorsResponse>('/api/v1/contractors'),
+  /** قائمة المقاولين مع فلاتر/ترتيب الخادم — نظير api.suppliers(). `any` لأن
+   * ContractorsResponse لا يغطي بعد filtersApplied المُضافة حديثاً في الخادم. */
+  contractorsList: (p: ContractorQuery = {}) =>
+    call<any>('/api/v1/contractors' + qs(p as Record<string, string | number | undefined>)),
   contractor: (code: string) =>
     call<ContractorDetailResponse>(`/api/v1/contractors/${encodeURIComponent(code)}`),
   createContractor: (b: ContractorBody) => post<any>('/api/v1/contractors', b),
@@ -287,6 +323,7 @@ export interface LearnedLayout {
 export interface ContractorBody {
   code: string; name: string; phone?: string; notes?: string;
   defaultRetentionRate?: number; defaultGuaranteeDays?: number;
+  projects?: string[];
 }
 
 export interface ContractorEntryBody {

@@ -38,6 +38,27 @@ class TimestampMixin:
     deleted_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
 
 
+class PartyProject(TimestampMixin, Base):
+    """مشاريع الطرف — مورد أو مقاول يعمل في أكثر من مشروع.
+
+    جدول ربط واحد يخدم الاثنين: نفس الحاجة، ونفس السلوك، فلا داعي لجدولين
+    يتباعدان. `party_type` هو 'supplier' أو 'contractor' و`party_id` معرّفه.
+
+    The single `project` column on Supplier stays and is kept in sync with the FIRST
+    project here. Reports, exports and the budget screen all read that column; dropping
+    it would break them, and rewriting every one of them is a bigger change than this
+    feature justifies. The column is the summary; this table is the truth.
+    """
+    __tablename__ = 'party_projects'
+    __table_args__ = (UniqueConstraint('party_type', 'party_id', 'project',
+                                       name='uq_party_project'),)
+    party_type: Mapped[str] = mapped_column(String(20), index=True)
+    party_id: Mapped[str] = mapped_column(String(36), index=True)
+    project: Mapped[str] = mapped_column(String(120), index=True)
+    #: ترتيب العرض — الأول هو الذي يُكتب في العمود المفرد
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class Supplier(TimestampMixin, Base):
     __tablename__ = 'suppliers'
     account: Mapped[str] = mapped_column(String(32), unique=True, index=True)

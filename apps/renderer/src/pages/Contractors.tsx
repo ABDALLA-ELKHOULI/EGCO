@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, ApiError, type ContractorRow, type ContractorsResponse } from '@/lib/api';
+import { api, ApiError, type ContractorQuery, type ContractorRow } from '@/lib/api';
+import { Th, type SortState } from '@/components/ColumnMenu';
 import { ar, arDate, sar } from '@/lib/format';
 import { Card, EmptyState, ErrorState, Kpi, Money, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
@@ -18,15 +19,46 @@ export function balanceView(balance: number): { cls: string; label: string } {
   return { cls: 'muted', label: 'متوازن' };
 }
 
-type Direction = '' | 'owed_to_him' | 'owed_to_us' | 'balanced';
+//: قيم الاتجاه كما يرسلها الخادم (app/services/contractors_service.py: _direction_of) —
+//: لا فلترة محلية بعد اليوم، فلا مجال لقيم مختلفة بين الواجهة والخادم.
+const DIRECTIONS: { value: string; label: string }[] = [
+  { value: 'owed_to_them', label: 'مستحق له' },
+  { value: 'owed_to_us', label: 'مستحق لنا' },
+  { value: 'balanced', label: 'متوازن' },
+];
 
 export function Contractors() {
   const nav = useNavigate();
-  const [d, setD] = useState<ContractorsResponse | null>(null);
+  const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [project, setProject] = useState('');
-  const [direction, setDirection] = useState<Direction>('');
+  const [direction, setDirection] = useState('');
+
+  // تصفية العمود وترتيبه — كلاهما يُرسل للخادم فيُطبَّق على المجموعة كاملةً،
+  // فيبقى سطر الإجماليات واصفاً لما تراه بالضبط (نفس نمط Suppliers.tsx).
+  const [code, setCode] = useState('');
+  const [sort, setSort] = useState<SortState | null>(null);
+
+  const query = useMemo<ContractorQuery>(() => ({
+    q: q || code || undefined,
+    project: project || undefined,
+    direction: direction || undefined,
+    sort: sort?.key,
+    dir: sort?.dir,
+  }), [q, code, project, direction, sort]);
+
+  const clearAll = () => {
+    setQ(''); setCode(''); setProject(''); setDirection('');
+  };
+
+  const chips = [
+    q && { k: 'q', label: `بحث: ${q}`, clear: () => setQ('') },
+    code && { k: 'c', label: `الرمز: ${code}`, clear: () => setCode('') },
+    project && { k: 'p', label: `المشروع: ${project}`, clear: () => setProject('') },
+    direction && { k: 'd', label: `الاتجاه: ${DIRECTIONS.find((x) => x.value === direction)?.label ?? direction}`,
+                  clear: () => setDirection('') },
+  ].filter(Boolean) as { k: string; label: string; clear: () => void }[];
 
   const [addOpen, setAddOpen] = useState(false);
   const [editRow, setEditRow] = useState<ContractorRow | null>(null);
@@ -34,8 +66,25 @@ export function Contractors() {
   const [busy, setBusy] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
 
-  const reload = () => { setErr(null); api.contractors().then(setD).catch((e) => setErr(e.message)); };
-  useEffect(() => { reload(); }, []);
+  const seq = useRef(0);
+  const reload = () => {
+    const my = ++seq.current;
+    api.contractorsList(query).then((r) => {
+      if (my !== seq.current) return; // استجابة متأخرة لطلب سابق — تُهمل
+      setD(r); setErr(null);
+    }).catch((e) => { if (my === seq.current) setErr(e.message); });
+  };
+
+  useEffect(() => {
+    const my = ++seq.current;
+    const t = setTimeout(() => {
+      api.contractorsList(query).then((r) => {
+        if (my !== seq.current) return;
+        setD(r); setErr(null);
+      }).catch((e) => { if (my === seq.current) setErr(e.message); });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [query]);
 
   const projects = useMemo(() => {
     const set = new Set<string>();
@@ -43,22 +92,9 @@ export function Contractors() {
     return [...set].sort();
   }, [d]);
 
-  const rows = useMemo(() => {
-    if (!d) return [];
-    const needle = q.trim();
-    return d.rows.filter((r) => {
-      if (needle && !r.name.includes(needle) && !r.code.includes(needle)) return false;
-      if (project && !(r.projects ?? []).includes(project)) return false;
-      if (direction === 'owed_to_him' && !(r.balance < 0)) return false;
-      if (direction === 'owed_to_us' && !(r.balance > 0)) return false;
-      if (direction === 'balanced' && r.balance !== 0) return false;
-      return true;
-    });
-  }, [d, q, project, direction]);
+  const filtering = chips.length > 0;
 
-  const filtering = Boolean(q || project || direction);
-
-  if (err) return <ErrorState message={err} onRetry={reload} />;
+  if (err) return <ErrorState message={`تعذّر التحميل: ${err}`} onRetry={reload} />;
 
   async function handleAdd(values: ContractorFormValues) {
     setBusy(true); setFormErr(null);
@@ -77,7 +113,7 @@ export function Contractors() {
     if (!editRow) return;
     setBusy(true); setFormErr(null);
     try {
-      const { code, ...rest } = values;
+      const { code: _code, ...rest } = values;
       await api.updateContractor(editRow.code, rest);
       setEditRow(null);
       reload();
@@ -94,6 +130,13 @@ export function Contractors() {
         <div className="grow">
           <h1>المقاولون</h1>
           <p>الرصيد السالب (بالأحمر) مستحق «له»، والموجب (بالأخضر) مستحق «لنا»</p>
+          {/* الغياب يُشرح ولا يُترك. صفحة الموردين تعرض عمود «التأخر» بارزاً، فخلوّ
+              هذه الصفحة منه يُقرأ «البيانات ناقصة» لا «لا ينطبق هنا». وعرض صفرٍ
+              بدلاً منه أسوأ: الصفر يعني «لا تأخر عليه» وهو ما لا نعلمه أصلاً. */}
+          <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+            لا يُحسب «التأخر» للمقاولين: حركاتهم قيود مدين/دائن بلا تواريخ استحقاق،
+            بخلاف فواتير الموردين. يظهر التأخر لهم عند إدخال المستخلصات بتواريخها.
+          </p>
         </div>
         <button className="btn primary" onClick={() => { setFormErr(null); setAddOpen(true); }}>
           إضافة مقاول
@@ -114,47 +157,74 @@ export function Contractors() {
       <div className="toolbar">
         <input placeholder="بحث بالاسم أو الرمز…" value={q}
                onChange={(e) => setQ(e.target.value)} style={{ minWidth: 300 }} />
-        <select value={project} onChange={(e) => setProject(e.target.value)}>
-          <option value="">كل المشاريع</option>
-          {projects.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <select value={direction} onChange={(e) => setDirection(e.target.value as Direction)}>
-          <option value="">الكل</option>
-          <option value="owed_to_him">مستحق له</option>
-          <option value="owed_to_us">مستحق لنا</option>
-          <option value="balanced">متوازن</option>
-        </select>
-        {d && <span className="count">{ar(rows.length)} من {ar(d.count)} مقاولاً</span>}
+        {/* المشروع والاتجاه انتقلا إلى قائمتي عمودَيهما — نفس منطق Suppliers.tsx. */}
+        {d && <span className="count">{ar(d.count)} مقاولاً</span>}
       </div>
 
       <Card>
+        {/* التصفية تُعلن عن نفسها — نفس تعليق Suppliers.tsx بالحرف. */}
+        {chips.length > 0 && (
+          <div className="filter-bar">
+            <b>{ar(chips.length)} تصفية نشطة</b>
+            {chips.map((c) => (
+              <span key={c.k} className="filter-chip">
+                {c.label}
+                <button onClick={c.clear} aria-label={`إزالة ${c.label}`}>×</button>
+              </span>
+            ))}
+            <button className="btn sm" onClick={clearAll}>مسح الكل</button>
+          </div>
+        )}
         {!d ? <State>جارٍ التحميل…</State>
-          : rows.length === 0 ? (
+          : d.rows.length === 0 ? (
             filtering ? (
               <EmptyState kind="no-results" title="لا نتائج مطابقة"
                 body="لم يطابق البحث أو التصفية أي مقاول."
-                ctaLabel="مسح التصفية" onCta={() => { setQ(''); setProject(''); setDirection(''); }} />
+                ctaLabel="مسح التصفية" onCta={clearAll} />
             ) : (
               <EmptyState kind="no-data" title="لم تُرفع بيانات المقاولين بعد"
                 body="ارفع كشوف حسابات المقاولين لتظهر أرصدتهم ومستخلصاتهم هنا."
                 ctaLabel="رفع الملفات" onCta={() => nav('/import')} />
             )
           ) : (
-          <div className="table-scroll">
+          <div className="table-scroll wide">
           <table>
             <thead>
               <tr>
-                <th>المقاول</th><th>الرمز</th><th>المشاريع</th>
-                <th className="ltr">الرصيد</th><th className="ltr">الضمان المحتجز</th>
-                <th className="ltr">آخر دفعة</th><th>آخر حركة</th><th></th>
+                <Th label="المقاول" className="party" sortKey="name" sort={sort} onSort={setSort}
+                    ascLabel="أ ← ي" descLabel="ي ← أ" active={Boolean(q)}
+                    filter={{ kind: 'text', value: q, onChange: setQ, placeholder: 'اسم المقاول…' }} />
+                <Th label="الرمز" sortKey="code" sort={sort} onSort={setSort}
+                    active={Boolean(code)}
+                    filter={{ kind: 'text', value: code, onChange: setCode, placeholder: '212…' }} />
+                <Th label="المشروع" sortKey={undefined} sort={sort} onSort={setSort}
+                    active={Boolean(project)}
+                    filter={{ kind: 'select', value: project, onChange: setProject,
+                              allLabel: 'كل المشاريع',
+                              options: projects.map((p: string) => ({ value: p, label: p })) }} />
+                <Th label="الاتجاه" className="ltr" sortKey="balance" sort={sort} onSort={setSort}
+                    ascLabel="الأشد استحقاقاً له" descLabel="الأشد استحقاقاً لنا"
+                    active={Boolean(direction)}
+                    filter={{ kind: 'select', value: direction, onChange: setDirection,
+                              allLabel: 'كل الاتجاهات',
+                              options: DIRECTIONS }} />
+                <Th label="الضمان المحتجز" className="ltr" sortKey="retentionHeld"
+                    sort={sort} onSort={setSort}
+                    ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً" />
+                <Th label="آخر دفعة" className="ltr" sortKey="lastPaymentDate"
+                    sort={sort} onSort={setSort}
+                    ascLabel="الأقدم أولاً" descLabel="الأحدث أولاً" />
+                <Th label="آخر حركة" sortKey="lastActivity" sort={sort} onSort={setSort}
+                    ascLabel="الأقدم أولاً" descLabel="الأحدث أولاً" />
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {d.rows.map((r: ContractorRow) => {
                 const v = balanceView(r.balance);
                 return (
                   <tr key={r.code} className={r.balance < 0 ? 'row-overdue' : ''}>
-                    <td>
+                    <td className="party">
                       <Link to={`/contractors/${r.code}`}>{r.name}</Link>
                       {r.releaseAlerts > 0 && (
                         <span className="release-dot" title={`ضمانات مستحقة الصرف: ${ar(r.releaseAlerts)}`} />
@@ -165,10 +235,18 @@ export function Contractors() {
                     </td>
                     <td className="num muted">{r.code}</td>
                     <td>
+                      {/* أكثر من مشروع؟ الأول ثم «+ن» — نفس نمط Suppliers.tsx، حتى لا
+                          يكسر شريط طويل من الشرائح ارتفاع الصف. العنوان الكامل يظهر
+                          عند التحويم. */}
                       {(r.projects ?? []).length > 0 ? (
-                        <div className="chip-row">
-                          {r.projects.map((p) => <span key={p} className="chip">{p}</span>)}
-                        </div>
+                        r.projects.length === 1 ? (
+                          <span className="chip">{r.projects[0]}</span>
+                        ) : (
+                          <span title={r.projects.join('، ')}>
+                            <span className="chip">{r.projects[0]}</span>{' '}
+                            <span className="chip">+{ar(r.projects.length - 1)}</span>
+                          </span>
+                        )
                       ) : <span className="muted">—</span>}
                     </td>
                     <td className="ltr">
@@ -208,15 +286,17 @@ export function Contractors() {
 
       {addOpen && (
         <Modal title="إضافة مقاول" onClose={() => setAddOpen(false)}>
-          <ContractorForm onSubmit={handleAdd} busy={busy} error={formErr} />
+          <ContractorForm onSubmit={handleAdd} busy={busy} error={formErr} knownProjects={projects} />
         </Modal>
       )}
 
       {editRow && (
         <Modal title="تعديل مقاول" onClose={() => setEditRow(null)}>
           <ContractorForm
-            initial={{ code: editRow.code, name: editRow.name, phone: editRow.phone ?? '' }}
+            initial={{ code: editRow.code, name: editRow.name, phone: editRow.phone ?? '',
+                      projects: editRow.projects ?? [] }}
             codeLocked
+            knownProjects={projects}
             onSubmit={handleEdit}
             busy={busy}
             error={formErr}

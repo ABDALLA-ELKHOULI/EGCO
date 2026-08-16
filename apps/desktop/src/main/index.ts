@@ -12,6 +12,69 @@ import { backendUrl, startBackend, stopBackend } from './backend';
 let win: BrowserWindow | null = null;
 
 /**
+ * حالة التحديث المرسلة للواجهة — نفس الشكل يُستخدم للفحص التلقائي والفحص اليدوي،
+ * لكن الفحص التلقائي عند الإقلاع لا يعرض شيئاً إن لم تكن شاشة الإعدادات مفتوحة
+ * لتستمع له؛ الفحص اليدوي هو ما يجعل هذه الحالة مرئية للمستخدم.
+ */
+type UpdateStatus =
+  | { state: 'checking' }
+  | { state: 'up-to-date'; version: string }
+  | { state: 'available'; version: string }
+  | { state: 'downloading'; percent: number }
+  | { state: 'downloaded'; version: string }
+  | { state: 'error'; message: string }
+  | { state: 'unavailable-dev' };
+
+function sendUpdateStatus(status: UpdateStatus) {
+  win?.webContents.send('update:status', status);
+}
+
+let updaterPromise: Promise<import('electron-updater').AppUpdater> | null = null;
+
+/**
+ * تهيئة واحدة يُعاد استخدامها للفحص التلقائي عند الإقلاع وللفحص اليدوي من الإعدادات —
+ * حتى لا نسجّل نفس المستمعين مرتين ولا نفقد حالة electron-updater الداخلية.
+ */
+async function getAutoUpdater() {
+  if (!updaterPromise) {
+    updaterPromise = (async () => {
+      const { autoUpdater } = await import('electron-updater');
+      autoUpdater.autoDownload = true;
+      autoUpdater.autoInstallOnAppQuit = true;   // even «لاحقاً» installs on next quit
+
+      autoUpdater.on('update-available', (info) => sendUpdateStatus({ state: 'available', version: info.version }));
+      autoUpdater.on('update-not-available', (info) => sendUpdateStatus({ state: 'up-to-date', version: info.version }));
+      autoUpdater.on('download-progress', (p) => sendUpdateStatus({ state: 'downloading', percent: Math.round(p.percent) }));
+
+      // الفحص التلقائي عند الإقلاع كان يبتلع الخطأ بصمت — لا إنترنت يعني ببساطة لا
+      // تحديث اليوم. هذا يبقى صحيحاً هنا؛ الفحص اليدوي أدناه هو من يُظهر الخطأ الحقيقي.
+      autoUpdater.on('error', (err) => sendUpdateStatus({
+        state: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      }));
+
+      autoUpdater.on('update-downloaded', async (info) => {
+        sendUpdateStatus({ state: 'downloaded', version: info.version });
+        if (!win) return;
+        const { response } = await dialog.showMessageBox(win, {
+          type: 'info',
+          title: 'تحديث جديد',
+          message: `يتوفر إصدار جديد (${info.version}) من لوحة إعمار الخليج`,
+          detail: 'تم تنزيل التحديث. بياناتك تبقى كما هي — التحديث يبدّل التطبيق فقط.',
+          buttons: ['تحديث الآن وإعادة التشغيل', 'لاحقاً'],
+          defaultId: 0,
+          cancelId: 1,
+        });
+        if (response === 0) autoUpdater.quitAndInstall();
+      });
+
+      return autoUpdater;
+    })();
+  }
+  return updaterPromise;
+}
+
+/**
  * التحديث عن بُعد — يفحص إصدارات GitHub عند كل تشغيل.
  *
  * electron-updater only runs in the packaged app (dev builds skip it). The feed
@@ -22,29 +85,10 @@ let win: BrowserWindow | null = null;
 async function setupAutoUpdate() {
   if (!app.isPackaged) return;
   try {
-    const { autoUpdater } = await import('electron-updater');
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;   // even «لاحقاً» installs on next quit
-
-    autoUpdater.on('update-downloaded', async (info) => {
-      if (!win) return;
-      const { response } = await dialog.showMessageBox(win, {
-        type: 'info',
-        title: 'تحديث جديد',
-        message: `يتوفر إصدار جديد (${info.version}) من لوحة إعمار الخليج`,
-        detail: 'تم تنزيل التحديث. بياناتك تبقى كما هي — التحديث يبدّل التطبيق فقط.',
-        buttons: ['تحديث الآن وإعادة التشغيل', 'لاحقاً'],
-        defaultId: 0,
-        cancelId: 1,
-      });
-      if (response === 0) autoUpdater.quitAndInstall();
-    });
-
-    // فشل الفحص لا يعطّل التطبيق أبداً — لا إنترنت يعني ببساطة لا تحديث اليوم.
-    autoUpdater.on('error', () => { /* silent: offline is a normal state */ });
+    const autoUpdater = await getAutoUpdater();
     await autoUpdater.checkForUpdates();
   } catch {
-    /* updater unavailable (unpacked build) — ignore */
+    /* updater unavailable (unpacked build) or check failed — non-intrusive by design */
   }
 }
 
@@ -122,6 +166,33 @@ ipcMain.handle('app:info', () => ({
   platform: process.platform,
   dataDir: app.getPath('userData'),
 }));
+
+/**
+ * فحص تحديث يدوي — بخلاف الفحص التلقائي الصامت عند الإقلاع، هذا يُعيد الحالة
+ * الحقيقية دائماً (بما فيها الخطأ الفعلي) لأن المستخدم ضغط زراً وينتظر جواباً،
+ * لا صمتاً قد يُقرأ خطأً على أنه «كل شيء محدَّث».
+ */
+ipcMain.handle('update:check', async (): Promise<UpdateStatus> => {
+  if (!app.isPackaged) return { state: 'unavailable-dev' };
+  try {
+    const autoUpdater = await getAutoUpdater();
+    sendUpdateStatus({ state: 'checking' });
+    await autoUpdater.checkForUpdates();
+    // النتيجة الفعلية (متوفر/محدَّث/خطأ) تصل عبر أحداث update:status أعلاه.
+    return { state: 'checking' };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    sendUpdateStatus({ state: 'error', message });
+    return { state: 'error', message };
+  }
+});
+
+/** تثبيت فوري بعد أن ينزّل التطبيق التحديث ويضغط المستخدم زر «إعادة التشغيل الآن». */
+ipcMain.handle('update:install', async () => {
+  if (!app.isPackaged) return;
+  const autoUpdater = await getAutoUpdater();
+  autoUpdater.quitAndInstall();
+});
 
 /**
  * اختيار الملف يتم هنا حتى لا تحتاج الواجهة صلاحية على نظام الملفات.

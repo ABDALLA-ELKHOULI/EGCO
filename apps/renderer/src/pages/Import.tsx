@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import type { ImportHistoryRow } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
-import { Card, EmptyState, ErrorState, Pill, State } from '@/components/ui';
+import { Card, EmptyState, ErrorState, Money, Pill, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
 import { AiRescueModal } from '@/components/AiRescueModal';
 import { useAiEnabled } from '@/lib/useAi';
@@ -25,6 +25,7 @@ type QueueStatus =
   | 'saving'
   | 'saved'
   | 'save_error'
+  | 'unknown_supplier' // الحساب مطابق لكنه غير موجود في ملف مدد الموردين — يحتاج قراراً
   | 'excluded';     // مُستبعد
 
 interface QueueItem {
@@ -134,6 +135,11 @@ export function ImportPage() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null);
+  // ---- حساب جديد داخل الرفع الجماعي — يُحل كل ملف على حدة دون إيقاف بقية الدفعة ----
+  const [resolveTarget, setResolveTarget] =
+    useState<{ path: string; source: string; fileName: string; data: any } | null>(null);
+  const [resolveLoadingPath, setResolveLoadingPath] = useState<string | null>(null);
+  const [resolveErr, setResolveErr] = useState<string | null>(null);
 
   // ---- الملفات المرفوعة ----
   const [history, setHistory] = useState<ImportHistoryRow[] | null>(null);
@@ -217,8 +223,77 @@ export function ImportPage() {
     loadHistory();
   }
 
+  /** «إنشاء مورد…» على صف مورد غير معروف في الرفع الجماعي — يعيد قراءة الملف
+   * وحده (خارج مسار الدفعة، الذي لا يدعم create_supplier) لجلب الاسم المقترح
+   * وأرقام الكشف قبل عرض النافذة، دون إيقاف بقية الملفات في الدفعة. */
+  async function openResolveUnknownSupplier(r: { path: string; source: string; name: string }) {
+    setResolveErr(null); setResolveLoadingPath(r.path);
+    try {
+      const res = await api.runImport(r.path, r.source);
+      setResolveTarget({ path: r.path, source: r.source, fileName: r.name, data: res });
+    } catch (e: any) {
+      setResolveErr(e?.message ?? String(e));
+    } finally {
+      setResolveLoadingPath(null);
+    }
+  }
+
+  /** تأكيد إنشاء المورد لصف من الدفعة — يُحدّث صف هذا الملف فقط في batchResult،
+   * تماماً كإعادة الاستيراد بعد التصنيف، دون لمس بقية نتائج الدفعة. */
+  async function confirmNewSupplierForBatchRow(
+    target: { path: string; source: string; fileName: string },
+    form: { name: string; project: string; term: string },
+  ) {
+    const res = await api.runImport(target.path, target.source, false, form);
+    if (res && res.saved === false) {
+      throw new Error(res.message || res.reason || 'تعذّر الحفظ');
+    }
+    setBatchResult((prev) => prev && ({
+      ...prev,
+      results: prev.results.map((r) => (r.path === target.path ? {
+        ...r,
+        status: 'saved',
+        message: 'تم الحفظ بنجاح — أُنشئ حساب المورد',
+        supplierName: res?.supplier?.name ?? r.supplierName,
+        added: res?.added ?? r.added,
+        skipped: res?.skipped ?? r.skipped,
+      } : r)),
+      saved: prev.saved + 1,
+    }));
+    setResolveTarget(null);
+    loadHistory();
+  }
+
+  function declineResolveUnknownSupplier(target: { path: string }) {
+    setBatchResult((prev) => prev && ({
+      ...prev,
+      results: prev.results.map((r) => (r.path === target.path ? {
+        ...r, message: 'لم يُحفظ شيء — لم يُنشأ الحساب (تجاهله المستخدم)',
+      } : r)),
+    }));
+    setResolveTarget(null);
+  }
+
   function patch(idx: number, upd: Partial<QueueItem>) {
     setQueue((q) => q.map((it, i) => (i === idx ? { ...it, ...upd } : it)));
+  }
+
+  /** تأكيد إنشاء المورد من نافذة «حساب جديد» — يعيد تشغيل الاستيراد بنفس الملف
+   * مع create_supplier، ثم يحدّث حالة الصف وسجل الملفات المرفوعة. */
+  async function confirmNewSupplierForQueueItem(idx: number,
+    form: { name: string; project: string; term: string }) {
+    const item = queue[idx];
+    const res = await api.runImport(item.file.path, item.file.source, false, form);
+    if (res && res.saved === false) {
+      // ما زال مرفوضاً (مثلاً لم يعد مطابقاً) — لا نكذب بأنه حُفظ
+      throw new Error(res.message || res.reason || 'تعذّر الحفظ');
+    }
+    patch(idx, { status: 'saved' as QueueStatus, saveResult: res });
+    loadHistory();
+  }
+
+  function declineNewSupplierForQueueItem(idx: number) {
+    patch(idx, { status: 'excluded' as QueueStatus, error: 'لم يُحفظ شيء — لم يُنشأ الحساب' });
   }
 
   async function pick() {
@@ -285,7 +360,19 @@ export function ImportPage() {
         patch(i, { status: 'saving' as QueueStatus });
         try {
           const res = await api.runImport(item.file.path, item.file.source);
-          patch(i, { status: 'saved' as QueueStatus, saveResult: res });
+          // كشف مطابق تماماً لحساب لم نره من قبل — هذا هو الخلل الأصلي: كانت الشاشة
+          // تكتب «تم» بينما res.saved كان false ولم يتغيّر رقم واحد. الآن نميّزها
+          // بحالة خاصة تعرض للمستخدم قراراً حقيقياً بدل الصمت.
+          if (res && res.saved === false && res.reason === 'unknown_supplier') {
+            patch(i, { status: 'unknown_supplier' as QueueStatus, saveResult: res });
+          } else if (res && res.saved === false) {
+            patch(i, {
+              status: 'save_error' as QueueStatus,
+              error: res.message || res.reason || 'تعذّر الحفظ',
+            });
+          } else {
+            patch(i, { status: 'saved' as QueueStatus, saveResult: res });
+          }
         } catch (e: any) {
           patch(i, { status: 'save_error' as QueueStatus, error: e?.message ?? String(e) });
         }
@@ -377,6 +464,7 @@ export function ImportPage() {
         {batchResult && (
           <Card title="نتيجة الرفع">
             <div className="card-body top">
+              {resolveErr && <div className="callout bad" style={{ marginBottom: 10 }}>{resolveErr}</div>}
               <div style={{ marginBottom: 10 }}>
                 <BatchSummaryBanner
                   total={batchResult.total}
@@ -428,6 +516,13 @@ export function ImportPage() {
                               تصنيف…
                             </button>
                           )}
+                          {r.status === 'unknown_supplier' && (
+                            <button className="btn sm" style={{ marginInlineStart: 8 }}
+                              disabled={resolveLoadingPath === r.path}
+                              onClick={() => openResolveUnknownSupplier(r)}>
+                              {resolveLoadingPath === r.path ? 'جارٍ التحميل…' : 'إنشاء المورد…'}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -457,7 +552,9 @@ export function ImportPage() {
 
         {queue.map((item, i) => (
           <QueueCard key={item.file.path + i} item={item} aiEnabled={aiEnabled}
-            onRescue={() => setRescueTarget({ path: item.file.path, name: item.file.name })} />
+            onRescue={() => setRescueTarget({ path: item.file.path, name: item.file.name })}
+            onConfirmNewSupplier={(form) => confirmNewSupplierForQueueItem(i, form)}
+            onDeclineNewSupplier={() => declineNewSupplierForQueueItem(i)} />
         ))}
 
         {queue.length > 0 && !done && (
@@ -498,6 +595,17 @@ export function ImportPage() {
             reimportAfterClassification(t);
           }}
         />
+      )}
+
+      {resolveTarget && (
+        <Modal title="حساب جديد لم نره من قبل" onClose={() => setResolveTarget(null)}>
+          <NewSupplierPanel
+            fileName={resolveTarget.fileName}
+            data={resolveTarget.data}
+            onConfirm={(form) => confirmNewSupplierForBatchRow(resolveTarget, form)}
+            onDecline={() => declineResolveUnknownSupplier(resolveTarget)}
+          />
+        </Modal>
       )}
     </>
   );
@@ -568,8 +676,10 @@ function ClassifyModal({ target, aiEnabled, onClose, onSaved }: {
   );
 }
 
-function QueueCard({ item, aiEnabled, onRescue }: {
+function QueueCard({ item, aiEnabled, onRescue, onConfirmNewSupplier, onDeclineNewSupplier }: {
   item: QueueItem; aiEnabled: boolean; onRescue: () => void;
+  onConfirmNewSupplier: (form: { name: string; project: string; term: string }) => Promise<void>;
+  onDeclineNewSupplier: () => void;
 }) {
   const { file, status, preview, saveResult, error } = item;
   return (
@@ -610,8 +720,19 @@ function QueueCard({ item, aiEnabled, onRescue }: {
           <div className="callout bad" style={{ margin: 0 }}>تعذّر الحفظ: {error}</div>
         )}
 
+        {status === 'unknown_supplier' && saveResult && (
+          <NewSupplierPanel
+            fileName={file.name}
+            data={saveResult}
+            onConfirm={onConfirmNewSupplier}
+            onDecline={onDeclineNewSupplier}
+          />
+        )}
+
         {status === 'excluded' && (
-          <div className="muted" style={{ fontSize: 12 }}>مُستبعد من الحفظ (لم يتطابق أو حدث خطأ قراءة)</div>
+          <div className="muted" style={{ fontSize: 12 }}>
+            {error ?? 'مُستبعد من الحفظ (لم يتطابق أو حدث خطأ قراءة)'}
+          </div>
         )}
 
         {status === 'saved' && saveResult && (
@@ -636,12 +757,124 @@ const CHIP: Record<QueueStatus, { text: string; kind: string }> = {
   saving: { text: 'جارٍ الحفظ', kind: 'warn' },
   saved: { text: 'تم الحفظ', kind: 'ok' },
   save_error: { text: 'تعذّر الحفظ', kind: 'red' },
+  unknown_supplier: { text: 'حساب جديد — بانتظار قرار', kind: 'warn' },
   excluded: { text: 'مُستبعد', kind: '' },
 };
 
 function StatusChip({ status }: { status: QueueStatus }) {
   const c = CHIP[status];
   return <Pill kind={c.kind}>{c.text}</Pill>;
+}
+
+/**
+ * تخمين بحت لاسم المشروع من ترويسة الكشف — النصوص تأتي بصيغ مثل
+ * «الیرموك- ( شركة تداین للخرسانة) تاتكو» حيث اسم المشروع قبل أول «-» أو «(».
+ * دائماً قابل للتعديل في الحقل، ولا يُستخدم إن لم نجد فاصلاً واضحاً.
+ */
+function guessProjectFromHeader(raw: string): string {
+  const s = (raw || '').trim();
+  if (!s) return '';
+  const dash = s.indexOf('-');
+  const paren = s.indexOf('(');
+  const cut = [dash, paren].filter((n) => n > 0).sort((a, b) => a - b)[0];
+  return cut !== undefined ? s.slice(0, cut).trim() : '';
+}
+
+/**
+ * «حساب جديد لم نره من قبل» — هذا هو إصلاح الخلل الذي أبلغ عنه المستخدم: كشف
+ * يقرأ ويطابق رصيده تماماً لكن حسابه غير موجود في ملف مدد الموردين، فكان يُرفض
+ * صمتاً والشاشة تقول «تم». هنا نعرض بوضوح: ما الحساب، ما الأرقام في الملف،
+ * ونطلب من المستخدم اسم المورد/المشروع/مدة السداد قبل إنشائه — مدة السداد
+ * إلزامية لأنها تحدّد تواريخ الاستحقاق ومنها كل حساب التأخر لاحقاً.
+ */
+function NewSupplierPanel({ fileName, data, onConfirm, onDecline }: {
+  fileName: string;
+  data: {
+    account?: string; suggestedName?: string;
+    invoiceCount?: number; paymentCount?: number;
+    computedBalance?: number; statementBalance?: number;
+  };
+  onConfirm: (form: { name: string; project: string; term: string }) => Promise<void>;
+  onDecline: () => void;
+}) {
+  const suggested = data.suggestedName ?? '';
+  const [name, setName] = useState(suggested);
+  const [project, setProject] = useState(guessProjectFromHeader(suggested));
+  const [term, setTerm] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [declined, setDeclined] = useState(false);
+
+  async function confirm() {
+    if (!name.trim() || !term.trim()) {
+      setError('اسم المورد ومدة السداد إلزاميان');
+      return;
+    }
+    setSaving(true); setError(null);
+    try {
+      await onConfirm({ name: name.trim(), project: project.trim(), term: term.trim() });
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+      setSaving(false);
+    }
+  }
+
+  if (declined) {
+    return (
+      <div className="muted" style={{ fontSize: 12 }}>لم يُحفظ شيء — لم يُنشأ الحساب</div>
+    );
+  }
+
+  return (
+    <div className="callout warn" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div>
+        <b>حساب جديد لم نره من قبل: {data.account || '—'}</b>
+        <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+          كشف «{fileName}» مطابق تماماً لرصيده لكن رقم الحساب غير موجود في ملف مدد الموردين —
+          لن يُحفظ شيء حتى تقرر إنشاء الحساب أو تجاهل الملف.
+        </div>
+      </div>
+
+      <div className="muted" style={{ fontSize: 12 }}>
+        فواتير: {ar(data.invoiceCount ?? 0)} · دفعات: {ar(data.paymentCount ?? 0)}
+        {' '}· رصيد الكشف: <Money v={data.statementBalance ?? 0} /> ر.س
+        {' '}· المحسوب: <Money v={data.computedBalance ?? 0} /> ر.س
+      </div>
+
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+          اسم المورد (من ترويسة الكشف — عدّله إن احتاج تنظيفاً)
+        </span>
+        <input value={name} onChange={(e) => setName(e.target.value)} />
+      </label>
+
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+          المشروع (تخمين من الترويسة — تحقق منه وعدّله إن احتاج)
+        </span>
+        <input value={project} onChange={(e) => setProject(e.target.value)} />
+      </label>
+
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+          مدة السداد — إلزامي: تحدّد تواريخ الاستحقاق، وتواريخ الاستحقاق تحدّد التأخر
+        </span>
+        <input value={term} onChange={(e) => setTerm(e.target.value)}
+          placeholder="مثال: ٤٥ يوم · كاش · مستخلص" />
+      </label>
+
+      {error && <div className="callout bad" style={{ margin: 0 }}>{error}</div>}
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn primary" disabled={saving} onClick={confirm}>
+          {saving ? 'جارٍ الحفظ…' : 'إنشاء الحساب وحفظ الكشف'}
+        </button>
+        <button className="btn" disabled={saving} onClick={() => { setDeclined(true); onDecline(); }}>
+          تجاهل هذا الملف
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /**

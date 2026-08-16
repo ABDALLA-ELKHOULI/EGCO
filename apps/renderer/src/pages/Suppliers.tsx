@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, DELAY_BUCKETS, type SupplierQuery } from '@/lib/api';
+import { Th, type SortState } from '@/components/ColumnMenu';
 import { ar, arDate, arRange, sar, STATUS } from '@/lib/format';
 import { Card, EmptyState, ErrorState, Money, Pill, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
@@ -16,6 +17,48 @@ export function Suppliers() {
   const [status, setStatus] = useState('');
   const [err, setErr] = useState<string | null>(null);
 
+  // تصفية العمود وترتيبه — كلاهما يُرسل للخادم فيُطبَّق على المجموعة كاملةً،
+  // فيبقى سطر الإجماليات واصفاً لما تراه بالضبط.
+  const [account, setAccount] = useState('');
+  const [delay, setDelay] = useState('');
+  const [minOut, setMinOut] = useState('');
+  const [maxOut, setMaxOut] = useState('');
+  const [payFrom, setPayFrom] = useState('');
+  const [payTo, setPayTo] = useState('');
+  const [sort, setSort] = useState<SortState | null>(null);
+  const [delayRow, setDelayRow] = useState<any>(null);
+
+  const query = useMemo<SupplierQuery>(() => ({
+    q: q || account || undefined,
+    project: project || undefined,
+    status: status || undefined,
+    delay: delay || undefined,
+    min_outstanding: minOut ? Number(minOut) : undefined,
+    max_outstanding: maxOut ? Number(maxOut) : undefined,
+    date_from: payFrom || undefined,
+    date_to: payTo || undefined,
+    sort: sort?.key,
+    dir: sort?.dir,
+  }), [q, account, project, status, delay, minOut, maxOut, payFrom, payTo, sort]);
+
+  const clearAll = () => {
+    setQ(''); setAccount(''); setProject(''); setStatus(''); setDelay('');
+    setMinOut(''); setMaxOut(''); setPayFrom(''); setPayTo('');
+  };
+
+  const chips = [
+    q && { k: 'q', label: `بحث: ${q}`, clear: () => setQ('') },
+    account && { k: 'acct', label: `الحساب: ${account}`, clear: () => setAccount('') },
+    project && { k: 'p', label: `المشروع: ${project}`, clear: () => setProject('') },
+    status && { k: 's', label: `الحالة: ${STATUS[status]?.label ?? status}`, clear: () => setStatus('') },
+    delay && { k: 'd', label: `التأخر: ${DELAY_BUCKETS.find((b) => b.value === delay)?.label}`,
+               clear: () => setDelay('') },
+    (minOut || maxOut) && { k: 'o', label: `المديونية: ${minOut || '—'} … ${maxOut || '—'}`,
+                            clear: () => { setMinOut(''); setMaxOut(''); } },
+    (payFrom || payTo) && { k: 'dt', label: `الفترة: ${payFrom || '—'} … ${payTo || '—'}`,
+                            clear: () => { setPayFrom(''); setPayTo(''); } },
+  ].filter(Boolean) as { k: string; label: string; clear: () => void }[];
+
   const [addOpen, setAddOpen] = useState(false);
   const [editRow, setEditRow] = useState<any>(null);
   const [deleteRow, setDeleteRow] = useState<any>(null);
@@ -27,7 +70,7 @@ export function Suppliers() {
   const seq = useRef(0);
   const reload = () => {
     const my = ++seq.current;
-    api.suppliers({ q, project, status }).then((r) => {
+    api.suppliers(query).then((r) => {
       if (my !== seq.current) return; // استجابة متأخرة لطلب سابق — تُهمل
       setD(r); setErr(null);
     }).catch((e) => { if (my === seq.current) setErr(e.message); });
@@ -36,16 +79,16 @@ export function Suppliers() {
   useEffect(() => {
     const my = ++seq.current;
     const t = setTimeout(() => {
-      api.suppliers({ q, project, status }).then((r) => {
+      api.suppliers(query).then((r) => {
         if (my !== seq.current) return;
         setD(r); setErr(null);
       }).catch((e) => { if (my === seq.current) setErr(e.message); });
     }, 200);
     return () => clearTimeout(t);
-  }, [q, project, status]);
+  }, [query]);
 
   const projects = useMemo(() => d?.projects ?? [], [d]);
-  const filtering = Boolean(q || project || status);
+  const filtering = chips.length > 0;
 
   if (err) return <ErrorState message={`تعذّر التحميل: ${err}`} onRetry={reload} />;
 
@@ -66,7 +109,8 @@ export function Suppliers() {
     if (!editRow) return;
     setBusy(true); setFormErr(null);
     try {
-      await api.updateSupplier(editRow.account, { name: values.name, project: values.project, term: values.term });
+      await api.updateSupplier(editRow.account,
+        { name: values.name, project: values.project, term: values.term, projects: values.projects });
       setEditRow(null);
       reload();
     } catch (e) {
@@ -98,22 +142,29 @@ export function Suppliers() {
       <div className="toolbar">
         <input placeholder="بحث بالاسم أو رقم الحساب…" value={q}
                onChange={(e) => setQ(e.target.value)} style={{ minWidth: 300 }} />
-        <select value={project} onChange={(e) => setProject(e.target.value)}>
-          <option value="">كل المشاريع</option>
-          {projects.map((p: string) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">كل الحالات</option>
-          <option value="overdue">متأخر</option>
-          <option value="due_soon">خلال ٧ أيام</option>
-          <option value="awaiting_date">بانتظار تاريخ</option>
-          <option value="open">منتظم</option>
-          <option value="clear">مسدد بالكامل</option>
-        </select>
+        {/* المشروع والحالة انتقلا إلى قائمتي عمودَيهما — إبقاؤهما هنا أيضاً يعني
+            مكانين لنفس الفلتر يختلفان بصمت. */}
         {d && <span className="count">{ar(d.count)} نتيجة · مفتوح {sar(d.totals.outstanding)} ر.س</span>}
       </div>
 
       <Card>
+        {/* التصفية تُعلن عن نفسها. رقمٌ يصف مجموعة مصفّاة دون أن يقول ذلك أخطر من
+            ألا يظهر أصلاً — الجدول يبدو كاملاً وهو ليس كذلك. */}
+        {chips.length > 0 && (
+          <div className="filter-bar">
+            <b>{ar(chips.length)} تصفية نشطة</b>
+            {chips.map((c) => (
+              <span key={c.k} className="filter-chip">
+                {c.label}
+                <button onClick={c.clear} aria-label={`إزالة ${c.label}`}>×</button>
+              </span>
+            ))}
+            <button className="btn sm" onClick={clearAll}>مسح الكل</button>
+            {d && <span className="muted grow" style={{ textAlign: 'left' }}>
+              متأخر ضمن التصفية: {sar(d.totals.delayed)} ر.س
+            </span>}
+          </div>
+        )}
         {!d ? <State>جارٍ التحميل…</State>
           : d.rows.length === 0 ? (
             // فرّق بين «لا يوجد موردون بعد» و«البحث لم يطابق» — الرسالة الواحدة
@@ -121,19 +172,53 @@ export function Suppliers() {
             filtering ? (
               <EmptyState kind="no-results" title="لا نتائج مطابقة"
                 body="لم يطابق البحث أو التصفية أي مورد."
-                ctaLabel="مسح التصفية" onCta={() => { setQ(''); setProject(''); setStatus(''); }} />
+                ctaLabel="مسح التصفية" onCta={clearAll} />
             ) : (
               <EmptyState kind="no-data" title="لم تُرفع قائمة الموردين بعد"
                 body="ارفع ملف «مدة مديونية الموردين» بصيغة Excel لتظهر هنا."
                 ctaLabel="رفع الملف" onCta={() => nav('/import')} />
             )
           ) : (
+          // عمود التأخر رفع الأعمدة إلى تسعة، فانضغط اسم المورد إلى كلمة في كل سطر.
+          // الجدول ينزلق أفقياً بدل أن تُسحق أعمدته — والاسم يحجز عرضاً أدنى لأنه
+          // أول ما تبحث عنه العين في كل صف.
+          <div className="table-scroll wide">
           <table>
             <thead>
               <tr>
-                <th>المورد</th><th>رقم الحساب</th><th>المشروع</th>
-                <th>المدة</th><th>الحالة</th><th className="ltr">المديونية المفتوحة</th>
-                <th className="ltr">آخر دفعة</th>
+                <Th label="المورد" className="party" sortKey="name" sort={sort} onSort={setSort}
+                    ascLabel="أ ← ي" descLabel="ي ← أ" active={Boolean(q)}
+                    filter={{ kind: 'text', value: q, onChange: setQ, placeholder: 'اسم المورد…' }} />
+                <Th label="رقم الحساب" sortKey="account" sort={sort} onSort={setSort}
+                    active={Boolean(account)}
+                    filter={{ kind: 'text', value: account, onChange: setAccount, placeholder: '211…' }} />
+                <Th label="المشروع" sortKey="project" sort={sort} onSort={setSort}
+                    active={Boolean(project)}
+                    filter={{ kind: 'select', value: project, onChange: setProject,
+                              allLabel: 'كل المشاريع',
+                              options: projects.map((p: string) => ({ value: p, label: p })) }} />
+                <Th label="الحالة" sortKey="status" sort={sort} onSort={setSort}
+                    ascLabel="الأحرج أولاً" descLabel="الأهدأ أولاً" active={Boolean(status)}
+                    filter={{ kind: 'select', value: status, onChange: setStatus,
+                              allLabel: 'كل الحالات',
+                              options: Object.keys(STATUS).map((k) => ({ value: k, label: STATUS[k].label })) }} />
+                <Th label="المديونية المفتوحة" className="ltr" sortKey="outstanding"
+                    sort={sort} onSort={setSort}
+                    ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً"
+                    active={Boolean(minOut || maxOut)}
+                    filter={{ kind: 'range', min: minOut, max: maxOut,
+                              onMin: setMinOut, onMax: setMaxOut, unit: 'ر.س' }} />
+                <Th label="التأخر" className="ltr" sortKey="delay" sort={sort} onSort={setSort}
+                    ascLabel="الأقل تأخراً" descLabel="الأكثر تأخراً" active={Boolean(delay)}
+                    filter={{ kind: 'select', value: delay, onChange: setDelay,
+                              allLabel: 'كل الشرائح',
+                              options: DELAY_BUCKETS.map((b) => ({ value: b.value, label: b.label, hint: b.hint })) }} />
+                <Th label="آخر دفعة" className="ltr" sortKey="lastPaymentDate"
+                    sort={sort} onSort={setSort}
+                    ascLabel="الأقدم أولاً" descLabel="الأحدث أولاً"
+                    active={Boolean(payFrom || payTo)}
+                    filter={{ kind: 'dateRange', from: payFrom, to: payTo,
+                              onFrom: setPayFrom, onTo: setPayTo }} />
                 <th></th>
               </tr>
             </thead>
@@ -145,7 +230,7 @@ export function Suppliers() {
                   : r.status === 'clear' && r.outstanding === 0 && r.invoiceCount > 0 ? 'row-settled' : '';
                 return (
                   <tr key={r.account} className={rowCls}>
-                    <td>
+                    <td className="party">
                       <Link to={`/suppliers/${r.account}`}>{r.name}</Link>
                       {r.firstActivity && (
                         <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
@@ -153,14 +238,44 @@ export function Suppliers() {
                         </div>
                       )}
                     </td>
-                    <td className="num muted">{r.account}</td>
-                    <td className="muted">{r.project}</td>
-                    <td>{r.termKind === 'days' ? `${ar(r.termDays)} يوم` : r.term}</td>
+                    <td className="num muted">
+                      {r.account}
+                      {/* المدة سطرٌ تحت الحساب لا عموداً: تسعة أعمدة كانت تدفع أعمدة
+                          المال خارج الشاشة، وهي أول ما تُقرأ. */}
+                      <div style={{ fontSize: 11, marginTop: 2 }}>
+                        {r.termKind === 'days' ? `${ar(r.termDays)} يوم` : r.term}
+                      </div>
+                    </td>
+                    <td className="muted">
+                      {/* أكثر من مشروع؟ الأول ثم «+ن» بدل نص طويل يكسر ارتفاع الصف —
+                          العنوان الكامل (title) يفصح عن الباقي عند التحويم. */}
+                      {r.projects && r.projects.length > 0 ? (
+                        r.projects.length === 1 ? r.projects[0] : (
+                          <span title={r.projects.join('، ')}>
+                            {r.projects[0]} <span className="chip">+{ar(r.projects.length - 1)}</span>
+                          </span>
+                        )
+                      ) : (r.project || <span className="muted">—</span>)}
+                    </td>
                     <td><Pill kind={st.cls}>{st.label}</Pill></td>
                     <td className="ltr">
                       {r.outstanding > 0
                         ? <Money v={r.outstanding} cls={r.overdue > 0 ? 'red' : ''} />
                         : <span className="muted">—</span>}
+                    </td>
+                    <td className="ltr">
+                      {r.delay?.days > 0 ? (
+                        // الرقم المعروض أسوأ تأخر عنده — والنقر يفتح توزيع المبلغ على
+                        // الشرائح، لأن مورداً واحداً نادراً ما يكون تأخره رقماً واحداً.
+                        <button className="link-btn" onClick={() => setDelayRow(r)}
+                                title="عرض توزيع المتأخر على الشرائح">
+                          <Money v={r.delay.amount} cls="red" />
+                          <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                            {DELAY_BUCKETS.find((b) => b.value === r.delay.bucket)?.label}
+                            {' · '}{ar(r.delay.days)} يوم
+                          </div>
+                        </button>
+                      ) : <span className="muted">—</span>}
                     </td>
                     <td className="ltr">
                       {r.lastPayment ? (
@@ -185,23 +300,56 @@ export function Suppliers() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 
       {addOpen && (
         <Modal title="إضافة مورد" onClose={() => setAddOpen(false)}>
-          <SupplierForm onSubmit={handleAdd} busy={busy} error={formErr} />
+          <SupplierForm onSubmit={handleAdd} busy={busy} error={formErr} knownProjects={projects} />
         </Modal>
       )}
 
       {editRow && (
         <Modal title="تعديل مورد" onClose={() => setEditRow(null)}>
           <SupplierForm
-            initial={{ account: editRow.account, name: editRow.name, project: editRow.project, term: editRow.term }}
+            initial={{ account: editRow.account, name: editRow.name, project: editRow.project,
+                      term: editRow.term, projects: editRow.projects }}
             onSubmit={handleEdit}
             busy={busy}
             error={formErr}
+            knownProjects={projects}
           />
+        </Modal>
+      )}
+
+      {delayRow && (
+        <Modal title={`توزيع المتأخر — ${delayRow.name}`} onClose={() => setDelayRow(null)}>
+          <p className="muted">
+            المبلغ غير المسدد موزَّعاً بعمر التأخر عن تاريخ الاستحقاق. أقصى تأخر:{' '}
+            <b>{ar(delayRow.delay.days)}</b> يوماً.
+          </p>
+          <table>
+            <thead><tr><th>الشريحة</th><th className="ltr">المبلغ</th></tr></thead>
+            <tbody>
+              {DELAY_BUCKETS.filter((b) => b.value !== 'none').map((b) => {
+                const v = delayRow.delay.byBucket?.[b.value] ?? 0;
+                return (
+                  <tr key={b.value} style={v > 0 ? undefined : { opacity: .45 }}>
+                    <td>{b.label} <span className="muted">{b.hint}</span></td>
+                    <td className="ltr">{v > 0 ? <Money v={v} cls="red" /> : <span className="muted">—</span>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr><td>الإجمالي المتأخر</td>
+                  <td className="ltr"><Money v={delayRow.delay.amount} cls="red" /></td></tr>
+            </tfoot>
+          </table>
+          <div className="row-gap-sm" style={{ marginTop: 'var(--space-lg16)' }}>
+            <Link className="btn" to={`/suppliers/${delayRow.account}`}>فتح كشف المورد</Link>
+          </div>
         </Modal>
       )}
 

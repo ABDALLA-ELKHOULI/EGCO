@@ -18,6 +18,7 @@ from app.schemas.contractors import (ClaimIn, ClaimUpdate, ContractorIn,
                                      ContractorUpdate, EntryIn, EntryUpdate,
                                      GuaranteeIn, GuaranteeUpdate)
 from app.services import contractors_service as CS
+from app.services import party_projects as PP
 
 router = APIRouter()
 
@@ -50,25 +51,42 @@ def _commit_or_409(db: Session, detail: str) -> None:
 
 _VALID_DIRECTIONS = ('owed_to_them', 'owed_to_us', 'balanced')
 
+# لا توجد شريحة «تأخر» للمقاولين: حركات دفتر المقاول قيود مدين/دائن (مستخلصات
+# ودفعات) بلا تاريخ استحقاق يُقاس منه التأخر — بخلاف فواتير الموردين التي لها
+# مدة سداد وتاريخ استحقاق مشتق. compute_delay في app/domain/payables.py يعمل على
+# Invoice.due_date، وهذا الحقل غير موجود أصلاً في app/domain/contractors.py.
+# افتراع تاريخ استحقاق من لا شيء كان يُخرج رقماً كاذباً، فتُركت التصفية هنا مقتصرة
+# على ما تدعمه البيانات فعلاً: البحث والمشروع والاتجاه والضمانات، بالإضافة للترتيب.
+CS_VALID_SORT = tuple(CS.CONTRACTOR_SORT_KEYS.keys())
+
 
 @router.get('')
 def list_contractors(q: Optional[str] = Query(None),
                      project: Optional[str] = Query(None),
                      direction: Optional[str] = Query(None),
                      has_guarantees: Optional[bool] = Query(None),
+                     sort: Optional[str] = Query(None),
+                     dir: str = Query('asc'),
                      db: Session = Depends(get_session)) -> dict:
-    """قائمة المقاولين — sorted most-negative balance first (أكبر مستحقات لهم أولاً)."""
+    """قائمة المقاولين — sorted most-negative balance first (أكبر مستحقات لهم أولاً)
+    ما لم يُطلب ترتيب صريح عبر sort/dir."""
     if direction is not None and direction not in _VALID_DIRECTIONS:
         raise HTTPException(422, detail=f'قيمة اتجاه غير صالحة: {direction} — '
                                         f'المسموح: {", ".join(_VALID_DIRECTIONS)}')
+    if sort is not None and sort not in CS_VALID_SORT:
+        raise HTTPException(422, detail=f'عمود ترتيب غير صالح: {sort} — '
+                                        f'المسموح: {", ".join(CS_VALID_SORT)}')
+    if dir not in ('asc', 'desc'):
+        raise HTTPException(422, detail=f'اتجاه ترتيب غير صالح: {dir}')
     return CS.contractors_list_json(db, q=q, project=project, direction=direction,
-                                    has_guarantees=has_guarantees)
+                                    has_guarantees=has_guarantees, sort=sort, dir=dir)
 
 
 @router.get('/{code}')
 def contractor_detail(code: str, db: Session = Depends(get_session)) -> dict:
     """كشف مقاول كامل — الحركات والمستخلصات والضمانات وتوزيع المشاريع."""
-    return CS.contractor_detail_json(_get_contractor(db, code))
+    row = _get_contractor(db, code)
+    return CS.contractor_detail_json(row, projects=PP.projects_of(db, PP.CONTRACTOR, row.id))
 
 
 # ---------------------------------------------------------------- contractor CRUD
@@ -90,9 +108,11 @@ def create_contractor(body: ContractorIn, db: Session = Depends(get_session)) ->
     row.notes = body.notes
     row.default_retention_rate = body.defaultRetentionRate
     row.default_guarantee_days = body.defaultGuaranteeDays
+    db.flush()  # نحتاج row.id قبل set_projects
+    projects = PP.set_projects(db, PP.CONTRACTOR, row.id, body.projects)
     db.commit()
     db.refresh(row)
-    return CS.contractor_row_json(row)
+    return CS.contractor_row_json(row, projects=projects)
 
 
 @router.put('/{code}')
@@ -110,9 +130,11 @@ def update_contractor(code: str, body: ContractorUpdate,
         row.default_retention_rate = body.defaultRetentionRate
     if body.defaultGuaranteeDays is not None:
         row.default_guarantee_days = body.defaultGuaranteeDays
+    # body.projects=None يعني «لا تغيّر» — تعديل جزئي (اسم فقط) لا يمحو المشاريع.
+    projects = PP.set_projects(db, PP.CONTRACTOR, row.id, body.projects)
     db.commit()
     db.refresh(row)
-    return CS.contractor_row_json(row)
+    return CS.contractor_row_json(row, projects=projects)
 
 
 @router.delete('/{code}')

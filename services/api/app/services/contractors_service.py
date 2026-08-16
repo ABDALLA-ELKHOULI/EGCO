@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.db import models
 from app.domain import contractors as C
 from app.domain.payables import D, money
+from app.services import party_projects as PP
 
 
 # ---------------------------------------------------------------- known projects
@@ -179,8 +180,15 @@ def _entry_dicts(entries) -> List[dict]:
             for e in entries]
 
 
-def contractor_row_json(row: models.Contractor, today: Optional[dt.date] = None) -> dict:
-    """سطر شاشة القائمة — one dict per contractor."""
+def contractor_row_json(row: models.Contractor, today: Optional[dt.date] = None,
+                        projects: Optional[List[str]] = None) -> dict:
+    """سطر شاشة القائمة — one dict per contractor.
+
+    `projects` — لائحة مشاريع المقاول المعيَّنة (party_projects.projects_of)، يمررها
+    المستدعي الذي يملك db. بلا تمرير صريح نتراجع للمشاريع المستنتجة من حركات دفتره —
+    نفس السلوك القديم قبل هذه الميزة — حتى لا ينكسر مستدعٍ لا يعرف بعد بجدول
+    party_projects (مثل ai_features_service.py).
+    """
     entries = _live_entries(row)
     pos = C.position(_entry_dicts(entries))
     guarantees = [g for g in row.guarantees if g.deleted_at is None]
@@ -191,9 +199,11 @@ def contractor_row_json(row: models.Contractor, today: Optional[dt.date] = None)
         _, status = guarantee_release(g, today)
         if status in ('due', 'upcoming'):
             alerts += 1
+    if projects is None:
+        projects = sorted({e.project for e in entries if e.project})
     return dict(
         code=row.code, name=row.name, phone=row.phone or '',
-        projects=sorted({e.project for e in entries if e.project}),
+        projects=projects,
         balance=money(pos['balance']),
         duesTotal=money(pos['claims_total']),
         paidTotal=money(pos['payments_total']),
@@ -223,14 +233,43 @@ def _direction_of(balance: float) -> str:
     return 'balanced'
 
 
+#: أعمدة الترتيب — نفس فكرة suppliers.py: مفتاح يرسله الجدول ودالة تستخرج قيمة
+#: الفرز. لا يوجد عمود «تأخر» هنا — حركات المقاول قيود مدين/دائن بلا تاريخ استحقاق،
+#: فلا معنى محاسبياً لحساب تأخر (انظر تعليق delay في routes/contractors.py).
+CONTRACTOR_SORT_KEYS = {
+    'name': lambda r: r['name'] or '',
+    'code': lambda r: r['code'] or '',
+    'balance': lambda r: r['balance'],
+    'duesTotal': lambda r: r['duesTotal'],
+    'paidTotal': lambda r: r['paidTotal'],
+    'retentionHeld': lambda r: r['retentionHeld'],
+    'lastPaymentDate': lambda r: (r['lastPayment'] or {}).get('date') or '',
+    'lastPaymentAmount': lambda r: (r['lastPayment'] or {}).get('amount') or 0,
+    'lastActivity': lambda r: r['lastActivity'] or '',
+}
+
+
 def contractors_list_json(db: Session, today: Optional[dt.date] = None,
                           q: Optional[str] = None, project: Optional[str] = None,
                           direction: Optional[str] = None,
-                          has_guarantees: Optional[bool] = None) -> dict:
-    all_rows = [contractor_row_json(r, today) for r in
-               db.query(models.Contractor).filter(
-                   models.Contractor.deleted_at.is_(None)).all()]
+                          has_guarantees: Optional[bool] = None,
+                          sort: Optional[str] = None, dir: str = 'asc') -> dict:
+    # المشاريع المعروضة/المُصفّى عليها = لائحة party_projects المعيَّنة صراحةً ∪
+    # المشاريع المستنتجة من حركات الدفتر — إسقاط الثاني كان يكسر التصفية لأي مقاول
+    # وسمت حركاته مشروعاً دون أن يُعيَّن له صراحةً عبر نموذج التعديل بعد (الحالة
+    # الشائعة اليوم، قبل أن يستخدم المستخدم المحرر الجديد).
+    def _row(r: models.Contractor) -> dict:
+        base = contractor_row_json(r, today)  # مستنتج من الحركات (السلوك القديم)
+        assigned = PP.projects_of(db, PP.CONTRACTOR, r.id)
+        base['projects'] = sorted(set(base['projects']) | set(assigned))
+        return base
 
+    all_rows = [_row(r) for r in db.query(models.Contractor).filter(
+        models.Contractor.deleted_at.is_(None)).all()]
+
+    # التصفية بمشروع تعني «ينتمي إليه ضمن لائحته» لا «يساويه» — مقاول على ثلاثة
+    # مشاريع يجب أن يظهر تحت الثلاثة. r['projects'] أعلاه مصدره الآن party_projects
+    # (عضوية حقيقية)، لا اشتقاق من حركات الدفتر كما كان سابقاً.
     rows = []
     for r in all_rows:
         if q:
@@ -247,8 +286,14 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
                 continue
         rows.append(r)
 
-    # الأشد سالبية أولاً — the contractors we owe the most come first.
-    rows.sort(key=lambda r: r['balance'])
+    if sort and sort in CONTRACTOR_SORT_KEYS:
+        # الاسم فاصل التعادل دائماً — نفس سبب suppliers.py: بدونه يتبدّل ترتيب
+        # المتساويات بين طلب وآخر فيبدو الجدول وكأنه يتحرك بلا سبب.
+        rows.sort(key=lambda r: r['name'])
+        rows.sort(key=CONTRACTOR_SORT_KEYS[sort], reverse=(dir == 'desc'))
+    else:
+        # الأشد سالبية أولاً — the contractors we owe the most come first.
+        rows.sort(key=lambda r: r['balance'])
     zero = Decimal('0')
     claims_total = sum((D(r['duesTotal']) for r in rows), zero)
     paid_total = sum((D(r['paidTotal']) for r in rows), zero)
@@ -270,7 +315,10 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
     return dict(count=len(rows), rows=rows, totals=totals, filtersApplied=filters_applied)
 
 
-def contractor_detail_json(row: models.Contractor, today: Optional[dt.date] = None) -> dict:
+def contractor_detail_json(row: models.Contractor, today: Optional[dt.date] = None,
+                           projects: Optional[List[str]] = None) -> dict:
+    """`projects` اختياري — نفس عقد contractor_row_json: بلا تمرير صريح نتراجع
+    للمشاريع المستنتجة من حركات الدفتر (perProject) حتى لا ينكسر مستدعٍ قديم."""
     entries = _live_entries(row)
     pos = C.position(_entry_dicts(entries))
 
@@ -285,9 +333,12 @@ def contractor_detail_json(row: models.Contractor, today: Optional[dt.date] = No
     per_project = [dict(project=p, debit=money(b['debit']), credit=money(b['credit']),
                         balance=money(b['debit'] - b['credit']), entryCount=b['count'])
                    for p, b in sorted(per.items())]
+    if projects is None:
+        projects = sorted(p for p in per.keys() if p)
 
     return dict(
         code=row.code, name=row.name, phone=row.phone or '', notes=row.notes or '',
+        projects=projects,
         defaultRetentionRate=row.default_retention_rate,
         defaultGuaranteeDays=row.default_guarantee_days,
         balance=money(pos['balance']),

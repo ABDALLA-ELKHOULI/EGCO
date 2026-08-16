@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
+import { DELAY_BUCKETS, bucketOfDays } from '@/lib/delay';
 import { ar, arDate, dueLabel, dueTone, sar } from '@/lib/format';
 import { Card, ErrorState, Kpi, Money, Pill, State } from '@/components/ui';
 import { ExplainDot } from '@/components/Explain';
@@ -16,6 +17,8 @@ export function SupplierDetail() {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showPaid, setShowPaid] = useState(false);
+  /** شريحة التأخر المختارة — تصفّي جدول الفواتير أدناه */
+  const [bucket, setBucket] = useState<string | null>(null);
 
   const [addInvoiceOpen, setAddInvoiceOpen] = useState(false);
   const [addPaymentOpen, setAddPaymentOpen] = useState(false);
@@ -41,7 +44,13 @@ export function SupplierDetail() {
   if (err) return <ErrorState message={err} onRetry={reload} />;
   if (!d) return <State>جارٍ التحميل…</State>;
 
-  const invoices = showPaid ? (d.invoices ?? []) : (d.invoices ?? []).filter((i: any) => i.remaining > 0);
+  const shown = showPaid ? (d.invoices ?? []) : (d.invoices ?? []).filter((i: any) => i.remaining > 0);
+  // التصفية بالشريحة تعمل على نفس الأساس الذي حُسبت به مبالغها في الخادم: أيام
+  // التأخر عن تاريخ الاستحقاق. daysToDue سالبٌ للمتأخر، فالتأخر هو نفيه.
+  const invoices = bucket
+    ? shown.filter((i: any) => i.remaining > 0 && i.daysToDue != null
+                               && bucketOfDays(-i.daysToDue) === bucket)
+    : shown;
 
   async function handleAddInvoice(values: ManualEntryValues) {
     if (!account) return;
@@ -175,14 +184,51 @@ export function SupplierDetail() {
              explain={<ExplainDot metric="overdue" values={{ overdue: d.overdue }} />} />
       </div>
 
+      {/* شرائح التأخر — سبع شرائح شهرية بدل «٩٠+» الغامضة. كل شريحة قابلة للنقر
+          فتُصفّي جدول الفواتير أدناه، فيصير الرقم قابلاً للتتبع إلى الفواتير التي
+          كوّنته بدل أن يبقى مجموعاً مغلقاً. */}
+      {d.delay?.amount > 0 && (
+        <Card title="المتأخر حسب مدة التأخر"
+              sub="محسوبة من تاريخ الاستحقاق — انقر شريحة لعرض فواتيرها"
+              actions={bucket && (
+                <button className="btn sm" onClick={() => setBucket(null)}>عرض الكل</button>
+              )}>
+          <div className="bucket-strip">
+            {DELAY_BUCKETS.filter((b) => b.value !== 'none').map((b) => {
+              const v = d.delay.byBucket?.[b.value] ?? 0;
+              const on = bucket === b.value;
+              return (
+                <button key={b.value}
+                        className={'bucket-cell' + (on ? ' on' : '') + (v > 0 ? '' : ' empty')}
+                        disabled={v <= 0}
+                        onClick={() => setBucket(on ? null : b.value)}>
+                  <span className="bucket-label">{b.label}</span>
+                  <span className="bucket-days">{b.hint}</span>
+                  <span className={'bucket-amount' + (v > 0 ? ' red' : '')}>
+                    {v > 0 ? sar(v) : '—'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
       <div className="stack">
         <Card
           title={showPaid ? 'كل الفواتير' : 'الفواتير المفتوحة'}
-          sub="السداد يُوزَّع بطريقة الأقدم أولاً (FIFO) — كما في كشف الحساب"
+          sub={bucket
+            ? `مصفّاة: المتأخرة ${DELAY_BUCKETS.find((b) => b.value === bucket)?.label} (${DELAY_BUCKETS.find((b) => b.value === bucket)?.hint})`
+            : 'السداد يُوزَّع بطريقة الأقدم أولاً (FIFO) — كما في كشف الحساب'}
           actions={
-            <button className="btn sm" onClick={() => setShowPaid(!showPaid)}>
-              {showPaid ? 'المفتوحة فقط' : 'إظهار المسددة'}
-            </button>
+            <>
+              {bucket && (
+                <button className="btn sm" onClick={() => setBucket(null)}>إلغاء التصفية</button>
+              )}
+              <button className="btn sm" onClick={() => setShowPaid(!showPaid)}>
+                {showPaid ? 'المفتوحة فقط' : 'إظهار المسددة'}
+              </button>
+            </>
           }
         >
           <div className="table-scroll">
