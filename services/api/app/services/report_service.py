@@ -85,6 +85,12 @@ def build(positions: Sequence[SupplierPosition], today: dt.date,
     keys = [('لم يحن موعدها', 'current'), ('متأخر ١–٣٠ يوماً', 'd1_30'),
             ('متأخر ٣١–٦٠ يوماً', 'd31_60'), ('متأخر ٦١–٩٠ يوماً', 'd61_90'),
             ('أكثر من ٩٠ يوماً', 'd90_plus')]
+    # المقام هو مجموع الفئات نفسها، لا «المتبقي» الكلي: المتبقي يضم فواتير بلا
+    # تاريخ استحقاق (مستخلصات لم تُعتمد بعد) وهي ليست في أي فئة، فكانت النسب
+    # تجمع ٩٧.٤٪ وتبدو كأن ٢.٦٪ ضاعت. الفرق يُعرض صراحةً كسطر مستقل بدل أن يتسرّب
+    # إلى مقام لا يفسّره.
+    ageing_total = sum((getattr(p.ageing, a) for p in positions for _, a in keys), zero)
+    ageing_undated = outstanding - ageing_total
     ageing = []
     for label, attr in keys:
         amount = sum((getattr(p.ageing, attr) for p in positions), zero)
@@ -99,7 +105,7 @@ def build(positions: Sequence[SupplierPosition], today: dt.date,
                 if bucket == attr:
                     count += 1
         ageing.append(dict(label=label, count=count, amount=_money_dec(amount),
-                           pct=float(amount / outstanding * 100) if outstanding else 0.0))
+                           pct=float(amount / ageing_total * 100) if ageing_total else 0.0))
 
     # ---- schedule
     sched = []
@@ -176,6 +182,7 @@ def build(positions: Sequence[SupplierPosition], today: dt.date,
                      due_within_7=_money_dec(within7),
                      supplier_count=len(positions)),
         ageing=ageing,
+        ageingUndated=_money_dec(ageing_undated),
         schedule=sched,
         suppliers=[dict(partyKind='supplier',
                         account=p.supplier.account, name=p.supplier.name,

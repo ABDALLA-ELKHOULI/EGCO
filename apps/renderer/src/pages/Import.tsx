@@ -972,7 +972,11 @@ function UploadedFilesSection({ rows, loading, error, onDeleted, onPickFiles }: 
               {rows.map((r) => (
                 <tr key={r.id} title={r.path}>
                   <td className="muted">{arDate(r.date.slice(0, 10))}</td>
-                  <td title={r.path} className="truncate">{r.fileName}</td>
+                  {/* سجلّات قديمة (وهجرات داخلية) لا تحمل اسم ملف — خليّة فارغة
+                      تُقرأ كعطب في العرض، لا كسجلٍّ بلا اسم أصلاً. */}
+                  <td title={r.path} className="truncate">
+                    {r.fileName || <span className="muted">— بلا اسم ملف —</span>}
+                  </td>
                   <td className="muted">{r.detected}</td>
                   <td>{r.partyName ?? r.account ?? '—'}</td>
                   <td className="ltr num">

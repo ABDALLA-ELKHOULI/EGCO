@@ -55,7 +55,12 @@ export function Dashboard() {
   }
 
   const schedule = d.schedule ?? [];
-  const maxBar = Math.max(1, ...schedule.map((x: any) => x.amount));
+  // الجدول القادم من الخادم يشمل المتأخر أيضاً (يحتاجه التقويم). بطاقة «القادمة»
+  // ترشّحه: كانت تأخذ أول ثمانية من قائمة مرتّبة تصاعدياً، فتعرض أقدم المتأخرات —
+  // ٥٣ من ٧٨ دلواً في بيانات حقيقية متأخرة، فلم يكن بين الأعمدة عمودٌ قادم واحد.
+  const upcoming = schedule.filter((x: any) => !x.overdue);
+  const overdueBuckets = schedule.length - upcoming.length;
+  const maxBar = Math.max(1, ...upcoming.map((x: any) => x.amount), 1);
   const payToday = (d.payToday ?? []).filter((r: any) => {
     if (status === 'overdue') return r.daysToDue < 0;
     if (status === 'soon') return r.daysToDue >= 0;
@@ -139,9 +144,15 @@ export function Dashboard() {
         </Card>
 
         <div className="two">
-          <Card title="الاستحقاقات القادمة — ٩٠ يوماً">
+          <Card title="الاستحقاقات القادمة — ٩٠ يوماً"
+                sub={overdueBuckets > 0
+                  ? `${ar(overdueBuckets)} تاريخ استحقاق متأخر لا يظهر هنا — انظر «المستحقات القادمة»`
+                  : undefined}>
+            {upcoming.length === 0 ? (
+              <div className="card-body muted">لا استحقاقات قادمة خلال ٩٠ يوماً</div>
+            ) : (
             <div className="bars">
-              {schedule.slice(0, 8).reverse().map((b: any) => (
+              {upcoming.slice(0, 8).reverse().map((b: any) => (
                 <div className="col" key={b.date}>
                   <span className="num" style={{ fontSize: 12 }}>{k(b.amount)}</span>
                   <div className="bar"
@@ -152,6 +163,7 @@ export function Dashboard() {
                 </div>
               ))}
             </div>
+            )}
           </Card>
 
           <Card title="أعمار الديون">

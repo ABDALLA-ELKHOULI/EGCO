@@ -2,6 +2,7 @@
 import datetime as dt
 import json
 import logging
+import shutil
 from collections.abc import Iterator
 
 from sqlalchemy import create_engine, text
@@ -79,8 +80,39 @@ def _rebuild_identity_constraints(conn) -> None:
                  {'k': flag, 't': dt.datetime.now(dt.timezone.utc).isoformat()})
 
 
+def _backup_before_migrations() -> None:
+    """نسخة من القاعدة قبل أي جراحة على البنية — نقطة رجوع واحدة تكفي.
+
+    `_rebuild_identity_constraints` يعيد بناء جدولي الفواتير والدفعات: تسمية جانباً،
+    إنشاء، نسخ، حذف. العملية اليوم متراجعة عند الفشل، لكن المستخدم يشغّل هذا على
+    جهازه بلا دعم تقني ولا نسخ احتياطي — فخطأٌ في هجرة قادمة يعني ضياع شهور من
+    العمل بلا نقطة رجوع. الكلفة نسخة ملف واحدة عند الترقية فقط.
+    """
+    db_path = settings.DB_PATH
+    if not db_path.exists() or db_path.stat().st_size == 0:
+        return                                  # تثبيت جديد — لا شيء يُنسخ
+    backups = db_path.parent / 'backups'
+    try:
+        backups.mkdir(parents=True, exist_ok=True)
+        stamp = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
+        target = backups / ('egco-pre-migrate-%s.db' % stamp)
+        if target.exists():
+            return
+        shutil.copy2(str(db_path), str(target))
+        logger.info('pre-migration backup written to %s', target)
+        # يُبقى على آخر عشر نسخ فقط — النسخ التي لا تُحذف تملأ القرص ثم تمنع
+        # الكتابة على القاعدة نفسها، فتتحول الحماية إلى سبب العطل.
+        old = sorted(backups.glob('egco-pre-migrate-*.db'))[:-10]
+        for f in old:
+            f.unlink(missing_ok=True)
+    except OSError as e:
+        # فشل النسخ لا يمنع التشغيل — لكنه يُسجَّل بوضوح لا يُبتلع
+        logger.warning('تعذّر إنشاء نسخة احتياطية قبل الهجرة: %s', e)
+
+
 def init_db() -> None:
     """Create tables on first run. Swap for Alembic once the schema starts changing."""
+    _backup_before_migrations()
     Base.metadata.create_all(engine)
     # Lightweight migration for installs created before the `source` column existed —
     # create_all() never alters existing tables, so existing DBs need a manual ALTER.
@@ -201,6 +233,9 @@ def _migrate_211_contractors_to_suppliers() -> None:
         now = dt.datetime.now(dt.timezone.utc)
 
         for c in contractors:
+            # عدّاد هذا الحساب وحده — كان يُهيّأ خارج الحلقة فيُكتب في سجل كل حساب
+            # المجموعُ التراكمي لمن قبله، فيقول سجلٌ استورد ٤٣ حركة إنه استورد ٤٤.
+            moved_here = 0
             supplier = db.query(models.Supplier).filter_by(account=c.code).one_or_none()
             if supplier is None:
                 supplier = models.Supplier(
@@ -212,30 +247,36 @@ def _migrate_211_contractors_to_suppliers() -> None:
             entries = [e for e in c.entries if e.deleted_at is None]
             for e in entries:
                 if e.credit:
+                    # الهوية الكاملة: المستند والوصف جزء منها. المطابقة الأضيق
+                    # تعتبر حركتين مختلفتين واحدةً فتُسقط الثانية بلا صوت — وهي
+                    # حالة قائمة في كشوف حقيقية (سامي سويد: فاتورة بسندين).
                     exists = db.query(models.Invoice).filter_by(
                         supplier_id=supplier.id, number=e.doc or None, date=e.date,
-                        amount=e.credit).one_or_none()
+                        amount=e.credit, doc=e.doc or '',
+                        description=e.description or '').first()
                     if exists is None:
                         db.add(models.Invoice(
                             supplier_id=supplier.id, number=e.doc or None, date=e.date,
                             amount=e.credit, doc=e.doc or '', description=e.description or '',
                             source='statement', import_log_id=e.import_log_id))
                         moved_entries += 1
+                        moved_here += 1
                 if e.debit:
                     exists = db.query(models.Payment).filter_by(
                         supplier_id=supplier.id, doc=e.doc or '', date=e.date,
-                        amount=e.debit).one_or_none()
+                        amount=e.debit, description=e.description or '').first()
                     if exists is None:
                         db.add(models.Payment(
                             supplier_id=supplier.id, date=e.date, amount=e.debit,
                             doc=e.doc or '', description=e.description or '',
                             source='statement', import_log_id=e.import_log_id))
                         moved_entries += 1
+                        moved_here += 1
                 e.deleted_at = now
 
             db.add(models.ImportLog(
                 source='migration_211_reclass', path='', account=c.code,
-                imported=moved_entries, skipped=0, reconciled=1,
+                imported=moved_here, skipped=0, reconciled=1,
                 issues=json.dumps([dict(
                     severity='warning', row=None,
                     message=('تم نقل الحساب %s (%s) تلقائياً من المقاولين إلى الموردين — '

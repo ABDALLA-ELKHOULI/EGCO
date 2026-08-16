@@ -1,6 +1,6 @@
 {
   "name": "egco-dashboard",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "لوحة إعمار الخليج — تطبيق محلي لويندوز وماك",
   "main": "apps/desktop/dist/main/index.js",

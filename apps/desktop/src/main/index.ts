@@ -7,7 +7,7 @@
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { backendUrl, startBackend, stopBackend } from './backend';
+import { backendErrorTail, backendUrl, startBackend, stopBackend } from './backend';
 
 let win: BrowserWindow | null = null;
 
@@ -123,6 +123,21 @@ async function createWindow() {
   });
 }
 
+/**
+ * نسخة واحدة فقط — نسختان تفتحان خدمتين على نفس ملف القاعدة، فتظهر أخطاء
+ * «database is locked» خاماً بلا ترجمة، وقد تتضارب كتابتان على نفس الحركة.
+ */
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+}
+
 app.whenReady().then(async () => {
   /**
    * التنزيلات (تصدير Excel مثلاً) — حوار حفظ دائماً بالاسم العربي الصحيح.
@@ -143,7 +158,11 @@ app.whenReady().then(async () => {
   try {
     await startBackend();
   } catch (e) {
-    dialog.showErrorBox('تعذّر تشغيل الخدمة', String(e));
+    // السبب الحقيقي يُعرض، لا «لم تستجب» وحدها: المستخدم على جهازه بلا دعم تقني،
+    // و«database is locked» أو «Permission denied» يقول له ما يفعله بالضبط.
+    const tail = backendErrorTail();
+    dialog.showErrorBox('تعذّر تشغيل الخدمة',
+      String(e) + (tail ? `\n\nتفاصيل من الخدمة:\n${tail}` : ''));
     app.quit();
     return;
   }

@@ -64,9 +64,13 @@ def upsert_from_statement(db: Session, parsed: dict, path: str,
     for r in parsed['rows']:
         desc = r.get('description') or ''
         kind = r.get('kind') or C.classify_entry(desc)
+        # ‏.first() لا ‎.one_or_none()‎: نظيرتها في import_service تحوّلت بعد أن أسقطت
+        # كشفاً كاملاً بـ MultipleResultsFound حين وُجد صفّان قديمان بهوية متطابقة.
+        # هوية ContractorEntry أوسع أصلاً فلا يقع ذلك اليوم — لكن أي توسيعٍ لاحق
+        # لها يُعيد الانفجار نفسه، والتماثل هنا أرخص من تكرار الحادثة.
         exists = db.query(models.ContractorEntry).filter_by(
             contractor_id=row.id, doc=r.get('doc') or '', date=r['date'],
-            debit=r['debit'], credit=r['credit'], description=desc).one_or_none()
+            debit=r['debit'], credit=r['credit'], description=desc).first()
         if exists is not None:
             if exists.deleted_at is not None:
                 exists.deleted_at = None

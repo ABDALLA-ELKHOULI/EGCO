@@ -11,7 +11,11 @@ BASE = '/api/v1/reports'
 
 #: keys the report has always had — a default (parties omitted) call must still be
 #: exactly this shape, no key removed, so old frontends keep rendering.
-LEGACY_TOP_KEYS = {'meta', 'summary', 'ageing', 'schedule', 'suppliers', 'notes'}
+# ‏ageingUndated أُضيف عمداً: المتبقي يضم فواتير بلا تاريخ استحقاق ليست في أي فئة
+# عمرية، فصارت النسب تُحسب على مجموع الفئات ويُعرض الباقي في سطر صريح بدل أن
+# يختفي في مقام لا يفسّره.
+LEGACY_TOP_KEYS = {'meta', 'summary', 'ageing', 'ageingUndated', 'schedule',
+                   'suppliers', 'notes'}
 LEGACY_SUMMARY_KEYS = {'total_invoiced', 'total_paid', 'outstanding', 'overdue',
                        'due_within_7', 'supplier_count',
                        'credit_balances', 'net_outstanding'}

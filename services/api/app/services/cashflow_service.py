@@ -288,8 +288,14 @@ def _combine_outflow(supplier_recon: Optional[dict], contractor_recon: Optional[
         out['credits'] += recon.get('credits', ZERO)
         out['excess'] += recon.get('excess', ZERO)
         out['openDebt'] += recon[debt_key]
+    # credits لا تُطرح هنا — تماماً كما لا تُطرح في معادلة الموردين المفردة أعلاه:
+    # ‏p.outstanding صار محجوزاً عند صفر، فمجموع المديونية يساوي مجموع البنود أصلاً
+    # ولا فجوة سالبة تحتاج تصحيحاً. طرحها هنا كان يُظهر فرقاً وهمياً يساوي مجموع
+    # الأرصدة المقدمة بالضبط (٤٧٤٬١٤٧.١٠ ر.س في البيانات الحقيقية)، فيقرأ المستخدم
+    # صفَّ الإجمالي «فرق غير مُفسَّر» بينما صفُّ الموردين بجواره يتوازن إلى صفر.
+    # تبقى credits في الاستجابة كمعلومة معروضة، لا كطرف في المعادلة.
     out['difference'] = (out['scheduled'] + out['overdueNow'] + out['beyondHorizon']
-                         + out['undated'] - out['credits'] - out['excess'] - out['openDebt'])
+                         + out['undated'] - out['excess'] - out['openDebt'])
     return out
 
 

@@ -607,9 +607,26 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
                     </tr>
                   ))}
                 </tbody>
-                <tfoot><tr>
-                  <td>الإجمالي</td><td /><td className="ltr num">{sar(s.outstanding)}</td><td className="ltr num">100٪</td>
-                </tr></tfoot>
+                <tfoot>
+                  <tr>
+                    <td>مجموع الفئات</td><td /><td className="ltr num">
+                      {sar(s.outstanding - (d.ageingUndated ?? 0))}</td>
+                    <td className="ltr num">100٪</td>
+                  </tr>
+                  {/* الفواتير بلا تاريخ استحقاق ليست في أي فئة عمرية. إبقاؤها داخل
+                      الإجمالي وحده كان يجعل النسب تجمع ٩٧٪ بلا تفسير. */}
+                  {(d.ageingUndated ?? 0) > 0 && (
+                    <tr>
+                      <td className="nowrap">بانتظار تاريخ استحقاق</td><td />
+                      <td className="ltr num">{sar(d.ageingUndated)}</td>
+                      <td className="ltr num muted">—</td>
+                    </tr>
+                  )}
+                  <tr>
+                    <td><b>المتبقي كاملاً</b></td><td />
+                    <td className="ltr num"><b>{sar(s.outstanding)}</b></td><td />
+                  </tr>
+                </tfoot>
               </table>
             </div>
 
@@ -1058,6 +1075,14 @@ function reportSlides(d: any, parties: PartyScope = 'suppliers'): Slide[] {
                   <td className="ltr num">{a.amount ? a.pct.toFixed(1) + '٪' : '—'}</td>
                 </tr>
               ))}
+              {/* نفس التوضيح كما في التقرير: ما لا تاريخ استحقاق له لا فئة له */}
+              {(d.ageingUndated ?? 0) > 0 && (
+                <tr>
+                  <td className="nowrap">بانتظار تاريخ استحقاق</td><td>—</td>
+                  <td className="ltr"><Money v={d.ageingUndated} /></td>
+                  <td className="ltr num muted">—</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

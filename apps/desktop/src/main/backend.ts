@@ -10,6 +10,13 @@ import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 
+const lastErrors: string[] = [];
+
+/** آخر ما طبعته الخدمة على stderr — يُضمّ إلى رسالة الفشل. */
+export function backendErrorTail(): string {
+  return lastErrors.slice(-6).join('\n');
+}
+
 let proc: ChildProcess | null = null;
 let port = 0;
 let restarts = 0;
@@ -73,7 +80,22 @@ export async function startBackend(): Promise<void> {
   }
 
   proc.stdout?.on('data', (d) => console.log('[api]', String(d).trim()));
-  proc.stderr?.on('data', (d) => console.error('[api]', String(d).trim()));
+  proc.stderr?.on('data', (d) => {
+    const line = String(d).trim();
+    console.error('[api]', line);
+    // آخر أسطر الخطأ تُحتفظ لتُعرض للمستخدم: «الخدمة لم تستجب» وحدها لا تقول
+    // شيئاً قابلاً للتصرف، بينما «database is locked» أو «Permission denied»
+    // تقول له بالضبط ما يفعله (أغلق النسخة الأخرى · استثنِ المجلد من الحماية).
+    lastErrors.push(line);
+    if (lastErrors.length > 12) lastErrors.shift();
+  });
+
+  // spawn() نفسه قد يفشل — ملف مفقود أو حجَره مضاد الفيروسات (خطأ ٩٠٠٩ سابقاً).
+  // بلا هذا المستمع يرفع Node الخطأ غير ملتقَط فينهار المسار الرئيسي بلا رسالة.
+  proc.on('error', (err) => {
+    proc = null;
+    lastErrors.push(String(err));
+  });
 
   proc.on('exit', (code) => {
     proc = null;

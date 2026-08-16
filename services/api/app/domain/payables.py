@@ -336,14 +336,20 @@ def reconciles(p: SupplierPosition, statement_balance: float, tolerance: float =
 def payment_schedule(positions: Iterable[SupplierPosition],
                      today: dt.date,
                      horizon_days: int = 90) -> List[dict]:
-    """جدول الاستحقاقات القادمة، مجمّعاً بتاريخ الاستحقاق — يغذّي شاشة التقويم."""
+    """جدول الاستحقاقات مجمّعاً بتاريخ الاستحقاق — يغذّي التقويم ولوحة القيادة.
+
+    يشمل المتأخر أيضاً (تاريخه قبل اليوم) لأن التقويم يعرضه، ولكل دلوٍ راية
+    `overdue` تميّزه. من يعرض «القادمة» عليه أن يرشّح بها — بطاقةٌ عنوانها
+    «القادمة» تعرض أقدم المتأخرات لا تصف شيئاً صحيحاً.
+    """
     buckets: dict = {}
     limit = today + dt.timedelta(days=horizon_days)
     for p in positions:
         for inv in p.invoices:
             if inv.remaining <= 0 or inv.due_date is None or inv.due_date > limit:
                 continue
-            b = buckets.setdefault(inv.due_date, dict(date=inv.due_date, amount=Decimal('0'), items=[]))
+            b = buckets.setdefault(inv.due_date, dict(date=inv.due_date, amount=Decimal('0'),
+                                                      items=[], overdue=inv.due_date < today))
             b['amount'] += inv.remaining
             b['items'].append(dict(supplier=p.supplier.name, account=p.supplier.account,
                                    invoice=inv.number, amount=inv.remaining,
