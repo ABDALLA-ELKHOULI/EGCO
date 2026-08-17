@@ -1,18 +1,26 @@
 # -*- coding: utf-8 -*-
-from typing import Optional
+from typing import List, Optional
 import datetime as dt
+import io
 from decimal import Decimal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
+from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import parse_date
 from app.db import models
 from app.db.session import get_session
-from app.domain.payables import DELAY_BUCKETS, parse_term, money
+from app.domain.payables import D, DELAY_BUCKETS, parse_term, money
 from app.schemas.common import SupplierIn, SupplierUpdate
 from app.services import party_projects as PP
 from app.services import payables_service as PS
+from app.utils.arabic import contains_ar
 
 router = APIRouter()
 
@@ -116,8 +124,10 @@ def list_suppliers(q: Optional[str] = Query(None),
         if ids_in_project is not None and supplier_ids.get(p.supplier.account) not in ids_in_project:
             continue
         if q:
-            needle = q.strip()
-            if needle not in p.supplier.name and needle not in p.supplier.account:
+            # المقارنة مُطبَّعة عربياً (الهمزات/التاء المربوطة/الياء الفارسية...) —
+            # اسم المورد كما كتبه نظام الحسابات القديم قد يختلف إملائياً حرفاً واحداً
+            # عمّا يكتبه المستخدم بحثاً وهو يقصد نفس المورد بالضبط. انظر app/utils/arabic.py.
+            if not contains_ar(p.supplier.name, q) and not contains_ar(p.supplier.account, q):
                 continue
         if min_outstanding is not None and p.outstanding < Decimal(str(min_outstanding)):
             continue
@@ -200,13 +210,181 @@ def list_suppliers(q: Optional[str] = Query(None),
                filtersApplied=filters_applied)
 
 
+@router.get('/export.xlsx')
+def export_suppliers_xlsx(q: Optional[str] = Query(None),
+                          project: Optional[str] = Query(None),
+                          status: Optional[str] = Query(None),
+                          date_from: Optional[str] = Query(None),
+                          date_to: Optional[str] = Query(None),
+                          min_outstanding: Optional[float] = Query(None),
+                          max_outstanding: Optional[float] = Query(None),
+                          overdue_only: bool = Query(False),
+                          has_data: Optional[bool] = Query(None),
+                          delay: Optional[str] = Query(None),
+                          min_delay_days: Optional[int] = Query(None),
+                          max_delay_days: Optional[int] = Query(None),
+                          sort: Optional[str] = Query(None),
+                          dir: str = Query('asc'),
+                          db: Session = Depends(get_session)):
+    """تصدير لائحة الموردين — بنفس التصفية المطبَّقة على الشاشة بالضبط، لا الدفتر
+    كاملاً. تستدعي list_suppliers مباشرةً (كما تفعل reports.py مع project_summary)
+    حتى يبقى مسار تصفية واحد يُثق بنتائجه في الشاشة والملف معاً.
+    """
+    data = list_suppliers(q=q, project=project, status=status, date_from=date_from,
+                          date_to=date_to, min_outstanding=min_outstanding,
+                          max_outstanding=max_outstanding, overdue_only=overdue_only,
+                          has_data=has_data, delay=delay, min_delay_days=min_delay_days,
+                          max_delay_days=max_delay_days, sort=sort, dir=dir, db=db)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'الموردون'
+    ws.sheet_view.rightToLeft = True
+    ws.append(['رقم الحساب', 'الاسم', 'المشروع', 'الحالة', 'المديونية المفتوحة',
+              'المتأخر', 'آخر دفعة — التاريخ', 'آخر دفعة — المبلغ'])
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    for r in data['rows']:
+        lp = r.get('lastPayment') or {}
+        delay_amt = (r.get('delay') or {}).get('amount', 0) if r.get('delay') else 0
+        ws.append([r['account'], r['name'], r.get('project', ''), r['status'],
+                  r['outstanding'], delay_amt, lp.get('date', ''), lp.get('amount', '')])
+    t = data['totals']
+    ws.append(['الإجمالي', '', '', '', t['outstanding'], t['delayed'], '', ''])
+    for cell in ws[ws.max_row]:
+        cell.font = Font(bold=True)
+    for row in range(2, ws.max_row + 1):
+        for col in (5, 6, 8):
+            cell = ws.cell(row=row, column=col)
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = '#,##0.00'
+    for col_cells in ws.columns:
+        length = max((len(str(c.value)) if c.value is not None else 0) for c in col_cells)
+        letter = get_column_letter(col_cells[0].column)
+        ws.column_dimensions[letter].width = min(max(length + 2, 10), 40)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    today = dt.date.today()
+    ascii_name = f'EGCO-suppliers-{today:%Y%m%d}.xlsx'
+    encoded = quote(f'EGCO-الموردون-{today:%Y%m%d}.xlsx', safe='')
+    headers = {'Content-Disposition':
+              f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"}
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers=headers,
+    )
+
+
+class SmartAllocationSettingIn(BaseModel):
+    enabled: bool
+
+
+class AllocationLineIn(BaseModel):
+    """سطر تخصيص واحد — فاتورة ومبلغ، أو invoiceId=None لجزء «على الحساب»."""
+    invoiceId: Optional[str] = None
+    amount: float
+
+
+class PaymentAllocationIn(BaseModel):
+    lines: List[AllocationLineIn]
+
+
+# ---------------------------------------------------------------- تخصيص الدفعات (opt-in)
+# مسارات ثابتة يجب أن تُسجَّل قبل `/{account}` كي لا يبتلعها كمسار حساب.
+
+@router.get('/settings/payment-allocation')
+def get_payment_allocation_setting(db: Session = Depends(get_session)) -> dict:
+    """هل ميزة «تخصيص الدفعات» مفعّلة؟ افتراضياً متوقفة — انظر شرح كامل الميزة
+    في app/db/models.py (PaymentAllocation) وapp/domain/payables.py (allocate_smart)."""
+    return dict(enabled=PS.is_smart_allocation_enabled(db),
+               pendingCount=PS.count_pending_allocations(db))
+
+
+@router.put('/settings/payment-allocation')
+def set_payment_allocation_setting(body: SmartAllocationSettingIn,
+                                   db: Session = Depends(get_session)) -> dict:
+    """تشغيل/إيقاف الميزة — تغيير هذا الإعداد لا يمحو أي قرار محفوظ سابقاً؛
+    إيقافها يعيد الحساب فوراً إلى allocate_fifo القديم بلا أي أثر للجدول الجديد."""
+    PS.set_smart_allocation_enabled(db, body.enabled)
+    return dict(enabled=body.enabled, pendingCount=PS.count_pending_allocations(db))
+
+
+@router.get('/payment-allocation/pending-count')
+def payment_allocation_pending_count(db: Session = Depends(get_session)) -> dict:
+    """عدد الدفعات بانتظار التخصيص عبر كل الموردين — لعرض «٣ دفعات بانتظار
+    التخصيص» في مكان واحد بدل تذكّره من كل شاشة مورد على حدة."""
+    return dict(count=PS.count_pending_allocations(db))
+
+
+@router.post('/{account}/payments/{payment_id}/allocate')
+def allocate_payment(account: str, payment_id: str, body: PaymentAllocationIn,
+                     db: Session = Depends(get_session)) -> dict:
+    """يخصص دفعة (معلَّقة أو مُخصَّصة سابقاً) لفاتورة/فواتير أو «على الحساب» —
+    قرار المستخدم دائماً، يُخزَّن ويحل محل أي قرار سابق لنفس الدفعة، ويمكن
+    تعديله لاحقاً بنداء آخر لنفس المسار (استبدال كامل، لا دمج)."""
+    if not PS.is_smart_allocation_enabled(db):
+        raise HTTPException(409, detail='ميزة تخصيص الدفعات متوقفة — فعّلها أولاً من الإعدادات')
+    supplier = db.query(models.Supplier).filter_by(account=account).filter(
+        models.Supplier.deleted_at.is_(None)).one_or_none()
+    if supplier is None:
+        raise HTTPException(404, detail=f'لا يوجد مورد بالحساب {account}')
+    payment = db.query(models.Payment).filter_by(
+        id=payment_id, supplier_id=supplier.id, deleted_at=None).one_or_none()
+    if payment is None:
+        raise HTTPException(404, detail='لا توجد دفعة بهذا المعرف لهذا المورد')
+    if not body.lines:
+        raise HTTPException(422, detail='يجب تحديد سطر تخصيص واحد على الأقل — استخدم '
+                                        'invoiceId فارغاً لتخصيصها بالكامل «على الحساب»')
+
+    # المجموع يجب أن يساوي مبلغ الدفعة تماماً (بسماحية القروش) — تخصيص جزئي بلا
+    # تفسير لبقية المبلغ يُعيد نفس مشكلة «الفرق يُعتبر سداداً» التي بدأت منها الميزة.
+    total = sum((D(l.amount) for l in body.lines), D('0'))
+    if abs(total - D(payment.amount)) > D('0.01'):
+        raise HTTPException(422, detail=f'مجموع أسطر التخصيص ({money(total)}) لا يساوي '
+                                        f'مبلغ الدفعة ({money(payment.amount)})')
+    for l in body.lines:
+        if l.amount <= 0:
+            raise HTTPException(422, detail='مبلغ كل سطر يجب أن يكون أكبر من صفر')
+        if l.invoiceId is not None:
+            inv = db.query(models.Invoice).filter_by(
+                id=l.invoiceId, supplier_id=supplier.id, deleted_at=None).one_or_none()
+            if inv is None:
+                raise HTTPException(422, detail=f'الفاتورة {l.invoiceId} لا تتبع هذا المورد')
+
+    PS.save_payment_allocation(
+        db, payment_id, [dict(invoiceId=l.invoiceId, amount=l.amount) for l in body.lines])
+    return dict(saved=True)
+
+
+@router.delete('/{account}/payments/{payment_id}/allocate')
+def delete_payment_allocation(account: str, payment_id: str,
+                              db: Session = Depends(get_session)) -> dict:
+    """يمحو قرار تخصيص سابق — تعود الدفعة تلقائياً لقائمة المراجعة إن كانت
+    غامضة، أو تُخصَّص تلقائياً من جديد إن لم تكن (نفس منطق allocate_smart)."""
+    supplier = db.query(models.Supplier).filter_by(account=account).filter(
+        models.Supplier.deleted_at.is_(None)).one_or_none()
+    if supplier is None:
+        raise HTTPException(404, detail=f'لا يوجد مورد بالحساب {account}')
+    payment = db.query(models.Payment).filter_by(
+        id=payment_id, supplier_id=supplier.id, deleted_at=None).one_or_none()
+    if payment is None:
+        raise HTTPException(404, detail='لا توجد دفعة بهذا المعرف لهذا المورد')
+    PS.clear_payment_allocation(db, payment_id)
+    return dict(cleared=True)
+
+
 @router.get('/{account}')
 def supplier_detail(account: str,
                     date_from: Optional[str] = Query(None),
                     date_to: Optional[str] = Query(None),
                     db: Session = Depends(get_session)) -> dict:
     """كشف مورد — invoices, payments, ageing."""
-    ps = PS.positions(db, account=account)
+    # include_empty=True: مورد بلا حركة حيّة مورد قائم، لا مورد غير موجود. بدونها
+    # كان حذف ملفه يجعل صفحته تقول «لا يوجد مورد بالحساب ٢١١٠٨٠٨» — وهو موجود،
+    # وكشفه كله ينتظر إعادة الرفع. رسالةٌ تنفي وجود شيء قائم أسوأ من صفحة فارغة.
+    ps = PS.positions(db, account=account, include_empty=True)
     if not ps:
         raise HTTPException(404, detail=f'لا يوجد مورد بالحساب {account}')
     df = parse_date(date_from, 'تاريخ البداية')

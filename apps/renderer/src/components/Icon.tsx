@@ -8,9 +8,34 @@ export type IconName =
   | 'dashboard' | 'payables' | 'cashflow' | 'projects' | 'reports'
   | 'calendar' | 'suppliers' | 'coverage' | 'upload' | 'settings'
   | 'contractors' | 'budget' | 'guarantee'
-  | 'collapse' | 'expand' | 'revenue';
+  | 'collapse' | 'expand' | 'revenue'
+  | 'loans' | 'obligations' | 'expenses';
 
 const PATHS: Record<IconName, JSX.Element> = {
+  // القروض — مبنى تمويلي بأعمدة
+  loans: (
+    <>
+      <path d="M3 10h18" />
+      <path d="M12 3 3 8h18L12 3Z" />
+      <path d="M6 10v7M10 10v7M14 10v7M18 10v7" />
+      <path d="M3 20h18" />
+    </>
+  ),
+  // الالتزامات الشهرية — تقويم بدورة متكررة
+  obligations: (
+    <>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
+      <path d="M9 15h6m-2-2 2 2-2 2" />
+    </>
+  ),
+  // المصاريف التشغيلية — سند صرف
+  expenses: (
+    <>
+      <path d="M5 3h14v18l-2.5-1.5L14 21l-2-1.5L10 21l-2.5-1.5L5 21V3Z" />
+      <path d="M9 8h6M9 12h6" />
+    </>
+  ),
   dashboard: (
     <>
       <rect x="3" y="3" width="7" height="7" rx="1.5" />

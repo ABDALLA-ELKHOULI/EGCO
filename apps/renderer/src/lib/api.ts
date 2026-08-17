@@ -15,6 +15,17 @@ export async function initApi(): Promise<string> {
 /** For building direct download links (Excel export). */
 export const apiBase = () => base;
 
+/**
+ * تحديث عنوان الخدمة بعد إعادة تشغيلها في الخلفية (main/backend.ts قد يعيد
+ * تشغيلها على منفذ مختلف). `base` كانت تُقرأ مرة واحدة فقط في initApi() ولا
+ * تُعاد قراءتها أبداً — هذه هي نقطة التحديث الوحيدة المضافة لهذا الملف
+ * المشترك؛ initApi()/apiBase()/call() لم يتغيّر سلوكها. انظر App.tsx
+ * لمكان الاستماع لحدث app:backend-restarted.
+ */
+export function setApiBase(url: string): void {
+  base = url;
+}
+
 export class ApiError extends Error {}
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {

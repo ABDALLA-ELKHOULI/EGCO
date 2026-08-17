@@ -1,13 +1,68 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '@/lib/api';
-import type { ImportHistoryRow } from '@/lib/api';
+import { api, apiBase, ApiError } from '@/lib/api';
+import type { ImportHistoryRow, ImportHistoryResponse } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
 import { Card, EmptyState, ErrorState, Money, Pill, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
 import { AiRescueModal } from '@/components/AiRescueModal';
 import { useAiEnabled } from '@/lib/useAi';
 import type { PickedFile } from '@/types/global';
+import { Th, type SortState } from '@/components/ColumnMenu';
+
+/**
+ * الملفات المرفوعة تُطوى/تُفتح ويُتذكَّر ذلك — نفس نمط الشريط الجانبي
+ * (Sidebar.tsx STORAGE_KEY): طيّ يُخفي المعلومة أسوأ من ألا يوجد طيّ أصلاً،
+ * لذا الافتراضي هنا مفتوح؛ فقط تفضيل المستخدم الصريح يطويه لاحقاً.
+ */
+const HISTORY_OPEN_KEY = 'egco.import.historyOpen';
+
+/**
+ * جلب «الملفات المرفوعة» بمعاملات الفرز/التصفية — api.ts (ملَك فريق آخر) لا
+ * يحمل هذه المعاملات على importHistory()، فهذا استدعاء مباشر يماثل منطق
+ * call() الداخلي في api.ts (نفس معالجة الأخطاء) دون تعديل ذلك الملف.
+ */
+export interface ImportHistoryQuery {
+  file_name?: string;
+  source?: string;
+  party?: string;
+  date_from?: string;
+  date_to?: string;
+  min_moves?: number;
+  max_moves?: number;
+  reconciled?: string;
+  sort?: string;
+  dir?: string;
+}
+
+async function fetchImportHistory(q: ImportHistoryQuery): Promise<ImportHistoryResponse> {
+  const s = new URLSearchParams();
+  for (const [k, v] of Object.entries(q)) {
+    if (v !== undefined && v !== '') s.set(k, String(v));
+  }
+  const qsStr = s.toString();
+  let res: Response;
+  try {
+    res = await fetch(apiBase() + '/api/v1/import/history' + (qsStr ? `?${qsStr}` : ''), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch {
+    throw new ApiError('تعذّر الاتصال بالخدمة المحلية — تأكد أنها تعمل ثم أعد المحاولة');
+  }
+  if (!res.ok) {
+    let msg = `خطأ ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.detail) msg = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail);
+    } catch { /* keep the status message */ }
+    throw new ApiError(msg);
+  }
+  try {
+    return (await res.json()) as ImportHistoryResponse;
+  } catch {
+    throw new ApiError('استجابة غير سليمة من الخدمة المحلية — أعد المحاولة');
+  }
+}
 
 const LABEL: Record<string, string> = {
   pdf_statement: 'كشف حساب مورد (PDF)',
@@ -70,6 +125,68 @@ function BatchSummaryBanner({ total, saved, duplicates = 0, failures }: {
   );
 }
 
+/** طرف واحد من زوج «تكرار محتمل» كما ترسله الخدمة */
+interface NearDupSide { number?: string | null; doc: string; description: string }
+
+interface NearDuplicate {
+  kind: string;                 // 'near_duplicate' | 'near_duplicate_more'
+  scope?: 'file' | 'db';
+  ledger?: string;              // invoice | payment | entry
+  date?: string;
+  amount?: number;
+  message: string;
+  a?: NearDupSide;
+  b?: NearDupSide;
+}
+
+const ND_SCOPE: Record<string, string> = {
+  file: 'داخل هذا الملف',
+  db: 'مقابل حركة محفوظة سابقاً',
+};
+
+const ND_LEDGER: Record<string, string> = {
+  invoice: 'فاتورة', payment: 'دفعة', entry: 'حركة',
+};
+
+/**
+ * تحذير «تكرار محتمل» — معلوماتي بحت: لا يمنع الحفظ ولا يحذف صفاً ولا يدمج شيئاً،
+ * وكل ما يفعله أنه يضع الحركتين جنباً إلى جنب ليحكم المستخدم بعينه. سبب وجوده أن
+ * القيد الفريد يمنع الصف المطابق حرفياً فقط؛ حركة أُعيد إصدار سندها برقم آخر تمرّ
+ * منه وتُضاعف المبلغ بصمت.
+ */
+function NearDuplicateNotice({ items, title }: { items: NearDuplicate[]; title?: string }) {
+  const pairs = items.filter((n) => n.kind === 'near_duplicate');
+  const more = items.find((n) => n.kind === 'near_duplicate_more');
+  if (pairs.length === 0 && !more) return null;
+  return (
+    <div className="callout warn" style={{ margin: 0 }}>
+      <b>{title ?? 'تكرار محتمل'} — {ar(pairs.length)} حالة تحتاج نظرك</b>
+      <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+        حركتان بنفس التاريخ والمبلغ ويختلف سندهما — تأكّد أنهما ليستا حركة واحدة.
+        لم يُحذف ولم يُدمج شيء: الحركتان محفوظتان كما وردتا.
+      </div>
+      <ul style={{ margin: '8px 0 0', paddingInlineStart: 18, display: 'grid', gap: 8 }}>
+        {pairs.map((n, i) => (
+          <li key={i}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>
+              {arDate(n.date ?? '')} · {sar(Math.abs(n.amount ?? 0))} ر.س
+              {' · '}{ND_LEDGER[n.ledger ?? ''] ?? 'حركة'}
+              {n.scope ? ` · ${ND_SCOPE[n.scope] ?? ''}` : ''}
+            </div>
+            <div style={{ fontSize: 12, marginTop: 2 }}>
+              سند {n.a?.doc || '—'} — «{n.a?.description || '—'}»
+            </div>
+            <div style={{ fontSize: 12 }}>
+              سند {n.b?.doc || '—'} — «{n.b?.description || '—'}»
+            </div>
+          </li>
+        ))}
+      </ul>
+      {more && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>{more.message}</div>}
+    </div>
+  );
+}
+
 const SOURCE_LABEL: Record<string, string> = {
   pdf_statement: 'كشف PDF',
   csv_statement: 'كشف CSV',
@@ -107,6 +224,7 @@ interface BatchResult {
     detected?: string;
     account?: string; supplierName?: string; added?: number; skipped?: number;
     computedBalance?: number; statementBalance?: number; message?: string;
+    nearDuplicates?: NearDuplicate[];
   }[];
 }
 
@@ -141,24 +259,11 @@ export function ImportPage() {
   const [resolveLoadingPath, setResolveLoadingPath] = useState<string | null>(null);
   const [resolveErr, setResolveErr] = useState<string | null>(null);
 
-  // ---- الملفات المرفوعة ----
-  const [history, setHistory] = useState<ImportHistoryRow[] | null>(null);
-  const [historyErr, setHistoryErr] = useState<string | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
-
-  async function loadHistory() {
-    setHistoryLoading(true); setHistoryErr(null);
-    try {
-      const res = await api.importHistory();
-      setHistory(res.rows);
-    } catch (e: any) {
-      setHistoryErr(e?.message ?? String(e));
-    } finally {
-      setHistoryLoading(false);
-    }
-  }
-
-  useEffect(() => { loadHistory(); }, []);
+  // ---- الملفات المرفوعة — القسم يجلب ويصفّي بنفسه؛ هنا فقط عدّاد يطلب إعادة
+  // التحميل بعد أي فعل يغيّر السجل (رفع، حذف، تصنيف…) دون رفع الفرز/التصفية
+  // إلى هذا المستوى. ----
+  const [historyReload, setHistoryReload] = useState(0);
+  const loadHistory = () => setHistoryReload((n) => n + 1);
 
   function reset() {
     setQueue([]); setErr(null); setDone(false);
@@ -403,14 +508,6 @@ export function ImportPage() {
       </div>
 
       <div className="stack">
-        <UploadedFilesSection
-          rows={history}
-          loading={historyLoading}
-          error={historyErr}
-          onDeleted={loadHistory}
-          onPickFiles={pick}
-        />
-
         {nothingPickedYet && (
           <div style={{ display: 'flex', gap: 10 }}>
             <button className="btn primary" onClick={pick}>اختيار ملفات</button>
@@ -481,6 +578,21 @@ export function ImportPage() {
                     }))}
                 />
               </div>
+              {/* التحذير خارج الجدول: يخصّ أرقاماً لا حالة ملف، وطيّه داخل خلية
+                  «تفاصيل» يخفيه عن العين تماماً — وهو أهم ما في هذه الشاشة. */}
+              {batchResult.results.some((r) => (r.nearDuplicates ?? []).length > 0) && (
+                <div style={{ marginBottom: 10, display: 'grid', gap: 8 }}>
+                  {batchResult.results
+                    .filter((r) => (r.nearDuplicates ?? []).length > 0)
+                    .map((r) => (
+                      <NearDuplicateNotice
+                        key={r.path}
+                        items={r.nearDuplicates ?? []}
+                        title={`تكرار محتمل — ${r.supplierName ?? r.account ?? r.name}`}
+                      />
+                    ))}
+                </div>
+              )}
               <table>
                 <thead>
                   <tr>
@@ -573,6 +685,12 @@ export function ImportPage() {
             <button className="btn" onClick={reset}>رفع ملفات أخرى</button>
           </div>
         )}
+
+        {/* «الملفات المرفوعة» بعد منطقة الرفع دائماً — هذا هو إصلاح الطلب: كانت
+            هذه القائمة (تكبر باستمرار) تسبق زر الرفع فيبتعد الإجراء الأساسي عن
+            أول ما يراه المستخدم. تبقى على نفس الشاشة (لا صفحة منفصلة) لأنها
+            الوسيلة الوحيدة للتحقق أن الرفع نجح، وتُطوى/تُفتح مع تذكّر الحالة. */}
+        <UploadedFilesSection reloadToken={historyReload} onPickFiles={pick} />
       </div>
 
       {rescueTarget && (
@@ -704,6 +822,12 @@ function QueueCard({ item, aiEnabled, onRescue, onConfirmNewSupplier, onDeclineN
               : ` — ✕ غير مطابق (الفرق ${sar(preview.difference ?? 0)} ر.س)`}
           </div>
         )}
+
+        {/* تحذير التكرار المحتمل يظهر عند المعاينة (قبل الحفظ) ويبقى بعد الحفظ —
+            لا يغيّر الحالة ولا يمنع الزر، فالقرار للمستخدم بعد أن يرى الحركتين. */}
+        <NearDuplicateNotice
+          items={(saveResult?.nearDuplicates ?? preview?.nearDuplicates ?? []) as NearDuplicate[]}
+        />
 
         {status === 'read_error' && (
           <div className="callout bad" style={{ margin: 0 }}>
@@ -877,18 +1001,95 @@ function NewSupplierPanel({ fileName, data, onConfirm, onDecline }: {
   );
 }
 
+/** خيارات عمود «النوع» — تصفية على قيمة source الخام، بتسميتها العربية
+ * كما تظهر في عمود «النوع» نفسه (import_service.DETECTED_LABELS). */
+const SOURCE_FILTER_OPTIONS = [
+  { value: 'suppliers_excel', label: 'ملف مدد الموردين' },
+  { value: 'pdf_statement', label: 'كشف حساب (PDF)' },
+  { value: 'csv_statement', label: 'كشف حساب (CSV)' },
+  { value: 'supplier', label: 'كشف حساب مورد' },
+  { value: 'contractor', label: 'كشف حساب مقاول/متعامل' },
+  { value: 'guarantee', label: 'كشف حساب ضمان (216)' },
+  { value: 'budget_deviation', label: 'تقرير انحراف الموازنة' },
+  { value: 'ai_extract', label: 'استخراج بالذكاء الاصطناعي' },
+];
+
+const RECONCILED_FILTER_OPTIONS = [
+  { value: 'yes', label: 'مطابق' },
+  { value: 'no', label: 'غير مطابق' },
+];
+
 /**
  * «الملفات المرفوعة» — كل استيراد سابق مع ما أضافه، وحذف واحد منها يحذف حركاته فقط
  * (البيانات اليدوية لا تُمس). السجلات القديمة (قبل هذه الميزة) لا تحمل ربطاً مباشراً
  * بحركاتها فتُحذف تقريبياً بموافقة إضافية.
+ *
+ * تُطوى/تُفتح مع تذكّر الحالة (مثل الشريط الجانبي)، والفرز/التصفية لكل عمود
+ * يُطبَّقان على الخادم على المجموعة كاملةً لا الصفحة المعروضة فقط — القائمة
+ * تكبر باستمرار، والتصفية على المتصفح كانت ستُظهر «٢١ ملفاً» بينما المعروض أقل.
  */
-function UploadedFilesSection({ rows, loading, error, onDeleted, onPickFiles }: {
-  rows: ImportHistoryRow[] | null;
-  loading: boolean;
-  error: string | null;
-  onDeleted: () => void;
+function UploadedFilesSection({ reloadToken, onPickFiles }: {
+  reloadToken: number;
   onPickFiles: () => void;
 }) {
+  const [open, setOpen] = useState(() => localStorage.getItem(HISTORY_OPEN_KEY) !== '0');
+  useEffect(() => {
+    localStorage.setItem(HISTORY_OPEN_KEY, open ? '1' : '0');
+  }, [open]);
+
+  const [rows, setRows] = useState<ImportHistoryRow[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [fileName, setFileName] = useState('');
+  const [source, setSource] = useState('');
+  const [party, setParty] = useState('');
+  const [minMoves, setMinMoves] = useState('');
+  const [maxMoves, setMaxMoves] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [reconciled, setReconciled] = useState('');
+  const [sort, setSort] = useState<SortState | null>(null);
+
+  const query = useMemo<ImportHistoryQuery>(() => ({
+    file_name: fileName || undefined,
+    source: source || undefined,
+    party: party || undefined,
+    min_moves: minMoves ? Number(minMoves) : undefined,
+    max_moves: maxMoves ? Number(maxMoves) : undefined,
+    date_from: dateFrom || undefined,
+    date_to: dateTo || undefined,
+    reconciled: reconciled || undefined,
+    sort: sort?.key,
+    dir: sort?.dir,
+  }), [fileName, source, party, minMoves, maxMoves, dateFrom, dateTo, reconciled, sort]);
+
+  const filtering = Boolean(fileName || source || party || minMoves || maxMoves
+    || dateFrom || dateTo || reconciled);
+  const clearAll = () => {
+    setFileName(''); setSource(''); setParty(''); setMinMoves(''); setMaxMoves('');
+    setDateFrom(''); setDateTo(''); setReconciled('');
+  };
+
+  // لا حاجة للجلب أصلاً إن كان القسم مطوياً — يفتح ويجلب أول مرة فقط.
+  const seq = useRef(0);
+  useEffect(() => {
+    if (!open) return;
+    const my = ++seq.current;
+    setLoading(true);
+    const t = setTimeout(() => {
+      fetchImportHistory(query).then((res) => {
+        if (my !== seq.current) return; // استجابة متأخرة لطلب سابق — تُهمل
+        setRows(res.rows); setError(null);
+      }).catch((e: any) => {
+        if (my === seq.current) setError(e?.message ?? String(e));
+      }).finally(() => {
+        if (my === seq.current) setLoading(false);
+      });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [open, query, reloadToken]);
+
   const [target, setTarget] = useState<ImportHistoryRow | null>(null);
   const [forceStep, setForceStep] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -908,7 +1109,11 @@ function UploadedFilesSection({ rows, loading, error, onDeleted, onPickFiles }: 
         + res.deleted.entries + res.deleted.receivables;
       setLastDeleted({ row: target, n });
       setTarget(null); setForceStep(false);
-      onDeleted();
+      seq.current += 1; // يفرض إعادة جلب فورية بدل انتظار reloadToken
+      setLoading(true);
+      fetchImportHistory(query).then((r) => { setRows(r.rows); setError(null); })
+        .catch((e: any) => setError(e?.message ?? String(e)))
+        .finally(() => setLoading(false));
     } catch (e: any) {
       // سجل قديم بلا ربط مباشر — الخادم يرفض بـ409 ويطلب تأكيداً إضافياً بالحذف التقريبي
       if (target.legacy && !force) {
@@ -921,87 +1126,138 @@ function UploadedFilesSection({ rows, loading, error, onDeleted, onPickFiles }: 
     }
   }
 
-  if (loading && rows === null) {
-    return (
-      <Card title="الملفات المرفوعة">
-        <State>جارٍ التحميل…</State>
-      </Card>
-    );
-  }
-
-  if (error) {
-    return (
-      <Card title="الملفات المرفوعة">
-        <ErrorState message={error} onRetry={onDeleted} />
-      </Card>
-    );
-  }
-
-  if (!rows || rows.length === 0) {
-    return (
-      <Card title="الملفات المرفوعة">
-        <EmptyState
-          kind="no-data"
-          title="لا ملفات مرفوعة بعد"
-          body="ابدأ برفع كشف حساب أو ملف مدد الموردين لتظهر هنا."
-          ctaLabel="اختيار ملفات"
-          onCta={onPickFiles}
-        />
-      </Card>
-    );
-  }
+  const count = rows?.length ?? null;
 
   return (
     <>
-      <Card title="الملفات المرفوعة" sub={`${ar(rows.length)} ملفاً مستورداً`}>
-        {lastDeleted && (
-          <div className="callout ok" style={{ margin: '14px 20px 0' }}>
-            حُذف {ar(lastDeleted.n)} حركة من «{lastDeleted.row.fileName}» —
-            تحدّثت أرصدة {lastDeleted.row.partyName ?? lastDeleted.row.account ?? 'الطرف المرتبط'} فوراً.
-          </div>
+      <Card>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+            background: 'none', border: 'none', cursor: 'pointer', textAlign: 'start',
+            padding: '16px 20px', font: 'inherit',
+          }}
+        >
+          <span style={{ fontSize: 16, fontWeight: 700 }}>
+            الملفات المرفوعة{count !== null ? ` (${ar(count)})` : ''}
+          </span>
+          <span className="muted" style={{ fontSize: 12 }}>
+            {open ? 'اضغط للطيّ' : 'اضغط للعرض'}
+          </span>
+          <span className="grow" />
+          <span aria-hidden="true">{open ? '▲' : '▼'}</span>
+        </button>
+
+        {open && (
+          <>
+            {loading && rows === null && <State>جارٍ التحميل…</State>}
+
+            {error && <ErrorState message={error} onRetry={() => { seq.current += 1; setError(null); }} />}
+
+            {!error && !loading && rows !== null && rows.length === 0 && !filtering && (
+              <EmptyState
+                kind="no-data"
+                title="لا ملفات مرفوعة بعد"
+                body="ابدأ برفع كشف حساب أو ملف مدد الموردين لتظهر هنا."
+                ctaLabel="اختيار ملفات"
+                onCta={onPickFiles}
+              />
+            )}
+
+            {!error && !loading && rows !== null && rows.length === 0 && filtering && (
+              <EmptyState kind="no-results" title="لا نتائج مطابقة"
+                body="لم تطابق التصفية أي ملف مرفوع."
+                ctaLabel="مسح التصفية" onCta={clearAll} />
+            )}
+
+            {rows !== null && rows.length > 0 && (
+              <>
+                {filtering && (
+                  <div className="filter-bar">
+                    <b>تصفية نشطة</b>
+                    <button className="btn sm" onClick={clearAll}>مسح الكل</button>
+                  </div>
+                )}
+                {lastDeleted && (
+                  <div className="callout ok" style={{ margin: '14px 20px 0' }}>
+                    حُذف {ar(lastDeleted.n)} حركة من «{lastDeleted.row.fileName}» —
+                    تحدّثت أرصدة {lastDeleted.row.partyName ?? lastDeleted.row.account ?? 'الطرف المرتبط'} فوراً.
+                  </div>
+                )}
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <Th label="التاريخ" sortKey="date" sort={sort} onSort={setSort}
+                            ascLabel="الأقدم أولاً" descLabel="الأحدث أولاً"
+                            active={Boolean(dateFrom || dateTo)}
+                            filter={{ kind: 'dateRange', from: dateFrom, to: dateTo,
+                                      onFrom: setDateFrom, onTo: setDateTo }} />
+                        <Th label="الملف" sortKey="fileName" sort={sort} onSort={setSort}
+                            active={Boolean(fileName)}
+                            filter={{ kind: 'text', value: fileName, onChange: setFileName,
+                                      placeholder: 'اسم الملف…' }} />
+                        <Th label="النوع" sortKey="detected" sort={sort} onSort={setSort}
+                            active={Boolean(source)}
+                            filter={{ kind: 'select', value: source, onChange: setSource,
+                                      allLabel: 'كل الأنواع', options: SOURCE_FILTER_OPTIONS }} />
+                        <Th label="الطرف" sortKey="partyName" sort={sort} onSort={setSort}
+                            active={Boolean(party)}
+                            filter={{ kind: 'text', value: party, onChange: setParty,
+                                      placeholder: 'اسم الطرف أو رقم الحساب…' }} />
+                        <Th label="الحركات" className="ltr" sortKey="linkedRows" sort={sort} onSort={setSort}
+                            ascLabel="الأقل أولاً" descLabel="الأكثر أولاً"
+                            active={Boolean(minMoves || maxMoves)}
+                            filter={{ kind: 'range', min: minMoves, max: maxMoves,
+                                      onMin: setMinMoves, onMax: setMaxMoves }} />
+                        <Th label="مطابق" sortKey="reconciled" sort={sort} onSort={setSort}
+                            active={Boolean(reconciled)}
+                            filter={{ kind: 'select', value: reconciled, onChange: setReconciled,
+                                      allLabel: 'الكل', options: RECONCILED_FILTER_OPTIONS }} />
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr key={r.id} title={r.path}>
+                          <td className="muted">{arDate(r.date.slice(0, 10))}</td>
+                          {/* سجلّات قديمة (وهجرات داخلية) لا تحمل اسم ملف — خليّة فارغة
+                              تُقرأ كعطب في العرض، لا كسجلٍّ بلا اسم أصلاً. */}
+                          <td title={r.path} className="truncate">
+                            {r.fileName || <span className="muted">— بلا اسم ملف —</span>}
+                          </td>
+                          <td className="muted">{r.detected}</td>
+                          <td>{r.partyName ?? r.account ?? '—'}</td>
+                          <td className="ltr num">
+                            {r.legacy
+                              ? <>{ar(r.added)} <Pill kind="warn">قديم</Pill></>
+                              : ar(r.linkedRows)}
+                          </td>
+                          <td>
+                            <Pill kind={r.reconciled ? 'ok' : 'red'}>{r.reconciled ? '✓' : '✕'}</Pill>
+                          </td>
+                          <td>
+                            <button
+                              className="btn sm"
+                              disabled={!r.canDelete || busyId === r.id}
+                              title={r.canDelete ? 'حذف حركات هذا الملف' : 'يُدار من شاشته الخاصة'}
+                              onClick={() => openConfirm(r)}
+                            >
+                              {busyId === r.id ? '…' : 'حذف'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </>
         )}
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>التاريخ</th><th>الملف</th><th>النوع</th><th>الطرف</th>
-                <th className="ltr">الحركات</th><th>مطابق</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} title={r.path}>
-                  <td className="muted">{arDate(r.date.slice(0, 10))}</td>
-                  {/* سجلّات قديمة (وهجرات داخلية) لا تحمل اسم ملف — خليّة فارغة
-                      تُقرأ كعطب في العرض، لا كسجلٍّ بلا اسم أصلاً. */}
-                  <td title={r.path} className="truncate">
-                    {r.fileName || <span className="muted">— بلا اسم ملف —</span>}
-                  </td>
-                  <td className="muted">{r.detected}</td>
-                  <td>{r.partyName ?? r.account ?? '—'}</td>
-                  <td className="ltr num">
-                    {r.legacy
-                      ? <>{ar(r.added)} <Pill kind="warn">قديم</Pill></>
-                      : ar(r.linkedRows)}
-                  </td>
-                  <td>
-                    <Pill kind={r.reconciled ? 'ok' : 'red'}>{r.reconciled ? '✓' : '✕'}</Pill>
-                  </td>
-                  <td>
-                    <button
-                      className="btn sm"
-                      disabled={!r.canDelete || busyId === r.id}
-                      title={r.canDelete ? 'حذف حركات هذا الملف' : 'يُدار من شاشته الخاصة'}
-                      onClick={() => openConfirm(r)}
-                    >
-                      {busyId === r.id ? '…' : 'حذف'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </Card>
 
       {target && !forceStep && (

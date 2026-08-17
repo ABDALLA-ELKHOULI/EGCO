@@ -30,10 +30,15 @@ def test_manual_invoice_lifecycle(api_client):
     r = api_client.delete(f'/api/v1/manual/invoices/{inv_id}')
     assert r.status_code == 200 and r.json() == {'deleted': True}
 
-    # supplier now has no movement at all — position list is 404 by design (only the
-    # list screen shows empty suppliers, via include_empty=True)
+    # المورد بلا حركة الآن — وصفحته يجب أن تبقى تعمل. القاعدة القديمة (٤٠٤) كانت
+    # تقول «لا يوجد مورد بالحساب ٧٧٧» وهو موجود، فيبدو الحذف وكأنه محا المورد نفسه.
+    # هذا ما رآه المستخدم بعد حذف ملف: صفحة المورد تنفي وجوده.
     r = api_client.get('/api/v1/suppliers/777')
-    assert r.status_code == 404
+    assert r.status_code == 200
+    body = r.json()
+    assert body['account'] == '777'
+    assert body['outstanding'] == 0
+    assert body['invoices'] == []
 
 
 def test_manual_payment_lifecycle(api_client):

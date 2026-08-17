@@ -7,7 +7,7 @@
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { backendErrorTail, backendUrl, startBackend, stopBackend } from './backend';
+import { backendErrorTail, backendUrl, onBackendRestart, startBackend, stopBackend } from './backend';
 
 let win: BrowserWindow | null = null;
 
@@ -153,6 +153,16 @@ app.whenReady().then(async () => {
     item.on('done', (_ev, state) => {
       if (state === 'completed') shell.showItemInFolder(item.getSavePath());
     });
+  });
+
+  /**
+   * إن ماتت الخدمة أثناء الجلسة وأعادت نفسها (ربما على منفذ مختلف)، الواجهة
+   * كانت تخزّن العنوان القديم مرة واحدة عند الإقلاع ولا تعيد سؤاله أبداً — فتظل
+   * كل الطلبات تفشل بصمت على منفذ مُغلق. هذا يدفع العنوان الفعلي لها دائماً،
+   * نجحت إعادة التشغيل أو فشلت، فلا تُترك عالقة على عنوان ميت.
+   */
+  onBackendRestart((info) => {
+    win?.webContents.send('app:backend-restarted', info);
   });
 
   try {

@@ -5,9 +5,15 @@ Conventions follow suppliers.py: soft delete everywhere, force=true to delete a
 contractor that still has records, Arabic HTTP details, camelCase JSON out.
 """
 import datetime as dt
+import io
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
+from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -80,6 +86,63 @@ def list_contractors(q: Optional[str] = Query(None),
         raise HTTPException(422, detail=f'اتجاه ترتيب غير صالح: {dir}')
     return CS.contractors_list_json(db, q=q, project=project, direction=direction,
                                     has_guarantees=has_guarantees, sort=sort, dir=dir)
+
+
+@router.get('/export.xlsx')
+def export_contractors_xlsx(q: Optional[str] = Query(None),
+                            project: Optional[str] = Query(None),
+                            direction: Optional[str] = Query(None),
+                            has_guarantees: Optional[bool] = Query(None),
+                            sort: Optional[str] = Query(None),
+                            dir: str = Query('asc'),
+                            db: Session = Depends(get_session)):
+    """تصدير لائحة المقاولين — بنفس التصفية المطبَّقة على الشاشة، لا الدفتر كاملاً.
+    نفس نمط export_suppliers_xlsx: يستدعي list_contractors مباشرةً فيبقى مساراً
+    واحداً للتصفية يصف الشاشة والملف معاً."""
+    data = list_contractors(q=q, project=project, direction=direction,
+                            has_guarantees=has_guarantees, sort=sort, dir=dir, db=db)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'المقاولون'
+    ws.sheet_view.rightToLeft = True
+    ws.append(['كود المقاول', 'الاسم', 'المشاريع', 'المحمّل عليه', 'المدفوع',
+              'خصومات وتحميلات', 'الرصيد', 'ضمانات محتجزة'])
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    for r in data['rows']:
+        ws.append([r.get('code', ''), r.get('name', ''),
+                  '، '.join(r.get('projects') or []),
+                  r.get('duesTotal', 0), r.get('paidTotal', 0),
+                  r.get('deductionsTotal', 0), r.get('balance', 0),
+                  r.get('retentionHeld', 0)])
+    t = data['totals']
+    ws.append(['الإجمالي', '', '', t.get('claimsTotal', 0), t.get('paidTotal', 0),
+              t.get('deductionsTotal', 0), t.get('balance', 0), t.get('retentionHeld', 0)])
+    for cell in ws[ws.max_row]:
+        cell.font = Font(bold=True)
+    for row in range(2, ws.max_row + 1):
+        for col in (4, 5, 6, 7, 8):
+            cell = ws.cell(row=row, column=col)
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = '#,##0.00'
+    for col_cells in ws.columns:
+        length = max((len(str(c.value)) if c.value is not None else 0) for c in col_cells)
+        letter = get_column_letter(col_cells[0].column)
+        ws.column_dimensions[letter].width = min(max(length + 2, 10), 40)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    today = dt.date.today()
+    ascii_name = f'EGCO-contractors-{today:%Y%m%d}.xlsx'
+    encoded = quote(f'EGCO-المقاولون-{today:%Y%m%d}.xlsx', safe='')
+    headers = {'Content-Disposition':
+              f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"}
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers=headers,
+    )
 
 
 @router.get('/{code}')

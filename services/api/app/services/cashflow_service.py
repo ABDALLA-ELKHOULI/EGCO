@@ -6,6 +6,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import Optional
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db import models
@@ -23,6 +24,22 @@ PAST_RECEIVABLES_WARNING = (
 ALL_COLLECTED_WARNING = (
     'لا يوجد داخل متوقّع — كل التحصيلات المسجّلة محصَّلة بالفعل ({amount} ر.س خلال '
     'هذا المدى)')
+
+# رصيد المقاول المعروض هنا هو رصيده الكامل عبر كل مشاريعه، وليس رصيداً محصوراً
+# بالمشروع المفلتَر — راجع docstring دالة _contractor_flow أدناه لتفسير القياس، ودالة
+# _scoped_contractors لتفسير التقريب في اختيار المقاولين أنفسهم. القرار مقصود لا سهو:
+# قِيس عدد حركات دفتر المقاولين التي تحمل مشروعاً فعلياً في بيانات الإنتاج الحقيقية
+# فتبيّن أن 0 من 74 حركة (لكل المقاولين، بمن فيهم المقاول النشط الوحيد حالياً) تحمل
+# قيمة project غير فارغة — أي أن تضييق الرصيد على مشروع واحد (بجمع حركات ذلك المشروع
+# فقط) كان سيُسقِط الرصيد بالكامل إلى صفر لأي فلتر مشروع، فيختفي مالٌ حقيقي مستحق من
+# توقّع التدفق النقدي بصمت. اختفاء المال من التوقع أخطر من مبالغة معروضة ومُعلَّمة، لذا
+# اختير الاحتفاظ بالرصيد الكامل + تعليمه صراحة (`contractorBalanceScope` في استجابة
+# cashflow()) بدل تضييقه على نحوٍ قد يكذب بصمت. لو صارت الحركات تحمل project لاحقاً
+# (بعد ترحيل بيانات موثوق)، ينبغي عندها تبنّي القياس (a): تضييق حقيقي بالمشروع.
+CONTRACTOR_BALANCE_SCOPE_NOTE = (
+    'مستحق المقاولين أعلاه هو رصيدهم الكامل عبر كل مشاريعهم، وليس محصوراً بالمشروع '
+    'المفلتَر — دفتر حركات المقاولين لا يحمل مشروعاً على أي حركة تقريباً في البيانات '
+    'الحالية، فتضييق الرصيد بالمشروع كان سيُسقط مستحقات حقيقية من التوقع')
 
 OVERDUE_OUTFLOW_WARNING = (
     'متأخر الآن {amount} ر.س — استحقاقه مضى قبل بداية الجدول فلا دلو له، وهو غير محسوب '
@@ -480,6 +497,140 @@ def breakdown(db: Session, term: str, project: Optional[str] = None, parties: st
                rows=rows[:MAX_BREAKDOWN_ROWS])
 
 
+# ============================================================== overdue-aged view
+#
+# The user asked by name for a view built on the overdue balance alone: how much is
+# already past due, how aged it is, and what settling it would do to cash. Everything
+# below re-uses the exact same row sources as the reconciliation footer (_supplier_
+# term_rows / _contractor_term_rows with term='overdue', and the receivable rows behind
+# recv_recon['overdueNow']) so the totals here always agree with the reconciliation
+# equation by construction — no second, divergent definition of "overdue".
+
+_AGE_BUCKETS = ((1, 30), (31, 60), (61, 90), (91, None))
+
+
+def _age_bucket_index(days: int) -> int:
+    for i, (lo, hi) in enumerate(_AGE_BUCKETS):
+        if hi is None or days <= hi:
+            return i
+    return len(_AGE_BUCKETS) - 1
+
+
+def _overdue_receivable_rows(db: Session, project: Optional[str], today: dt.date) -> list:
+    """تحصيلات مفتوحة مضى تاريخ استحقاقها — نفس مجموعة recv_recon['overdueNow'] صفاً صفاً."""
+    q = db.query(models.Receivable).filter(models.Receivable.deleted_at.is_(None))
+    if project:
+        q = q.filter(models.Receivable.project == project)
+    return [r for r in q.all()
+            if r.status != 'collected' and r.due_date is not None and r.due_date < today]
+
+
+def _overdue_view(db: Session, today: dt.date, project: Optional[str], parties: str,
+                  from_date: dt.date, horizon_end: dt.date, min_balance: Decimal,
+                  outflow_overdue: Decimal, inflow_overdue: Decimal) -> dict:
+    """«المتأخر» — بند مستقل قائم على المتأخر فقط: كم إجمالاً، كم عمره، وأثر تسويته
+    على أدنى رصيد. `outflow_overdue`/`inflow_overdue` تأتي من نفس معادلة المطابقة أعلاه
+    (outflow_recon['overdueNow'] و recv_recon['overdueNow']) فلا يمكن أن يختلف الإجمالي
+    هنا عن سطر «متأخر الآن» في المطابقة؛ التبويب العمري توزيعٌ إضافي لنفس المجموع."""
+    buckets = [dict(fromDays=lo, toDays=hi, outflowAmount=ZERO, outflowCount=0,
+                    inflowAmount=ZERO, inflowCount=0) for lo, hi in _AGE_BUCKETS]
+
+    if parties in ('suppliers', 'both'):
+        for r in _supplier_term_rows(db, today, project, 'overdue', from_date, horizon_end,
+                                     from_date, horizon_end):
+            days = r['daysOverdue'] or 1
+            b = buckets[_age_bucket_index(days)]
+            b['outflowAmount'] += D(r['amount'])
+            b['outflowCount'] += 1
+    if parties in ('contractors', 'both'):
+        for r in _contractor_term_rows(db, today, project, 'overdue', from_date, horizon_end,
+                                       from_date, horizon_end):
+            due = dt.date.fromisoformat(r['releaseDue'])
+            days = max(1, (today - due).days)
+            b = buckets[_age_bucket_index(days)]
+            b['outflowAmount'] += D(r['amount'])
+            b['outflowCount'] += 1
+
+    for r in _overdue_receivable_rows(db, project, today):
+        days = (today - r.due_date).days
+        b = buckets[_age_bucket_index(days)]
+        b['inflowAmount'] += D(r.amount)
+        b['inflowCount'] += 1
+
+    buckets_json = [dict(fromDays=b['fromDays'], toDays=b['toDays'],
+                         outflowAmount=money(b['outflowAmount']), outflowCount=b['outflowCount'],
+                         inflowAmount=money(b['inflowAmount']), inflowCount=b['inflowCount'])
+                    for b in buckets]
+
+    return dict(
+        totalOverdueOutflow=money(outflow_overdue),
+        totalOverdueInflow=money(inflow_overdue),
+        buckets=buckets_json,
+        # سيناريو: لو سُدد كل المتأخر من الخارج اليوم بالضبط بلا أي حركة أخرى على الأفق،
+        # ماذا يصير أدنى رصيد؟ (نفس الحساب المستعمل في OVERDUE_OUTFLOW_WARNING أعلاه)
+        minBalanceIfOverdueOutflowSettledToday=money(min_balance - outflow_overdue),
+        # وبالعكس: لو حُصِّل كل المتأخر من الداخل اليوم بالضبط، ماذا يصير أدنى رصيد؟
+        minBalanceIfOverdueInflowCollectedToday=money(min_balance + inflow_overdue),
+    )
+
+
+def _forecast_vs_actual(total_inflow: Decimal, collections: dict) -> dict:
+    """يقارن الداخل المتوقع (تحصيلات مفتوحة لها تاريخ استحقاق) بما حُصِّل فعلاً لنفس
+    المدى — تجميعان مختلفا الطبيعة (توقع لم يتحقق بعد مقابل تاريخ فعلي)، يُعرضان
+    معاً بناءً على طلب صريح من المستخدم، والفجوة تُحسب صراحةً حتى لا يُترك القارئ
+    يخمّن العلاقة بين الرقمين."""
+    actual = D(collections['inWindow'])
+    return dict(
+        expectedInflow=money(total_inflow),
+        actualCollected=money(actual),
+        gap=money(actual - total_inflow),
+    )
+
+
+# ============================================================== reconciliation notes
+#
+# A small additive table, created lazily on first use — deliberately NOT added to
+# app/db/models.py (owned by another agent) nor to app/db/session.py's init_db()
+# migration list (same ownership boundary). `CREATE TABLE IF NOT EXISTS` here mirrors
+# the same checkfirst=True spirit used throughout session.py, just invoked from this
+# module instead so the file-ownership boundary in this task holds.
+
+def _ensure_recon_notes_table(db: Session) -> None:
+    db.execute(text(
+        'CREATE TABLE IF NOT EXISTS cashflow_recon_notes ('
+        'scope TEXT PRIMARY KEY, note_code TEXT NOT NULL, note_text TEXT, '
+        'created_at TEXT NOT NULL, updated_at TEXT NOT NULL)'))
+
+
+def _recon_note_scope(parties: str, project: Optional[str]) -> str:
+    """نطاق الملاحظة: الفرق المعروض يتغيّر بتغيّر الأطراف/المشروع، فلكل مجموعة ملاحظتها."""
+    return '{}|{}'.format(parties, project or '')
+
+
+def get_reconciliation_note(db: Session, parties: str, project: Optional[str]) -> Optional[dict]:
+    _ensure_recon_notes_table(db)
+    row = db.execute(text(
+        'SELECT note_code, note_text, updated_at FROM cashflow_recon_notes WHERE scope = :s'),
+        {'s': _recon_note_scope(parties, project)}).fetchone()
+    if row is None:
+        return None
+    return dict(noteCode=row[0], noteText=row[1], updatedAt=row[2])
+
+
+def save_reconciliation_note(db: Session, parties: str, project: Optional[str],
+                             note_code: str, note_text: Optional[str]) -> dict:
+    _ensure_recon_notes_table(db)
+    now = dt.datetime.utcnow().isoformat()
+    scope = _recon_note_scope(parties, project)
+    db.execute(text(
+        'INSERT INTO cashflow_recon_notes (scope, note_code, note_text, created_at, updated_at) '
+        'VALUES (:s, :c, :t, :now, :now) '
+        'ON CONFLICT(scope) DO UPDATE SET note_code = :c, note_text = :t, updated_at = :now'),
+        {'s': scope, 'c': note_code, 't': note_text, 'now': now})
+    db.commit()
+    return dict(noteCode=note_code, noteText=note_text, updatedAt=now)
+
+
 def cashflow(db: Session, weeks: int = 26, from_date: Optional[dt.date] = None,
             opening_balance: float = 0.0, today: Optional[dt.date] = None,
             project: Optional[str] = None, parties: str = 'suppliers',
@@ -548,6 +699,12 @@ def cashflow(db: Session, weeks: int = 26, from_date: Optional[dt.date] = None,
         first_deficit_json = {'label': fd.label, 'from': fd.from_date.isoformat(),
                               'to': fd.to_date.isoformat(), 'amount': money(fd.balance)}
 
+    overdue_view = _overdue_view(db, today, project, parties, from_date, horizon_end,
+                                 summary['min_balance'], outflow_recon['overdueNow'],
+                                 recv_recon['overdueNow'])
+    forecast_vs_actual = _forecast_vs_actual(summary['total_inflow'], collections)
+    reconciliation_note = get_reconciliation_note(db, parties, project)
+
     return dict(
         asOf=today.isoformat(),
         openingBalance=money(opening_balance),
@@ -567,9 +724,16 @@ def cashflow(db: Session, weeks: int = 26, from_date: Optional[dt.date] = None,
         ),
         warnings=warnings,
         collections=collections,
+        overdueView=overdue_view,
+        forecastVsActual=forecast_vs_actual,
+        reconciliationNote=reconciliation_note,
         projects=_known_projects(db),
         parties=parties,
         undatedContractorDues=money(undated_contractor_dues),
+        # يُعرض فقط حين يشارك المقاولون في هذا الطلب — راجع تعليق CONTRACTOR_BALANCE_
+        # SCOPE_NOTE أعلاه لتبرير القرار. غير رقمي عمداً فلا يمر عبر _recon_json.
+        contractorBalanceScopeNote=(CONTRACTOR_BALANCE_SCOPE_NOTE
+                                    if parties in ('contractors', 'both') else None),
         # المطابقة — كل رقم هنا يجب أن يساوي ما تعرضه الشاشة الأخرى بالهللة، و`difference`
         # صفر دائماً. تُعرض على الشاشة كمعادلة صريحة بدل أن يُترك الفرق صامتاً.
         reconciliation=dict(

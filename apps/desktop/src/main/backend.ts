@@ -19,7 +19,31 @@ export function backendErrorTail(): string {
 
 let proc: ChildProcess | null = null;
 let port = 0;
-let restarts = 0;
+
+/**
+ * ميزانية إعادة التشغيل — نافذة زمنية منزلقة بدل «مرة واحدة طوال عمر التطبيق».
+ *
+ * قفل عابر واحد في الساعة الأولى لا يجب أن يترك التطبيق بلا قدرة على التعافي في
+ * الساعة السادسة؛ لكن خدمة معطوبة فعلاً يجب ألا تُعيد المحاولة إلى ما لا نهاية.
+ * خمس محاولات كل خمس دقائق تسمح بالتعافي من أعطال متكررة معقولة وتوقف عند عطل حقيقي.
+ */
+const RESTART_WINDOW_MS = 5 * 60 * 1000;
+const RESTART_MAX_IN_WINDOW = 5;
+let restartTimestamps: number[] = [];
+
+function canRestart(): boolean {
+  const now = Date.now();
+  restartTimestamps = restartTimestamps.filter((t) => now - t < RESTART_WINDOW_MS);
+  return restartTimestamps.length < RESTART_MAX_IN_WINDOW;
+}
+
+/** يُستدعى بعد كل محاولة إعادة تشغيل (نجحت أو فشلت) — الواجهة تسمع منه لتُحدّث
+ * عنوان الخدمة المحفوظ لديها ولتُخبر المستخدم بما حدث. */
+export type RestartInfo = { url: string; recovered: boolean; error?: string };
+let restartListener: ((info: RestartInfo) => void) | null = null;
+export function onBackendRestart(cb: (info: RestartInfo) => void): void {
+  restartListener = cb;
+}
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -29,6 +53,25 @@ function freePort(): Promise<number> {
       s.close(() => resolve(p));
     });
     s.on('error', reject);
+  });
+}
+
+/**
+ * عند إعادة التشغيل نحاول العودة لنفس المنفذ الذي كانت الخدمة عليه — الواجهة
+ * تحتفظ بعنوان الخدمة في متغيّر واحد يُقرأ مرة عند الإقلاع (lib/api.ts)، فإن بقي
+ * المنفذ نفسه لا تحتاج لمعرفة شيء عن الانقطاع. المنفذ قد يبقى ممسوكاً لحظياً
+ * (TIME_WAIT) أو يأخذه برنامج آخر بين موت العملية القديمة وهذه المحاولة — في هذه
+ * الحالة نتراجع لمنفذ حرّ جديد فوراً، والمستمع أدناه (onBackendRestart) هو شبكة
+ * الأمان: يُبلَّغ العنوان الفعلي دائماً مهما تغيّر.
+ */
+function pickPort(preferred: number): Promise<number> {
+  return new Promise((resolve) => {
+    const s = net.createServer();
+    s.once('error', () => resolve(freePort()));
+    s.listen(preferred, '127.0.0.1', () => {
+      const p = (s.address() as net.AddressInfo).port;
+      s.close(() => resolve(p));
+    });
   });
 }
 
@@ -61,8 +104,8 @@ function devCommand(repoRoot: string): { cmd: string; args: string[]; cwd: strin
   };
 }
 
-export async function startBackend(): Promise<void> {
-  port = await freePort();
+export async function startBackend(isRestart = false): Promise<void> {
+  port = isRestart ? await pickPort(port) : await freePort();
   const env = {
     ...process.env,
     EGCO_API_PORT: String(port),
@@ -100,10 +143,25 @@ export async function startBackend(): Promise<void> {
   proc.on('exit', (code) => {
     proc = null;
     if (code === 0) return;
-    if (restarts++ < 1) {
-      console.error('[api] exited unexpectedly — restarting once');
-      startBackend().catch((e) => console.error('[api] restart failed', e));
+    if (!canRestart()) {
+      const msg = `تجاوزت الخدمة عدد محاولات إعادة التشغيل المسموح (${RESTART_MAX_IN_WINDOW} خلال ٥ دقائق) — على الأغلب عطل متكرر لا مجرد انقطاع عابر.`;
+      console.error('[api]', msg);
+      restartListener?.({ url: backendUrl(), recovered: false, error: `${msg}\n${backendErrorTail()}` });
+      return;
     }
+    restartTimestamps.push(Date.now());
+    console.error('[api] exited unexpectedly — restarting');
+    startBackend(true)
+      .then(() => restartListener?.({ url: backendUrl(), recovered: true }))
+      .catch((e) => {
+        console.error('[api] restart failed', e);
+        const tail = backendErrorTail();
+        restartListener?.({
+          url: backendUrl(),
+          recovered: false,
+          error: String(e) + (tail ? `\n\nتفاصيل من الخدمة:\n${tail}` : ''),
+        });
+      });
   });
 
   await waitForHealth();

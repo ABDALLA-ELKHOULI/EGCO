@@ -3,6 +3,7 @@ from typing import Optional
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import parse_date
@@ -10,6 +11,14 @@ from app.db.session import get_session
 from app.services import cashflow_service
 
 router = APIRouter()
+
+
+class ReconciliationNoteIn(BaseModel):
+    """جسم POST /cashflow/reconciliation-note — تفسير المستخدم لفرق المطابقة."""
+    parties: str = 'suppliers'
+    project: Optional[str] = None
+    noteCode: str
+    noteText: Optional[str] = None
 
 _GRANULARITY_DAYS = {'week': 7, 'fortnight': 14}
 
@@ -81,3 +90,17 @@ def cashflow_breakdown(term: str = Query(..., pattern='^(scheduled|overdue|undat
     return cashflow_service.breakdown(db, term=term, project=project, parties=parties,
                                       weeks=weeks, from_date=from_date, period_days=period_days,
                                       period=period_date)
+
+
+@router.post('/reconciliation-note')
+def save_cashflow_reconciliation_note(body: ReconciliationNoteIn,
+                                      db: Session = Depends(get_session)) -> dict:
+    """يحفظ تفسير المستخدم لفرق المطابقة (سطر «فرق غير مفسَّر») حتى لا يُسأل عنه مرة
+    أخرى في نفس نطاق الأطراف/المشروع — انظر cashflow_service.save_reconciliation_note."""
+    if body.parties not in ('suppliers', 'contractors', 'both'):
+        raise HTTPException(status_code=422, detail='الأطراف غير معروفة')
+    if not body.noteCode:
+        raise HTTPException(status_code=422, detail='سبب الفرق مطلوب')
+    return cashflow_service.save_reconciliation_note(
+        db, parties=body.parties, project=body.project,
+        note_code=body.noteCode, note_text=body.noteText)

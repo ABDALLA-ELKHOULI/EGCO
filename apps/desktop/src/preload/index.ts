@@ -9,6 +9,14 @@ export interface PickedFile {
   source: 'pdf_statement' | 'suppliers_excel' | 'csv_statement';
 }
 
+/** ما يصل بعد أن ماتت الخدمة الخلفية وأُعيد تشغيلها — العنوان الفعلي دائماً،
+ * ونجحت المحاولة أو لا (وإن فشلت، نص الخطأ الحقيقي من الخدمة). */
+export interface BackendRestartInfo {
+  url: string;
+  recovered: boolean;
+  error?: string;
+}
+
 export type UpdateStatus =
   | { state: 'checking' }
   | { state: 'up-to-date'; version: string }
@@ -44,5 +52,11 @@ contextBridge.exposeInMainWorld('egco', {
     const listener = (_e: unknown, status: UpdateStatus) => cb(status);
     ipcRenderer.on('update:status', listener);
     return () => ipcRenderer.removeListener('update:status', listener);
+  },
+  /** يستمع لإعادة تشغيل الخدمة الخلفية (نجحت أو فشلت) ويعيد دالة لإلغاء الاستماع. */
+  onBackendRestarted: (cb: (info: BackendRestartInfo) => void): (() => void) => {
+    const listener = (_e: unknown, info: BackendRestartInfo) => cb(info);
+    ipcRenderer.on('app:backend-restarted', listener);
+    return () => ipcRenderer.removeListener('app:backend-restarted', listener);
   },
 });

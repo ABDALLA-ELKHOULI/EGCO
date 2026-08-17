@@ -44,6 +44,17 @@ def _out(row: models.Receivable) -> dict:
 
 _VALID_DATE_FIELDS = ('due', 'collected')
 
+#: أعمدة الترتيب — نفس نمط _SORT_KEYS في routes/suppliers.py: الترتيب على الخادم
+#: فوق المجموعة المصفّاة كاملةً، لا الصفحة المعروضة، حتى يبقى سطر الإجماليات صادقاً.
+_SORT_KEYS = {
+    'client': lambda r: r.client or '',
+    'project': lambda r: r.project or '',
+    'amount': lambda r: r.amount or 0,
+    'dueDate': lambda r: r.due_date.isoformat() if r.due_date else '',
+    'status': lambda r: r.status or '',
+    'source': lambda r: r.source or '',
+}
+
 
 @router.get('')
 def list_revenues(q: Optional[str] = Query(None), project: Optional[str] = Query(None),
@@ -53,12 +64,19 @@ def list_revenues(q: Optional[str] = Query(None), project: Optional[str] = Query
                   date_field: str = Query('due'),
                   min_amount: Optional[float] = Query(None),
                   max_amount: Optional[float] = Query(None),
+                  sort: Optional[str] = Query(None),
+                  dir: str = Query('asc'),
                   db: Session = Depends(get_session)) -> dict:
     """date_field selects which date date_from/date_to filter on: 'due' (default) uses
     due_date, 'collected' uses collected_on. Undated rows never match a date window."""
     if date_field not in _VALID_DATE_FIELDS:
         raise HTTPException(422, detail=f'قيمة date_field غير صالحة: {date_field} — '
                                         f'المسموح: {", ".join(_VALID_DATE_FIELDS)}')
+    if sort is not None and sort not in _SORT_KEYS:
+        raise HTTPException(422, detail=f'عمود ترتيب غير صالح: {sort} — '
+                                        f'المسموح: {", ".join(_SORT_KEYS)}')
+    if dir not in ('asc', 'desc'):
+        raise HTTPException(422, detail=f'اتجاه ترتيب غير صالح: {dir}')
     df = _parse_date(date_from, 'تاريخ البداية')
     dtt = _parse_date(date_to, 'تاريخ النهاية')
     if df is not None and dtt is not None and df > dtt:
@@ -101,8 +119,14 @@ def list_revenues(q: Optional[str] = Query(None), project: Optional[str] = Query
         needle = q.strip()
         rows = [r for r in rows if needle in (r.client or '') or needle in (r.unit or '')]
 
-    # newest due first, undated last
-    rows.sort(key=lambda r: (r.due_date is None, r.due_date and -r.due_date.toordinal() or 0))
+    if sort:
+        # العميل فاصل التعادل دائماً — بدونه يتبدّل ترتيب المتساويات بين طلب وآخر
+        # فيبدو الجدول وكأنه يتحرك بلا سبب (نفس قاعدة routes/suppliers.py).
+        rows.sort(key=lambda r: r.client or '')
+        rows.sort(key=_SORT_KEYS[sort], reverse=(dir == 'desc'))
+    else:
+        # newest due first, undated last
+        rows.sort(key=lambda r: (r.due_date is None, r.due_date and -r.due_date.toordinal() or 0))
 
     projects = sorted({r.project for r in
                        db.query(models.Receivable).filter(models.Receivable.deleted_at.is_(None)).all()

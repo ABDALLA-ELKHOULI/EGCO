@@ -145,11 +145,84 @@ def init_db() -> None:
         # `party_projects` is new as of multi-project support — additive table only.
         Base.metadata.tables['party_projects'].create(bind=conn, checkfirst=True)
         _seed_party_projects(conn)
+        # `app_settings` / `payment_allocations` are new as of the opt-in payment
+        # allocation review feature — additive tables only (no ALTER on existing
+        # tables); default OFF is enforced by is_smart_allocation_enabled reading a
+        # missing key as false, not by anything here.
+        Base.metadata.tables['app_settings'].create(bind=conn, checkfirst=True)
+        Base.metadata.tables['payment_allocations'].create(bind=conn, checkfirst=True)
     _migrate_211_contractors_to_suppliers()
+    _backfill_import_log_id()
 
 
 #: marker for the one-time backfill below.
 _SEED_PARTY_PROJECTS_FLAG = 'seed_party_projects_v1'
+
+_BACKFILL_IMPORT_LOG_FLAG = 'backfill_import_log_id_v1'
+
+
+def _backfill_import_log_id() -> None:
+    """يربط كل حركة قديمة بملفها — لينتهي الحذف «التقريبي».
+
+    الحركات التي رُفعت قبل ميزة إدارة الملفات لا تحمل import_log_id، فحذف ملفٍ
+    منها كان يعمل بالتقريب: «نفس الحساب، وأي حركة أُنشئت خلال ٣ دقائق». وهذا
+    مُثبتٌ أنه يمحو حركات ملفٍ آخر: كشفان لنفس المورد يُرفعان بفارق دقيقة —
+    وهو سير عمل طبيعي تماماً — فحذف أحدهما يمسح الآخر معه.
+
+    Each row is claimed by exactly ONE log: the one closest in time among that
+    account's logs. Deterministic, and every row ends up owned, so the approximate
+    path stops being reachable for this data. Manual entries are never claimed —
+    they belong to no file and deleting a file must never touch them.
+    """
+    with SessionLocal() as db:
+        with engine.begin() as conn:
+            if _migration_applied(conn, _BACKFILL_IMPORT_LOG_FLAG):
+                return
+
+        logs = [l for l in db.query(models.ImportLog).filter(
+            models.ImportLog.deleted_at.is_(None)).all() if l.account]
+        by_account = {}
+        for l in logs:
+            by_account.setdefault(l.account, []).append(l)
+
+        claimed = 0
+        for model in (models.Invoice, models.Payment):
+            rows = (db.query(model).join(models.Supplier)
+                    # كل ما ليس يدوياً: المصدر الحقيقي في القاعدة 'pdf_statement'
+                    # لا 'statement'. تثبيت قيمة بعينها هنا كان يُغفل ١٠٦٤ فاتورة
+                    # من ١٠٩٥ بصمت — والاستثناء بالنفي أسلم من التعداد بالإيجاب.
+                    .filter(model.import_log_id.is_(None),
+                            model.source != 'manual')
+                    .add_entity(models.Supplier).all())
+            for row, supplier in rows:
+                candidates = by_account.get(supplier.account)
+                if not candidates or row.created_at is None:
+                    continue
+                best = min(candidates,
+                           key=lambda l: abs((row.created_at - l.created_at).total_seconds())
+                           if l.created_at is not None else float('inf'))
+                row.import_log_id = best.id
+                claimed += 1
+
+        entries = (db.query(models.ContractorEntry).join(models.Contractor)
+                   .filter(models.ContractorEntry.import_log_id.is_(None),
+                           models.ContractorEntry.source != 'manual')
+                   .add_entity(models.Contractor).all())
+        for row, contractor in entries:
+            candidates = by_account.get(contractor.code)
+            if not candidates or row.created_at is None:
+                continue
+            best = min(candidates,
+                       key=lambda l: abs((row.created_at - l.created_at).total_seconds())
+                       if l.created_at is not None else float('inf'))
+            row.import_log_id = best.id
+            claimed += 1
+
+        db.commit()
+        logger.info('backfilled import_log_id on %d legacy rows', claimed)
+
+    with engine.begin() as conn:
+        _mark_migration_applied(conn, _BACKFILL_IMPORT_LOG_FLAG)
 
 
 def _seed_party_projects(conn) -> None:

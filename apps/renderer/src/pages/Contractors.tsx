@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, ApiError, type ContractorQuery, type ContractorRow } from '@/lib/api';
+import { api, apiBase, ApiError, type ContractorQuery, type ContractorRow } from '@/lib/api';
 import { Th, type SortState } from '@/components/ColumnMenu';
 import { ar, arDate, sar } from '@/lib/format';
 import { Card, EmptyState, ErrorState, Kpi, Money, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
 import { ContractorForm, type ContractorFormValues } from '@/components/ContractorForm';
 import { ExplainDot } from '@/components/Explain';
+import { PrintableList, type PrintableColumn } from '@/components/PrintableList';
 
 /**
  * المقاولون — قاعدة الإشارة (متفق عليها مع المستخدم):
@@ -52,6 +53,16 @@ export function Contractors() {
     setQ(''); setCode(''); setProject(''); setDirection('');
   };
 
+  // رابط تصدير Excel — نفس فكرة Suppliers.tsx: بمعايير query الحالية بالضبط.
+  const exportUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== undefined && v !== '') params.set(k, String(v));
+    }
+    const s = params.toString();
+    return apiBase() + '/api/v1/contractors/export.xlsx' + (s ? `?${s}` : '');
+  }, [query]);
+
   const chips = [
     q && { k: 'q', label: `بحث: ${q}`, clear: () => setQ('') },
     code && { k: 'c', label: `الرمز: ${code}`, clear: () => setCode('') },
@@ -65,6 +76,26 @@ export function Contractors() {
   const [deleteRow, setDeleteRow] = useState<ContractorRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
+  const [showPrint, setShowPrint] = useState(false);
+
+  // نفس نص شريط «تصفية نشطة» أعلى الجدول — يُطبع مع الجدول بدل أن يُفقد سياقه.
+  const filterLine = chips.length > 0 ? chips.map((c) => c.label).join(' · ') : null;
+
+  // «آخر دفعة» و«آخر حركة» أُسقطا من النسخة المطبوعة فقط: سبعة أعمدة على الشاشة
+  // لا تسع عرض A4 حتى أفقياً — والاتجاه (له/لنا) والضمان المحتجز أهم لقرار
+  // السداد من تاريخ آخر حركة أو دفعة.
+  const printColumns: PrintableColumn[] = [
+    { key: 'name', label: 'المقاول', render: (r: ContractorRow) => r.name },
+    { key: 'code', label: 'الرمز', ltr: true, render: (r: ContractorRow) => r.code },
+    { key: 'project', label: 'المشروع', render: (r: ContractorRow) =>
+      (r.projects ?? []).length > 0 ? r.projects.join('، ') : '—' },
+    { key: 'balance', label: 'الرصيد (ر.س)', ltr: true, render: (r: ContractorRow) => {
+      const v = balanceView(r.balance);
+      return `${sar(Math.abs(r.balance))} (${v.label})`;
+    } },
+    { key: 'retention', label: 'الضمان المحتجز (ر.س)', ltr: true,
+      render: (r: ContractorRow) => r.retentionHeld > 0 ? sar(r.retentionHeld) : '—' },
+  ];
 
   const seq = useRef(0);
   const reload = () => {
@@ -95,6 +126,27 @@ export function Contractors() {
   const filtering = chips.length > 0;
 
   if (err) return <ErrorState message={`تعذّر التحميل: ${err}`} onRetry={reload} />;
+
+  // نسخة PDF قابلة للطباعة — نفس d.rows/d.totals المصفّاة التي يعرضها الجدول بالضبط.
+  if (showPrint && d) {
+    return (
+      <PrintableList
+        docTitle="قائمة المقاولين"
+        fileStamp="قائمة-المقاولين"
+        scopeLine="الرصيد السالب (له) مستحق للمقاول، والموجب (لنا) مستحق للشركة"
+        filterLine={filterLine}
+        countLabel={`${ar(d.count)} مقاولاً`}
+        columns={printColumns}
+        rows={d.rows}
+        totalsCells={[
+          `الإجمالي (${ar(d.count)})`, '', '', '',
+          sar(d.totals.retentionHeld),
+        ]}
+        footNote={`إجمالي مستحق للمقاولين ${sar(d.totals.owedToContractors)} ر.س · إجمالي مستحق لنا ${sar(d.totals.owedToUs)} ر.س`}
+        onBack={() => setShowPrint(false)}
+      />
+    );
+  }
 
   async function handleAdd(values: ContractorFormValues) {
     setBusy(true); setFormErr(null);
@@ -159,6 +211,8 @@ export function Contractors() {
                onChange={(e) => setQ(e.target.value)} style={{ minWidth: 300 }} />
         {/* المشروع والاتجاه انتقلا إلى قائمتي عمودَيهما — نفس منطق Suppliers.tsx. */}
         {d && <span className="count">{ar(d.count)} مقاولاً</span>}
+        <a className="btn sm" href={exportUrl} download>تصدير Excel</a>
+        <button className="btn sm" disabled={!d} onClick={() => setShowPrint(true)}>PDF</button>
       </div>
 
       <Card>

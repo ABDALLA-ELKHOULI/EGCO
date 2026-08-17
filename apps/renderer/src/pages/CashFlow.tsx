@@ -1,4 +1,4 @@
-import { CSSProperties, useEffect, useRef, useState } from 'react';
+import { CSSProperties, KeyboardEvent as ReactKeyboardEvent, TouchEvent as ReactTouchEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, apiBase, ApiError } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
@@ -50,6 +50,22 @@ function periodDaysLabel(n: number): string {
   return `${ar(n)} أيام`;
 }
 
+/** «١–٣٠ يوماً» / «أكثر من ٩٠ يوماً» — تسمية فئة عمرية من حدّي الأيام القادمين من الخادم. */
+function ageBucketLabel(fromDays: number, toDays: number | null): string {
+  if (toDays == null) return `أكثر من ${ar(fromDays - 1)} يوماً`;
+  return `${ar(fromDays)}–${ar(toDays)} يوماً`;
+}
+
+/** مفتاح localStorage للفترة الفعالة في شريط بطاقات التدفق — نفس نمط تسمية مفاتيح
+ * Sidebar.tsx (`egco.<شاشة>.<حالة>`) حتى يبقى الاصطلاح موحّداً عبر الواجهة. */
+const KPI_VIEW_STORAGE_KEY = 'egco.cashflow.kpiView';
+const KPI_VIEW_COUNT = 3;
+
+function loadStoredKpiView(): number {
+  const raw = Number(localStorage.getItem(KPI_VIEW_STORAGE_KEY));
+  return Number.isInteger(raw) && raw >= 0 && raw < KPI_VIEW_COUNT ? raw : 0;
+}
+
 /** رقم قابل للنقر يفتح نافذة تُبيّن الصفوف التي كوّنته — جوهر ميزة «من أين جاء هذا الرقم؟». */
 function AmountCell({ amount, cls, onClick }: { amount: number; cls?: string; onClick: () => void }) {
   return (
@@ -82,9 +98,27 @@ export function CashFlow() {
   const [customPeriodDays, setCustomPeriodDays] = useState(String(periodDays));
   const [applied, setApplied] = useState<{ weeks: number; opening: number }>({ weeks: 26, opening: 0 });
   const [breakdownReq, setBreakdownReq] = useState<BreakdownRequest | null>(null);
+  const [activeKpiView, setActiveKpiView] = useState<number>(loadStoredKpiView);
+  const periodRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+  const [jumpedPeriod, setJumpedPeriod] = useState<string | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem(KPI_VIEW_STORAGE_KEY, String(activeKpiView));
+  }, [activeKpiView]);
 
   function openBreakdown(req: BreakdownRequest) {
     setBreakdownReq(req);
+  }
+
+  /** يبحث عن صف الفترة التي يقع فيها أدنى رصيد (المطابقة بقيمة الرصيد المحسوبة خادمياً
+   * لا بحساب جديد) وينتقل إليه — «أدنى رصيد» يشير لفترة واحدة بعينها في الجدول أدناه. */
+  function jumpToMinBalancePeriod() {
+    const target = periods.find((p: any) => (p.balance ?? 0) === (summary.minBalance ?? 0));
+    if (!target) return;
+    const el = periodRowRefs.current[target.label];
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setJumpedPeriod(target.label);
+    setTimeout(() => setJumpedPeriod((cur) => (cur === target.label ? null : cur)), 2200);
   }
 
   const seq = useRef(0);
@@ -220,35 +254,8 @@ export function CashFlow() {
         <button className="btn primary" onClick={apply}>تطبيق</button>
       </div>
 
-      <div className="kpi-row">
-        <button className="kpi-link-reset" onClick={() => openBreakdown({
-          term: 'forecast', titleLabel: 'إجمالي الداخل (متوقّع)', amount: summary.totalInflow ?? 0,
-          rule: 'كل تحصيل مفتوح (لم يُحصَّل بعد) له تاريخ استحقاق ضمن الأفق المعروض — هذا توقّع لا تاريخ.',
-        })}>
-          <Kpi label="إجمالي الداخل (متوقّع)" value={sar(summary.totalInflow ?? 0)} unit="ر.س" tone="ok" hero={false} />
-        </button>
-        <button className="kpi-link-reset" onClick={() => openBreakdown({
-          term: 'collected', titleLabel: 'إجمالي المحصّل خلال المدى', amount: d.collections?.inWindow ?? 0,
-          rule: 'كل تحصيل بحالة «محصَّل» وتاريخ تحصيله الفعلي يقع داخل الأفق المعروض — هذا تاريخ فعلي لا توقّع.',
-        })}>
-          <Kpi label="إجمالي المحصّل خلال المدى" value={sar(d.collections?.inWindow ?? 0)} unit="ر.س" tone="ok" hero={false} />
-        </button>
-        <button className="kpi-link-reset" onClick={() => openBreakdown({
-          term: 'scheduled', titleLabel: 'إجمالي الخارج (مجدول)', amount: summary.totalOutflow ?? 0,
-          rule: 'كل فاتورة/ضمان مستحق داخل الأفق المعروض من الجدول الزمني.',
-        })}>
-          <Kpi label="إجمالي الخارج" value={sar(summary.totalOutflow ?? 0)} unit="ر.س" hero={false} />
-        </button>
-        <Kpi label="صافي الفترة" value={sar(summary.netTotal ?? 0)} unit="ر.س"
-             tone={(summary.netTotal ?? 0) < 0 ? 'red' : 'ok'} hero />
-        <Kpi label="أدنى رصيد" value={sar(summary.minBalance ?? 0)} unit="ر.س" hero={false}
-             tone={(summary.minBalance ?? 0) < 0 ? 'red' : ''} alert={(summary.minBalance ?? 0) < 0} />
-      </div>
-      <p className="muted text-caption-micro" style={{ margin: '0 0 14px', lineHeight: 1.7 }}>
-        «إجمالي الداخل» توقّعٌ لتحصيلات لم تُحصَّل بعد ولها تاريخ استحقاق، أما «إجمالي المحصّل خلال المدى»
-        فمبلغ حُصِّل فعلاً بتاريخ فعلي — الاثنان مختلفان ولا يُجمعان في رقم واحد. اضغط أي رقم أعلاه لرؤية
-        الصفوف التي كوّنته.
-      </p>
+      <KpiCarousel d={d} summary={summary} activeView={activeKpiView} onViewChange={setActiveKpiView}
+        openBreakdown={openBreakdown} onJumpToMinBalance={jumpToMinBalancePeriod} />
 
       {summary.firstDeficit && (
         <div className="callout bad callout-tight">
@@ -262,6 +269,13 @@ export function CashFlow() {
           مستحق للمقاولين بلا تواريخ استحقاق: {sar(undatedContractorDues)} ر.س — غير موزّع على الجدول
           لأن دفاتر المقاولين لا تحمل تواريخ
         </div>
+      )}
+
+      {/* مستحق المقاولين المعروض دائماً هو رصيدهم الكامل عبر كل مشاريعهم — راجع
+          CONTRACTOR_BALANCE_SCOPE_NOTE في cashflow_service.py. يظهر التنبيه حين يكون
+          هناك فلتر مشروع فعلي، إذ عندها فقط يمكن أن يُقرأ الرقم خطأً كأنه محصور بالمشروع. */}
+      {project && d.contractorBalanceScopeNote && (
+        <div className="callout warn callout-tight">{d.contractorBalanceScopeNote}</div>
       )}
 
       <div className="stack">
@@ -332,7 +346,11 @@ export function CashFlow() {
                   </thead>
                   <tbody>
                     {periods.slice(0, MAX_RENDERED_PERIOD_ROWS).map((p: any) => (
-                      <tr key={p.label} style={p.deficit ? { background: 'var(--tint)' } : undefined}>
+                      <tr key={p.label} ref={(el) => { periodRowRefs.current[p.label] = el; }}
+                          style={{
+                            ...(p.deficit ? { background: 'var(--tint)' } : {}),
+                            ...(jumpedPeriod === p.label ? { outline: '2px solid var(--gold)', outlineOffset: -2 } : {}),
+                          }}>
                         <td className="nowrap">{arDate(p.from)} — {arDate(p.to)}</td>
                         <td className="ltr">
                           <AmountCell amount={p.inflow ?? 0} cls="ok" onClick={() => openBreakdown({
@@ -372,7 +390,9 @@ export function CashFlow() {
                   عُرضت أول {ar(MAX_RENDERED_PERIOD_ROWS)} فترة — قصّر الأفق أو أطل الفترة
                 </p>
               )}
-              <ReconciliationFooter recon={d.reconciliation} parties={parties} onTermClick={openBreakdown} />
+              <ReconciliationFooter recon={d.reconciliation} parties={parties} onTermClick={openBreakdown}
+                note={d.reconciliationNote} project={project}
+                onNoteSaved={() => load(applied.weeks, applied.opening, project, parties, periodDays)} />
             </>
           )}
         </Card>
@@ -427,8 +447,10 @@ function ReconTerm({ sign, label, value, muted, onClick }: {
  * الأربعة تُعرض هنا صراحةً، ومجموعها يساوي رقم الشاشة الأخرى بالهللة — والفرق (المفترض
  * أن يكون صفراً) يُعرض بنفسه إن لم يكن كذلك، فلا انحراف صامت.
  */
-function ReconciliationFooter({ recon, parties, onTermClick }: {
+function ReconciliationFooter({ recon, parties, onTermClick, note, project, onNoteSaved }: {
   recon: any; parties: PartiesFilter; onTermClick: (req: BreakdownRequest) => void;
+  note: { noteCode: string; noteText: string | null; updatedAt: string } | null | undefined;
+  project: string; onNoteSaved: () => void;
 }) {
   if (!recon) return null;
   const o = recon.outflow;
@@ -511,6 +533,306 @@ function ReconciliationFooter({ recon, parties, onTermClick }: {
         و«بعد نهاية الأفق» يستحق بعد {arDate(recon.horizonEnd)}، و«بلا تواريخ» فواتير
         ودفاتر بلا تاريخ استحقاق لا يمكن وضعها في فترة بأمانة. لا شيء من هذه الثلاثة داخل
         الرصيد التراكمي أعلاه.
+      </p>
+
+      {outDrift && (
+        <ReconciliationDiffAsk difference={o.difference} parties={parties} project={project}
+          note={note} onSaved={onNoteSaved} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * حين يظهر «فرق غير مفسَّر» في المطابقة أعلاه، بدل ترك الرقم بلا معنى نسأل المستخدم
+ * عن السبب الأرجح ونحفظ إجابته — فتظهر تلقائياً في المرات القادمة بدل إعادة السؤال.
+ * لا يظهر هذا المكوّن أصلاً إن كان الفرق صفراً (outDrift=false في المستدعي)، فحارس
+ * انحدار خلل الطرح المزدوج (٤٧٤,١٤٧.١٠ ر.س) يبقى سليماً — هذا المكوّن لا يغيّر الحساب
+ * إطلاقاً، فقط يعرض تفسيراً نصياً محفوظاً بجانب رقم محسوب خادمياً كما هو.
+ */
+const RECON_DIFF_REASONS: { code: string; label: string }[] = [
+  { code: 'overdue_not_yet_billed', label: 'مبلغ متأخر لم يُرفع كشفه بعد' },
+  { code: 'payment_not_recorded', label: 'دفعة لم تُسجَّل' },
+];
+
+function ReconciliationDiffAsk({ difference, parties, project, note, onSaved }: {
+  difference: number; parties: PartiesFilter; project: string;
+  note: { noteCode: string; noteText: string | null; updatedAt: string } | null | undefined;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [choice, setChoice] = useState<string>('');
+  const [freeText, setFreeText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(noteCode: string, noteText: string | null) {
+    setBusy(true); setError(null);
+    try {
+      const res = await fetch(apiBase() + '/api/v1/cashflow/reconciliation-note', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parties, project: project || null, noteCode, noteText }),
+      });
+      if (!res.ok) throw new Error('تعذّر حفظ التفسير');
+      setEditing(false);
+      onSaved();
+    } catch (e: any) {
+      setError(e.message || 'تعذّر حفظ التفسير');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const noteLabel = note ? RECON_DIFF_REASONS.find((r) => r.code === note.noteCode)?.label : null;
+
+  if (note && !editing) {
+    return (
+      <div className="callout callout-tight" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 }}>
+        <span>تفسير هذا الفرق: <b>{noteLabel || note.noteText || 'أخرى'}</b></span>
+        {note.noteCode === 'other' && note.noteText && <span className="muted">— {note.noteText}</span>}
+        <button className="btn" style={{ marginInlineStart: 'auto' }} onClick={() => { setEditing(true); setChoice(''); setFreeText(''); }}>
+          تغيير التفسير
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="callout warn callout-tight" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <b style={{ fontSize: 12 }}>ما سبب الفرق غير المفسَّر ({sar(Math.abs(difference))} ر.س)؟</b>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {RECON_DIFF_REASONS.map((r) => (
+          <button key={r.code} className="btn" disabled={busy} onClick={() => save(r.code, null)}>
+            {r.label}
+          </button>
+        ))}
+        <button className="btn" disabled={busy} onClick={() => setChoice('other')}>أخرى — اكتب السبب</button>
+      </div>
+      {choice === 'other' && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <input value={freeText} onChange={(e) => setFreeText(e.target.value)} placeholder="اكتب السبب…"
+                 style={{ flex: '1 0 220px' }} />
+          <button className="btn primary" disabled={busy || !freeText.trim()}
+                  onClick={() => save('other', freeText.trim())}>حفظ</button>
+        </div>
+      )}
+      {error && <span className="callout bad callout-tight">{error}</span>}
+      {editing && note && (
+        <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => setEditing(false)}>إلغاء</button>
+      )}
+    </div>
+  );
+}
+
+// ============================================================== شريط بطاقات التدفق (Carousel)
+
+const KPI_VIEWS: { key: string; title: string }[] = [
+  { key: 'current', title: 'الحالي' },
+  { key: 'overdue', title: 'المتأخر' },
+  { key: 'forecastActual', title: 'المتوقع مقابل الفعلي' },
+];
+
+/**
+ * شريط البطاقات أعلى شاشة التدفق النقدي — يحل محل صف الخمس بطاقات الثابت السابق
+ * بثلاث «صفحات» منزلقة بنفس المساحة: الحالي (كما كان تماماً)، المتأخر (تدفق مبني
+ * على المتأخر وحده)، والمتوقع مقابل الفعلي (فجوة التحصيل). كل الأرقام المعروضة هنا
+ * قادمة جاهزة من الخادم — لا حساب مالي هنا، فقط عرض واختيار الصفحة.
+ *
+ * أسهم يمين/يسار متوافقة مع اتجاه القراءة العربي (RTL): زر «السابق» أولاً في DOM
+ * فيظهر يمين الشاشة، و«التالي» يظهر يسارها — نفس التقارب الذي يتوقعه قارئ عربي عند
+ * التنقل للأمام. يدعم أسهم لوحة المفاتيح (يسار = التالي، يمين = السابق) والسحب باللمس،
+ * والفترة الفعالة تُحفظ في localStorage بنفس نمط تسمية مفاتيح Sidebar.tsx.
+ */
+function KpiCarousel({ d, summary, activeView, onViewChange, openBreakdown, onJumpToMinBalance }: {
+  d: any; summary: any; activeView: number; onViewChange: (i: number) => void;
+  openBreakdown: (req: BreakdownRequest) => void; onJumpToMinBalance: () => void;
+}) {
+  const touchX = useRef<number | null>(null);
+
+  function goTo(i: number) {
+    onViewChange(((i % KPI_VIEWS.length) + KPI_VIEWS.length) % KPI_VIEWS.length);
+  }
+  const goNext = () => goTo(activeView + 1);
+  const goPrev = () => goTo(activeView - 1);
+
+  function onKeyDown(e: ReactKeyboardEvent) {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); goNext(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); goPrev(); }
+  }
+  function onTouchStart(e: ReactTouchEvent) { touchX.current = e.touches[0]?.clientX ?? null; }
+  function onTouchEnd(e: ReactTouchEvent) {
+    if (touchX.current == null) return;
+    const dx = (e.changedTouches[0]?.clientX ?? touchX.current) - touchX.current;
+    touchX.current = null;
+    if (Math.abs(dx) < 40) return;
+    if (dx < 0) goNext(); else goPrev();
+  }
+
+  // أنماط inline بديلة مؤقتة — لم تُضف إلى styles/tokens.css (المملوك لوكيل آخر)؛
+  // تحتاج توحيداً لاحقاً في نظام التصميم (انظر تقرير التسليم).
+  const outerStyle: CSSProperties = {
+    border: '1px solid var(--hair)', borderRadius: 'var(--r-card, 10px)',
+    padding: '10px 4px 8px', marginBottom: 14,
+  };
+  const headerStyle: CSSProperties = {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px 6px',
+  };
+  const arrowStyle: CSSProperties = {
+    border: 'none', background: 'transparent', fontSize: 22, lineHeight: 1, cursor: 'pointer',
+    padding: '2px 12px', color: 'var(--muted)',
+  };
+  const dotsRowStyle: CSSProperties = { display: 'flex', justifyContent: 'center', gap: 6, padding: '8px 0 2px' };
+  const dotStyle = (active: boolean): CSSProperties => ({
+    width: 7, height: 7, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer',
+    background: active ? 'var(--gold)' : 'var(--hair)',
+  });
+
+  return (
+    <div style={outerStyle} tabIndex={0} onKeyDown={onKeyDown}
+         onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+         role="region" aria-roledescription="carousel" aria-label="بطاقات ملخّص التدفق النقدي">
+      <div style={headerStyle}>
+        <button type="button" aria-label="السابق" style={arrowStyle} onClick={goPrev}>›</button>
+        <b style={{ fontSize: 13 }}>{KPI_VIEWS[activeView].title}</b>
+        <button type="button" aria-label="التالي" style={arrowStyle} onClick={goNext}>‹</button>
+      </div>
+
+      {activeView === 0 && (
+        <CurrentKpiView d={d} summary={summary} openBreakdown={openBreakdown} onJumpToMinBalance={onJumpToMinBalance} />
+      )}
+      {activeView === 1 && <OverdueKpiView view={d.overdueView} />}
+      {activeView === 2 && <ForecastVsActualKpiView view={d.forecastVsActual} />}
+
+      <div style={dotsRowStyle}>
+        {KPI_VIEWS.map((v, i) => (
+          <button key={v.key} type="button" aria-label={v.title} aria-current={i === activeView}
+                  style={dotStyle(i === activeView)} onClick={() => onViewChange(i)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** «الحالي» — نفس الخمس بطاقات التي كانت تُعرض ثابتة سابقاً، بلا أي تغيير في الحساب. */
+function CurrentKpiView({ d, summary, openBreakdown, onJumpToMinBalance }: {
+  d: any; summary: any; openBreakdown: (req: BreakdownRequest) => void; onJumpToMinBalance: () => void;
+}) {
+  return (
+    <>
+      <div className="kpi-row">
+        <button className="kpi-link-reset" onClick={() => openBreakdown({
+          term: 'forecast', titleLabel: 'إجمالي الداخل (متوقّع)', amount: summary.totalInflow ?? 0,
+          rule: 'كل تحصيل مفتوح (لم يُحصَّل بعد) له تاريخ استحقاق ضمن الأفق المعروض — هذا توقّع لا تاريخ.',
+        })}>
+          <Kpi label="إجمالي الداخل (متوقّع)" value={sar(summary.totalInflow ?? 0)} unit="ر.س" tone="ok" hero={false} />
+        </button>
+        <button className="kpi-link-reset" onClick={() => openBreakdown({
+          term: 'collected', titleLabel: 'إجمالي المحصّل خلال المدى', amount: d.collections?.inWindow ?? 0,
+          rule: 'كل تحصيل بحالة «محصَّل» وتاريخ تحصيله الفعلي يقع داخل الأفق المعروض — هذا تاريخ فعلي لا توقّع.',
+        })}>
+          <Kpi label="إجمالي المحصّل خلال المدى" value={sar(d.collections?.inWindow ?? 0)} unit="ر.س" tone="ok" hero={false} />
+        </button>
+        <button className="kpi-link-reset" onClick={() => openBreakdown({
+          term: 'scheduled', titleLabel: 'إجمالي الخارج (مجدول)', amount: summary.totalOutflow ?? 0,
+          rule: 'كل فاتورة/ضمان مستحق داخل الأفق المعروض من الجدول الزمني.',
+        })}>
+          <Kpi label="إجمالي الخارج" value={sar(summary.totalOutflow ?? 0)} unit="ر.س" hero={false} />
+        </button>
+        <Kpi label="صافي الفترة" value={sar(summary.netTotal ?? 0)} unit="ر.س"
+             tone={(summary.netTotal ?? 0) < 0 ? 'red' : 'ok'} hero
+             explain={<ExplainDot metric="cashflowNetPeriod" values={{
+               totalInflow: summary.totalInflow, totalOutflow: summary.totalOutflow, netTotal: summary.netTotal,
+             }} />} />
+        <button className="kpi-link-reset" onClick={onJumpToMinBalance}
+                title="اضغط للانتقال إلى فترة أدنى رصيد في الجدول أدناه">
+          <Kpi label="أدنى رصيد" value={sar(summary.minBalance ?? 0)} unit="ر.س" hero={false}
+               tone={(summary.minBalance ?? 0) < 0 ? 'red' : ''} alert={(summary.minBalance ?? 0) < 0}
+               explain={<ExplainDot metric="cashflowMinBalance" values={{ minBalance: summary.minBalance }} />} />
+        </button>
+      </div>
+      <p className="muted text-caption-micro" style={{ margin: '4px 0 0', lineHeight: 1.7, padding: '0 6px' }}>
+        «إجمالي الداخل» توقّعٌ لتحصيلات لم تُحصَّل بعد ولها تاريخ استحقاق، أما «إجمالي المحصّل خلال المدى»
+        فمبلغ حُصِّل فعلاً بتاريخ فعلي — الاثنان مختلفان ولا يُجمعان في رقم واحد. اضغط أي رقم لرؤية الصفوف
+        التي كوّنته، واضغط «أدنى رصيد» للانتقال إلى فترته في الجدول أدناه.
+      </p>
+    </>
+  );
+}
+
+/**
+ * «المتأخر» — تدفق نقدي مبني على المتأخر وحده: كم إجمالاً (خارج/داخل)، كم عمره،
+ * وأثر تسويته اليوم على أدنى رصيد. كل رقم هنا مأخوذ حرفياً من overdueView المحسوبة
+ * خادمياً في cashflow_service._overdue_view — لا حساب في هذا الملف.
+ */
+function OverdueKpiView({ view }: { view: any }) {
+  if (!view) return <State>لا توجد بيانات متأخرة لهذا الاختيار.</State>;
+  return (
+    <div style={{ padding: '0 6px' }}>
+      <div className="kpi-row">
+        <Kpi label="إجمالي الخارج المتأخر" value={sar(view.totalOverdueOutflow ?? 0)} unit="ر.س"
+             tone={(view.totalOverdueOutflow ?? 0) > 0 ? 'red' : ''} hero={false} />
+        <Kpi label="إجمالي الداخل المتأخر (تحصيلات فات استحقاقها)" value={sar(view.totalOverdueInflow ?? 0)} unit="ر.س"
+             tone="ok" hero={false} />
+        <Kpi label="أدنى رصيد لو سُدد كل المتأخر (خارج) اليوم" value={sar(view.minBalanceIfOverdueOutflowSettledToday ?? 0)}
+             unit="ر.س" hero
+             tone={(view.minBalanceIfOverdueOutflowSettledToday ?? 0) < 0 ? 'red' : 'ok'} />
+        <Kpi label="أدنى رصيد لو حُصِّل كل المتأخر (داخل) اليوم" value={sar(view.minBalanceIfOverdueInflowCollectedToday ?? 0)}
+             unit="ر.س" hero={false}
+             tone={(view.minBalanceIfOverdueInflowCollectedToday ?? 0) < 0 ? 'red' : 'ok'} />
+      </div>
+      <p className="muted text-caption-micro" style={{ margin: '8px 0 6px', lineHeight: 1.7 }}>
+        كل هذه الأرقام مقصورة على ما مضى تاريخ استحقاقه بالفعل («متأخر الآن» في سطر المطابقة أسفل الجدول) —
+        لا تشمل ما هو مجدول ضمن الأفق ولا ما سيستحق بعده.
+      </p>
+      {(view.buckets ?? []).length > 0 && (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>عمر التأخر</th>
+                <th className="ltr">الخارج المتأخر</th>
+                <th className="ltr">الداخل المتأخر</th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.buckets.map((b: any) => (
+                (b.outflowCount > 0 || b.inflowCount > 0) && (
+                  <tr key={`${b.fromDays}-${b.toDays}`}>
+                    <td>{ageBucketLabel(b.fromDays, b.toDays)}</td>
+                    <td className="ltr"><Money v={b.outflowAmount ?? 0} /> <span className="muted">({ar(b.outflowCount ?? 0)})</span></td>
+                    <td className="ltr"><Money v={b.inflowAmount ?? 0} cls="ok" /> <span className="muted">({ar(b.inflowCount ?? 0)})</span></td>
+                  </tr>
+                )
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * «المتوقع مقابل الفعلي» — الداخل المتوقّع لكامل الأفق المعروض مقابل ما حُصِّل فعلاً
+ * خلال نفس المدى، والفجوة بينهما صراحةً. الرقمان مختلفا الطبيعة (توقّع لم يتحقق بعد
+ * مقابل تاريخ فعلي فات) — هذا مقصود ومطلوب صراحةً من المستخدم، والفجوة توضّح العلاقة
+ * بدل ترك القارئ يقارن رقمين بلا رابط. كل الأرقام من forecastVsActual المحسوبة خادمياً.
+ */
+function ForecastVsActualKpiView({ view }: { view: any }) {
+  if (!view) return <State>لا توجد بيانات كافية للمقارنة.</State>;
+  const gap = view.gap ?? 0;
+  return (
+    <div style={{ padding: '0 6px' }}>
+      <div className="kpi-row">
+        <Kpi label="إجمالي الداخل المتوقّع لهذا الأفق" value={sar(view.expectedInflow ?? 0)} unit="ر.س" tone="ok" hero={false} />
+        <Kpi label="إجمالي المحصّل فعلياً خلال نفس المدى" value={sar(view.actualCollected ?? 0)} unit="ر.س" tone="ok" hero={false} />
+        <Kpi label="الفجوة (المحصّل فعلياً − المتوقّع)" value={sar(gap)} unit="ر.س" hero
+             tone={gap < 0 ? 'red' : gap > 0 ? 'ok' : ''} alert={gap < 0} />
+      </div>
+      <p className="muted text-caption-micro" style={{ margin: '8px 0 0', lineHeight: 1.7 }}>
+        «المتوقّع» تحصيلات لم تُحصَّل بعد ولها تاريخ استحقاق داخل الأفق، و«المحصّل فعلياً» تحصيلات
+        سُددت بالفعل بتاريخ فعلي داخل نفس المدى — مجموعتان مختلفتان لا تتطابقان بالضرورة، والفجوة
+        تعرض الفرق بينهما صراحةً لا كتقريب صامت.
       </p>
     </div>
   );

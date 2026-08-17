@@ -9,6 +9,7 @@ import { ScopeBar, scopeParams, type Scope } from '@/components/ScopeBar';
 import { Present, type Slide } from '@/components/Present';
 import { CopyButton } from '@/components/Ai';
 import { useAiEnabled } from '@/lib/useAi';
+import logoFull from '@/assets/logo-full.png';
 
 /**
  * التقرير التحليلي — تبويبان: تقرير الفترة (A4 قابل للطباعة) والتحليل الدوري.
@@ -207,7 +208,8 @@ function ProjectSummarySheet({ d }: { d: any }) {
   const t = d.totals;
   return (
     <div className="sheet">
-      <header className="rpt-head">
+      <header className="rpt-head" style={{ alignItems: 'center', gap: 10 }}>
+        <img src={logoFull} alt="" style={{ height: 34, width: 'auto', display: 'block', flex: 'none' }} />
         <div>
           <b>شركة إعمار الخليج المصرية للمقاولات</b>
           <span>الإدارة المالية — الفرع الرئيسي</span>
@@ -217,13 +219,21 @@ function ProjectSummarySheet({ d }: { d: any }) {
 
       <h1 className="rpt-title">ملخّص المشروع</h1>
       <p className="rpt-sub">المشروع: {d.project} · حتى {arDate(d.today)} · جميع الأرقام بالريال السعودي</p>
+      {/* مستحق المقاول هنا محسوب من حركات هذا المشروع فقط — بخلاف شاشة التدفق النقدي
+          التي تعرض رصيد المقاول الكامل عبر كل مشاريعه. النطاق مختلف عمداً بين
+          الشاشتين، فيُعرَّف صراحة هنا بدل أن يظهر تعارضاً صامتاً بين الرقمين. */}
+      {d.contractorScopeNote && <p className="rpt-sub muted">{d.contractorScopeNote}</p>}
       <hr />
 
+      {/* كل مسمّى يحمل نطاقه. الكلمات هنا هي نفسها في التقرير العام على مستوى
+          الشركة، فتصديرُ الاثنين ومقارنتهما يُظهر «إجمالي المفوتر» برقمين
+          مختلفين — والرقمان صحيحان، والمسمّى وحده هو الكاذب. */}
       <div className="rpt-kpis" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-        <RKpi label="إجمالي المفوتر" value={sar(t.totalInvoiced)} />
-        <RKpi label="المسدد" value={sar(t.totalPaid)} cls="ok" />
-        <RKpi label="المتبقي" value={sar(t.outstanding)} />
-        <RKpi label="المتأخر (موردون فقط)" value={sar(t.delayedAmount)} cls="red" />
+        <RKpi label="المفوتر في هذا المشروع" value={sar(t.totalInvoiced)} />
+        <RKpi label="المسدد في هذا المشروع" value={sar(t.totalPaid)} cls="ok" />
+        <RKpi label="المتبقي في هذا المشروع" value={sar(t.outstanding)} />
+        <RKpi label="المتأخر في هذا المشروع (موردون فقط)"
+              value={sar(t.delayedAmount)} cls="red" />
       </div>
 
       <div className="table-scroll wide">
@@ -481,7 +491,8 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
       {exportErr && <div className="no-print"><State>{exportErr}</State></div>}
 
       <div className="sheet">
-        <header className="rpt-head">
+        <header className="rpt-head" style={{ alignItems: 'center', gap: 10 }}>
+          <img src={logoFull} alt="" style={{ height: 34, width: 'auto', display: 'block', flex: 'none' }} />
           <div>
             <b>{m.company}</b>
             <span>{m.department}</span>
@@ -1052,8 +1063,10 @@ function reportSlides(d: any, parties: PartyScope = 'suppliers'): Slide[] {
       <div className="slide-kpis">
         <Kpi label="إجمالي المفوتر" value={sar(s.total_invoiced)} unit="ر.س" />
         <Kpi label="المسدد" value={sar(s.total_paid)} unit="ر.س" tone="ok" />
-        <Kpi label="المديونية المفتوحة" value={sar(s.outstanding)} unit="ر.س" />
-        <Kpi label="المتأخر" value={sar(s.overdue)} unit="ر.س" tone="red" alert={s.overdue > 0} />
+        <Kpi label="المديونية المفتوحة" value={sar(s.outstanding)} unit="ر.س"
+             explain={<ExplainDot metric="outstanding" values={{ totalInvoiced: s.total_invoiced, totalPaid: s.total_paid, outstanding: s.outstanding }} />} />
+        <Kpi label="المتأخر" value={sar(s.overdue)} unit="ر.س" tone="red" alert={s.overdue > 0}
+             explain={<ExplainDot metric="overdue" values={{ overdue: s.overdue }} />} />
       </div>
     ),
   });

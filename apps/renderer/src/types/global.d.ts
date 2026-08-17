@@ -6,6 +6,12 @@ export interface PickedFile {
   source: 'pdf_statement' | 'suppliers_excel' | 'csv_statement';
 }
 
+export interface BackendRestartInfo {
+  url: string;
+  recovered: boolean;
+  error?: string;
+}
+
 export type UpdateStatus =
   | { state: 'checking' }
   | { state: 'up-to-date'; version: string }
@@ -31,6 +37,7 @@ declare global {
       checkForUpdates(): Promise<UpdateStatus>;
       installUpdate(): Promise<void>;
       onUpdateStatus(cb: (status: UpdateStatus) => void): () => void;
+      onBackendRestarted(cb: (info: BackendRestartInfo) => void): () => void;
     };
   }
 }

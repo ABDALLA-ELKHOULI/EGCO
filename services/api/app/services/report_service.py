@@ -292,5 +292,13 @@ def project_summary(supplier_positions: Sequence[SupplierPosition],
         byBucket={k: _money_dec(v) for k, v in by_bucket_totals.items()},
         companyCount=len(rows),
     )
+    # هذا الرقم — بخلاف مستحق المقاولين في /cashflow — يُحسَب من حركات هذا المشروع فقط
+    # (`contractor_entries` يجهّزها المستدعي مفلترة بـ e.project == project)، فهو
+    # مستحق «هذا المشروع وحده» فعلاً لا تقريباً. الشاشتان تتعارضان بصمت لولا هذا التعليم
+    # الصريح على كلا الطرفين؛ راجع CONTRACTOR_BALANCE_SCOPE_NOTE في cashflow_service.py.
+    contractor_scope_note = (
+        'مستحق المقاولين هنا محسوب من حركات هذا المشروع فقط (نطاق دقيق) — على خلاف '
+        'شاشة التدفق النقدي التي تعرض رصيد المقاول الكامل عبر كل مشاريعه'
+        if parties in ('contractors', 'both') else None)
     return dict(project=project, parties=parties, today=today.isoformat(),
-                rows=rows, totals=totals)
+                rows=rows, totals=totals, contractorScopeNote=contractor_scope_note)

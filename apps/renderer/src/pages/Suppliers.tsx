@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, ApiError, DELAY_BUCKETS, type SupplierQuery } from '@/lib/api';
+import { api, apiBase, ApiError, DELAY_BUCKETS, type SupplierQuery } from '@/lib/api';
 import { Th, type SortState } from '@/components/ColumnMenu';
 import { ar, arDate, arRange, sar, STATUS } from '@/lib/format';
 import { Card, EmptyState, ErrorState, Money, Pill, State } from '@/components/ui';
@@ -8,6 +8,7 @@ import { Modal } from '@/components/Modal';
 import { SupplierForm, type SupplierFormValues } from '@/components/SupplierForm';
 import { AiBlock } from '@/components/Ai';
 import { useAiEnabled } from '@/lib/useAi';
+import { PrintableList, type PrintableColumn } from '@/components/PrintableList';
 
 export function Suppliers() {
   const nav = useNavigate();
@@ -46,6 +47,17 @@ export function Suppliers() {
     setMinOut(''); setMaxOut(''); setPayFrom(''); setPayTo('');
   };
 
+  // رابط تصدير Excel — بنفس معايير query بالضبط، حتى يصدَّر ما تراه الشاشة فعلاً
+  // لا الدفتر كاملاً (نفس فكرة apiBase() في CashFlow.tsx/Report.tsx).
+  const exportUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== undefined && v !== '') params.set(k, String(v));
+    }
+    const s = params.toString();
+    return apiBase() + '/api/v1/suppliers/export.xlsx' + (s ? `?${s}` : '');
+  }, [query]);
+
   const chips = [
     q && { k: 'q', label: `بحث: ${q}`, clear: () => setQ('') },
     account && { k: 'acct', label: `الحساب: ${account}`, clear: () => setAccount('') },
@@ -65,7 +77,30 @@ export function Suppliers() {
   const [busy, setBusy] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
   const [prioritiesOpen, setPrioritiesOpen] = useState(false);
+  const [showPrint, setShowPrint] = useState(false);
   const { enabled: aiEnabled, loading: aiLoading } = useAiEnabled();
+
+  // نفس نص شريط «تصفية نشطة» أعلى الجدول، مُعاد استخدامه على الورقة المطبوعة —
+  // حتى لا يفقد قرارٌ يُبنى على النسخة الورقية سياق التصفية التي أنتجتها.
+  const filterLine = chips.length > 0 ? chips.map((c) => c.label).join(' · ') : null;
+
+  // «آخر دفعة» أُسقط من النسخة المطبوعة فقط: تسعة أعمدة (بما فيها التاريخ الفرعي
+  // تحت الحساب) لا تسع عرض A4 حتى أفقياً دون انضغاط يصعب قراءته على الورق —
+  // والتأخر/المديونية أهم لقرار السداد من تاريخ آخر دفعة.
+  const printColumns: PrintableColumn[] = [
+    { key: 'name', label: 'المورد', render: (r) => r.name },
+    { key: 'account', label: 'رقم الحساب', ltr: true, render: (r) => r.account },
+    { key: 'project', label: 'المشروع', render: (r) =>
+      r.projects && r.projects.length > 0 ? r.projects.join('، ') : (r.project || '—') },
+    { key: 'status', label: 'الحالة', render: (r) => {
+      const st = STATUS[r.status] ?? { label: r.status, cls: '' };
+      return <span className={`pill ${st.cls}`}>{st.label}</span>;
+    } },
+    { key: 'outstanding', label: 'المديونية المفتوحة (ر.س)', ltr: true,
+      render: (r) => r.outstanding > 0 ? sar(r.outstanding) : '—' },
+    { key: 'delay', label: 'التأخر (ر.س)', ltr: true,
+      render: (r) => r.delay?.days > 0 ? sar(r.delay.amount) : '—' },
+  ];
 
   const seq = useRef(0);
   const reload = () => {
@@ -91,6 +126,29 @@ export function Suppliers() {
   const filtering = chips.length > 0;
 
   if (err) return <ErrorState message={`تعذّر التحميل: ${err}`} onRetry={reload} />;
+
+  // نسخة PDF قابلة للطباعة — نفس d.rows/d.totals المصفّاة التي يعرضها الجدول
+  // بالضبط، فلا يمكن أن تكون الورقة المطبوعة أوسع أو أضيق مما تراه الشاشة.
+  if (showPrint && d) {
+    return (
+      <PrintableList
+        docTitle="قائمة الموردين"
+        fileStamp="قائمة-الموردين"
+        scopeLine="مرتبون بالمتأخر ثم بالمديونية المفتوحة"
+        filterLine={filterLine}
+        countLabel={`${ar(d.count)} نتيجة · مفتوح ${sar(d.totals.outstanding)} ر.س`}
+        columns={printColumns}
+        rows={d.rows}
+        totalsCells={[
+          `الإجمالي (${ar(d.count)})`, '', '', '',
+          sar(d.totals.outstanding),
+          sar(d.totals.delayed),
+        ]}
+        footNote={filterLine ? `متأخر ضمن التصفية: ${sar(d.totals.delayed)} ر.س` : undefined}
+        onBack={() => setShowPrint(false)}
+      />
+    );
+  }
 
   async function handleAdd(values: SupplierFormValues) {
     setBusy(true); setFormErr(null);
@@ -145,6 +203,9 @@ export function Suppliers() {
         {/* المشروع والحالة انتقلا إلى قائمتي عمودَيهما — إبقاؤهما هنا أيضاً يعني
             مكانين لنفس الفلتر يختلفان بصمت. */}
         {d && <span className="count">{ar(d.count)} نتيجة · مفتوح {sar(d.totals.outstanding)} ر.س</span>}
+        {/* يُصدِّر بالضبط ما تُصفّيه الشاشة الآن — لا الدفتر كاملاً. */}
+        <a className="btn sm" href={exportUrl} download>تصدير Excel</a>
+        <button className="btn sm" disabled={!d} onClick={() => setShowPrint(true)}>PDF</button>
       </div>
 
       <Card>

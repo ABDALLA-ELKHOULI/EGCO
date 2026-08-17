@@ -412,10 +412,13 @@ function ProjectBudget({ p }: { p: BudgetProject }) {
           <div className="kpi-row" style={{ marginBottom: 0 }}>
             <Kpi label="حجم العمل الفعلي للشهر" value={sar(latest.actualMonth)} unit="ر.س" />
             <Kpi label="المخطط للشهر" value={sar(latest.plannedMonth)} unit="ر.س" />
+            {/* كان مربوطاً بشرح budgetDelay — وهو يشرح نسبة التأخر التراكمية لا
+                انحراف الشهر. شرحٌ لا يطابق رقمه أسوأ من غيابه: الغائب يدفعك
+                للسؤال، والخاطئ يقنعك أنك فهمت. */}
             <Kpi label="انحراف الشهر" value={sar(latest.deviationMonth)} unit="ر.س"
                  tone={latest.deviationMonth < 0 ? 'red' : latest.deviationMonth > 0 ? 'ok' : 'muted'}
-                 explain={<ExplainDot metric="budgetDelay"
-                   values={{ plannedCum: latest.cumPlanned, actualCum: latest.cumActual, delayPct: latest.delayPct }} />} />
+                 explain={<ExplainDot metric="budgetDeviation"
+                   values={{ actualMonth: latest.actualMonth, plannedMonth: latest.plannedMonth }} />} />
             <Kpi label="نسبة الإنجاز" value={`${sar(latest.completionPct * 100)}٪`} hero
                  tone={latest.delayPct > 0.10 ? 'red' : ''} alert={latest.delayPct > 0.10}
                  explain={<ExplainDot metric="budgetCompletion"

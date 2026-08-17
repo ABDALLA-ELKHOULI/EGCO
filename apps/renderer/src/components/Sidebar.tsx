@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Icon, type IconName } from '@/components/Icon';
+import logoMark from '@/assets/logo-mark.png';
 
 const STORAGE_KEY = 'egco.sidebar.collapsed';
 
@@ -12,6 +13,8 @@ interface NavItem {
   label: string;
   /** مفتاح التنبيه — نقطة حمراء تظهر عند وجود بند يحتاج إجراءً */
   alert?: 'overdue' | 'dueSoon' | 'coverage';
+  /** الشاشة موجودة كإطار ولم تكتمل بعد — يُقال صراحةً بدل أن يظنّها المستخدم معطلة */
+  soon?: boolean;
 }
 
 /**
@@ -42,10 +45,15 @@ const GROUPS: { section: string; items: NavItem[] }[] = [
     ],
   },
   {
+    // كل ما يدخل ويخرج نقداً في مكان واحد: التحصيلات تدخل، والقروض والالتزامات
+    // والمصاريف تخرج — وهي التي كان التدفق النقدي يجهلها فيبدو «أدنى رصيد» متفائلاً.
     section: 'السيولة',
     items: [
       { to: '/cashflow', icon: 'cashflow', label: 'التدفق النقدي', alert: 'dueSoon' },
       { to: '/revenues', icon: 'revenue', label: 'التحصيلات' },
+      { to: '/loans', icon: 'loans', label: 'القروض', soon: true },
+      { to: '/obligations', icon: 'obligations', label: 'الالتزامات الشهرية', soon: true },
+      { to: '/expenses', icon: 'expenses', label: 'المصاريف التشغيلية', soon: true },
     ],
   },
   {
@@ -108,7 +116,7 @@ export function Sidebar() {
 
   return (
     <nav className={'sidebar' + (collapsed ? ' collapsed' : '')}>
-      <div className="side-head">
+      <div className="side-head" style={collapsed ? { flexDirection: 'column', gap: 10 } : undefined}>
         <button
           className="side-toggle"
           onClick={() => setCollapsed((c) => !c)}
@@ -118,10 +126,25 @@ export function Sidebar() {
         >
           <Icon name={collapsed ? 'expand' : 'collapse'} size={18} />
         </button>
-        <div className="brand">
-          <b>إعمار الخليج</b>
-          <span>المصرية للمقاولات</span>
-        </div>
+        {collapsed ? (
+          <img
+            src={logoMark}
+            alt="إعمار الخليج المصرية للمقاولات"
+            style={{ height: 22, width: 'auto', display: 'block', borderRadius: 6, background: '#fff', padding: 3, flex: 'none' }}
+          />
+        ) : (
+          <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <img
+              src={logoMark}
+              alt=""
+              style={{ height: 30, width: 'auto', display: 'block', borderRadius: 6, background: '#fff', padding: 3, flex: 'none' }}
+            />
+            <div style={{ minWidth: 0 }}>
+              <b>إعمار الخليج</b>
+              <span>المصرية للمقاولات</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {GROUPS.map((g) => (
@@ -131,6 +154,7 @@ export function Sidebar() {
             <NavLink key={it.to} to={it.to!} end={it.end} className={link} title={collapsed ? it.label : undefined}>
               <Icon name={it.icon} />
               <span className="nav-label">{it.label}</span>
+              {it.soon && <span className="nav-soon">قريباً</span>}
               {it.alert && alerts[it.alert] && <i className="alert-dot" aria-hidden="true" />}
             </NavLink>
           ))}

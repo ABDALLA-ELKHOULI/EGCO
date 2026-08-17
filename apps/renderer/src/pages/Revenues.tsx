@@ -4,6 +4,7 @@ import { ar, arDate, sar } from '@/lib/format';
 import { Card, EmptyState, ErrorState, Kpi, Money, Pill, State } from '@/components/ui';
 import { Modal } from '@/components/Modal';
 import { ExplainDot } from '@/components/Explain';
+import { Th, type SortState } from '@/components/ColumnMenu';
 
 type Revenue = {
   id: string; project: string; unit: string; client: string; amount: number;
@@ -16,6 +17,11 @@ export function Revenues() {
   const [q, setQ] = useState('');
   const [project, setProject] = useState('');
   const [status, setStatus] = useState('');
+  const [dueFrom, setDueFrom] = useState('');
+  const [dueTo, setDueTo] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const [sort, setSort] = useState<SortState | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const [addOpen, setAddOpen] = useState(false);
@@ -25,10 +31,22 @@ export function Revenues() {
   const [busy, setBusy] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
 
+  // sort/dir يذهبان للخادم (endpoint يملك totals، فلا يجوز فرزه في المتصفح — انظر
+  // تعليق _SORT_KEYS في routes/revenues.py). api.revenues لم تُوسَّع بعد بنوع يشمل
+  // هذه الحقول (lib/api.ts ملك فريق آخر حالياً)، لذا نمرّرها بتحويل نوع صريح؛
+  // qs() في api.ts عامة وتُسلسل أي حقل بصرف النظر عن التوقيع.
+  const query = useMemo(() => ({
+    q: q || undefined, project: project || undefined, status: status || undefined,
+    date_from: dueFrom || undefined, date_to: dueTo || undefined,
+    min_amount: minAmount ? Number(minAmount) : undefined,
+    max_amount: maxAmount ? Number(maxAmount) : undefined,
+    sort: sort?.key, dir: sort?.dir,
+  }), [q, project, status, dueFrom, dueTo, minAmount, maxAmount, sort]);
+
   const seq = useRef(0);
   const reload = () => {
     const my = ++seq.current;
-    api.revenues({ q, project, status }).then((r) => {
+    api.revenues(query as any).then((r) => {
       if (my !== seq.current) return;
       setD(r); setErr(null);
     }).catch((e) => { if (my === seq.current) setErr(e.message); });
@@ -37,18 +55,18 @@ export function Revenues() {
   useEffect(() => {
     const my = ++seq.current;
     const t = setTimeout(() => {
-      api.revenues({ q, project, status }).then((r) => {
+      api.revenues(query as any).then((r) => {
         if (my !== seq.current) return;
         setD(r); setErr(null);
       }).catch((e) => { if (my === seq.current) setErr(e.message); });
     }, 200);
     return () => clearTimeout(t);
-  }, [q, project, status]);
+  }, [query]);
 
   const projects = useMemo(() => d?.projects ?? [], [d]);
   const clients = useMemo(() => d?.clients ?? [], [d]);
   const allRows = useMemo(() => d?.rows ?? [], [d]);
-  const filtering = Boolean(q || project || status);
+  const filtering = Boolean(q || project || status || dueFrom || dueTo || minAmount || maxAmount);
 
   if (err) return <ErrorState message={`تعذّر التحميل: ${err}`} onRetry={reload} />;
 
@@ -87,6 +105,11 @@ export function Revenues() {
 
   const modalRow = editRow ?? collectRow;
 
+  const clearAll = () => {
+    setQ(''); setProject(''); setStatus(''); setDueFrom(''); setDueTo('');
+    setMinAmount(''); setMaxAmount('');
+  };
+
   return (
     <>
       <div className="page-head">
@@ -111,18 +134,8 @@ export function Revenues() {
       )}
 
       <div className="toolbar">
-        <input placeholder="بحث بالعميل أو الوحدة…" value={q}
-               onChange={(e) => setQ(e.target.value)} style={{ minWidth: 300 }} />
-        <select value={project} onChange={(e) => setProject(e.target.value)}>
-          <option value="">كل المشاريع</option>
-          {projects.map((p: string) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">الكل</option>
-          <option value="open">مفتوح</option>
-          <option value="collected">محصّل</option>
-        </select>
-        {d && <span className="count">{ar(d.count)} نتيجة</span>}
+        {d && <span className="count">{ar(d.count)} نتيجة · مفتوح {sar(d.totals.open)} ر.س</span>}
+        {filtering && <button className="btn sm" onClick={clearAll}>مسح كل التصفية</button>}
       </div>
 
       <Card>
@@ -131,7 +144,7 @@ export function Revenues() {
             filtering ? (
               <EmptyState kind="no-results" title="لا نتائج مطابقة"
                 body="لم يطابق البحث أو التصفية أي تحصيل."
-                ctaLabel="مسح التصفية" onCta={() => { setQ(''); setProject(''); setStatus(''); }} />
+                ctaLabel="مسح التصفية" onCta={clearAll} />
             ) : (
               <EmptyState kind="no-data" title="لا توجد تحصيلات بعد"
                 body="أضف تحصيلاً يدوياً أو ارفع ملف التحصيلات من صفحة الرفع لتظهر هنا."
@@ -142,8 +155,26 @@ export function Revenues() {
           <table>
             <thead>
               <tr>
-                <th>العميل</th><th>المشروع</th><th className="ltr">المبلغ</th>
-                <th>تاريخ الاستحقاق</th><th>الحالة</th><th>المصدر</th><th></th>
+                <Th label="العميل" className="party" sortKey="client" sort={sort} onSort={setSort}
+                    ascLabel="أ ← ي" descLabel="ي ← أ" active={Boolean(q)}
+                    filter={{ kind: 'text', value: q, onChange: setQ, placeholder: 'العميل أو الوحدة…' }} />
+                <Th label="المشروع" sortKey="project" sort={sort} onSort={setSort}
+                    active={Boolean(project)}
+                    filter={{ kind: 'select', value: project, onChange: setProject,
+                              allLabel: 'كل المشاريع', options: projects.map((p: string) => ({ value: p, label: p })) }} />
+                <Th label="المبلغ" className="ltr" sortKey="amount" sort={sort} onSort={setSort}
+                    ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً" active={Boolean(minAmount || maxAmount)}
+                    filter={{ kind: 'range', min: minAmount, max: maxAmount,
+                              onMin: setMinAmount, onMax: setMaxAmount, unit: 'ر.س' }} />
+                <Th label="تاريخ الاستحقاق" sortKey="dueDate" sort={sort} onSort={setSort}
+                    ascLabel="الأقدم أولاً" descLabel="الأحدث أولاً" active={Boolean(dueFrom || dueTo)}
+                    filter={{ kind: 'dateRange', from: dueFrom, to: dueTo, onFrom: setDueFrom, onTo: setDueTo }} />
+                <Th label="الحالة" sortKey="status" sort={sort} onSort={setSort}
+                    active={Boolean(status)}
+                    filter={{ kind: 'select', value: status, onChange: setStatus, allLabel: 'الكل',
+                              options: [{ value: 'open', label: 'مفتوح' }, { value: 'collected', label: 'محصّل' }] }} />
+                <Th label="المصدر" sortKey="source" sort={sort} onSort={setSort} />
+                <th></th>
               </tr>
             </thead>
             <tbody>

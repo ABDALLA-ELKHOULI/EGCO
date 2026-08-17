@@ -366,6 +366,65 @@ export const EXPLANATIONS: Record<string, Explanation> = {
     source: 'من تاريخ كل فاتورة ومدة السداد المتفق عليها لكل مورد ضمن نطاق التقرير وفترته.',
   },
 
+  guaranteeAccountMatch: {
+    title: 'مطابقة حساب الضمان',
+    meaning:
+      'رقمان يجب أن يتساويا: رصيد حساب الضمان (٢١٦) كما جاء في كشفه من النظام '
+      + 'المحاسبي، ومجموع ضمانات المقاولين المتتبَّعة في التطبيق لهذا الحساب. '
+      + 'الفرق بينهما ليس خطأً حسابياً — هو ضمان مسجَّل في أحد الموضعين دون الآخر: '
+      + 'إمّا مبلغ في الحساب لم يُنسب إلى مقاول بعد، أو ضمان تتبّعناه ولم يظهر في الكشف.',
+    formula: 'الفرق = رصيد حساب الضمان − مجموع الضمانات المتتبَّعة',
+    compute: (v) => {
+      const bal = v.balance, tracked = v.tracked;
+      if (bal == null || tracked == null) return { substitution: null, result: null };
+      return { substitution: `${money(bal)} − ${money(tracked)}`, result: money(bal - tracked) };
+    },
+    source: 'رصيد الحساب من كشف حساب الضمان المرفوع؛ المتتبَّع من ضمانات المقاولين المسجّلة.',
+  },
+
+  budgetDeviation: {
+    title: 'انحراف الشهر',
+    meaning:
+      'الفرق بين ما صُرف فعلاً هذا الشهر وما كان مخطَّطاً له. الموجب يعني تجاوزاً '
+      + 'للخطة، والسالب يعني إنفاقاً أقل منها — وليس بالضرورة توفيراً، فقد يعني '
+      + 'عملاً لم يُنفَّذ بعد.',
+    formula: 'انحراف الشهر = الفعلي للشهر − المخطَّط للشهر',
+    compute: (v) => {
+      const a = v.actualMonth, p = v.plannedMonth;
+      if (a == null || p == null) return { substitution: null, result: null };
+      return { substitution: `${money(a)} − ${money(p)}`, result: money(a - p) };
+    },
+    source: 'من ملف تقرير انحراف الموازنة المرفوع لهذا المشروع والشهر.',
+  },
+
+  cashflowMinBalance: {
+    title: 'أدنى رصيد',
+    meaning:
+      'أدنى نقطة يصلها الرصيد التراكمي عبر كل فترات الأفق المعروض حالياً — إن كانت '
+      + 'سالبة فهذا عجز متوقّع عند تلك الفترة تحديداً، بافتراض عدم تغيّر أي شيء آخر. '
+      + 'اضغط على البطاقة نفسها للانتقال إلى صف تلك الفترة في «جدول الفترات» أدناه.',
+    formula: 'أدنى رصيد = min(الرصيد التراكمي لكل فترة) عبر كل فترات الأفق',
+    compute: (v) => {
+      const min = v.minBalance;
+      return { substitution: min == null ? null : 'أدنى قيمة في عمود «الرصيد التراكمي»', result: money(min) };
+    },
+    source: 'من عمود الرصيد التراكمي المحسوب لكل فترة في جدول الفترات أدناه.',
+  },
+
+  cashflowNetPeriod: {
+    title: 'صافي الفترة',
+    meaning:
+      'إجمالي الداخل المتوقّع عبر كل الأفق المعروض ناقص إجمالي الخارج المجدول عبر '
+      + 'نفس الأفق — رقم إجمالي واحد لكامل الأفق المعروض، وليس لفترة واحدة رغم الاسم.',
+    formula: 'صافي الفترة = إجمالي الداخل (متوقّع) − إجمالي الخارج (مجدول)',
+    compute: (v) => {
+      const inflow = v.totalInflow, outflow = v.totalOutflow, net = v.netTotal;
+      if (inflow == null || outflow == null) return { substitution: null, result: money(net) };
+      return { substitution: `${sar(inflow)} − ${sar(outflow)}`, result: money(net ?? inflow - outflow) };
+    },
+    source: 'من مجموع الداخل المتوقّع ومجموع الخارج المجدول لكل فترات الأفق المعروض حالياً.',
+  },
+
   cashflowReconciliation: {
     title: 'مطابقة الخارج مع المديونية المفتوحة',
     meaning:

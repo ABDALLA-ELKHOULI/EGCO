@@ -409,6 +409,16 @@ tbody tr:hover { background: var(--tint); }
 td.ltr, th.ltr { text-align: left; }
 tfoot tr { background: var(--tint); font-weight: 600; }
 
+/* شارة «قريباً» في التنقل — الشاشة موجودة كإطار، وقولُ ذلك أفضل من أن يفتحها
+   المستخدم فيظنّها معطّلة. تختفي مع طيّ الشريط لأن الاسم نفسه يختفي معها. */
+.nav-soon {
+  font-size: 10px; line-height: 16px; padding: 0 6px; border-radius: var(--radius-pill);
+  background: var(--wash-gold); color: var(--gold); white-space: nowrap;
+}
+.sidebar.collapsed .nav-soon { display: none; }
+/* على البند النشط تصير الخلفية ذهبية، فالشارة الذهبية تختفي فيها — تُعكس */
+.nav-item.active .nav-soon { background: rgba(0, 0, 0, .22); color: inherit; }
+
 /* ---- قوائم الأعمدة (ترتيب + تصفية) ---- */
 /* العنوان صار عنصرين: النص وزرّ القائمة. flex يُبقيهما على سطر واحد بارتفاع الصف
    نفسه — أي padding إضافي هنا يكسر عقد الـ44px أعلاه. */
@@ -502,6 +512,9 @@ td.num, td.nowrap, th { white-space: nowrap; }
   display: inline-block; font-size: 11px; line-height: 18px; padding: 0 9px;
   border-radius: 99px; background: var(--tint); color: var(--ink);
   white-space: nowrap; vertical-align: middle;
+  /* بلا هذا يُسقط محرك الطباعة (printToPDF) خلفية الشارات فتخرج بلا لون على
+     الورق — نفس السبب الذي جعل .badge يحملها من قبل. */
+  print-color-adjust: exact; -webkit-print-color-adjust: exact;
 }
 .pill.red { background: var(--wash-red); color: var(--red); }
 .pill.gold { background: var(--wash-gold); color: var(--bronze); }
@@ -637,8 +650,27 @@ hr { border: 0; border-top: 1px solid var(--hair); margin: 16px 0; }
 .rpt-kpi b { font-size: 18px; display: block; margin-top: 2px; }
 .rpt-kpi i { font-size: 10px; color: var(--muted); font-style: normal; }
 .rpt-lede { font-size: 13px; line-height: 1.9; }
-.rpt-table { font-size: 12px; }
+.rpt-table { font-size: 12px; border-collapse: collapse; width: 100%; }
 .rpt-table th, .rpt-table td { padding: 7px 8px; }
+/* رأس الجدول بلون العلامة بدل أسود مسطّح على أبيض — نفس ذهبي الهوية،
+   وprint-color-adjust يضمن ظهوره في PDF لا اختفاءه كما تفعل المتصفحات أحياناً
+   عند الطباعة الافتراضية. */
+.rpt-table thead th {
+  background: var(--gold); color: #fff; font-weight: 600; text-align: right;
+  border-bottom: 2px solid var(--bronze);
+  print-color-adjust: exact; -webkit-print-color-adjust: exact;
+}
+.rpt-table thead th.ltr { text-align: left; }
+/* صفوف مخطَّطة — عمود طويل من الأرقام يصعب متابعته سطراً سطراً بلا تمييز */
+.rpt-table tbody tr:nth-child(even) { background: var(--wash-gold); }
+.rpt-table tbody tr { border-bottom: 1px solid var(--hair); }
+.rpt-table tfoot tr {
+  background: var(--ink); color: #fff; font-weight: 700;
+  print-color-adjust: exact; -webkit-print-color-adjust: exact;
+}
+.rpt-table tfoot td { padding: 9px 8px; }
+/* شريط ذهبي أسفل ترويسة الوثيقة — لمسة هوية بصرية بدل خط رفيع محايد */
+.rpt-head { border-bottom: 3px solid var(--gold); padding-bottom: 12px; }
 .rpt-notes > div { margin-bottom: 8px; }
 .rpt-notes b { font-size: 12px; display: block; }
 .rpt-notes p { margin: 1px 0 0; font-size: 12px; color: var(--muted); }
@@ -652,8 +684,15 @@ hr { border: 0; border-top: 1px solid var(--hair); margin: 16px 0; }
   .main { padding: 0; overflow: visible; }
   .sheet { border: 0; border-radius: 0; padding: 0; max-width: none; }
   body { background: #fff; }
-  @page { size: A4; margin: 16mm; }
 }
+/* حجم الصفحة يُحدَّد بالعنصر لا بترتيب القواعد. Chromium (الذي يعتمد عليه
+   printToPDF) يجمع كل قواعد @page عالمياً بصرف النظر عن الفئة المحيطة بها —
+   فقاعدتان مختلفتان لحجم الصفحة كانتا تتنازعان، والفائزة تعتمد على ترتيب
+   التعريف لا على الحالة الفعلية وقت التصدير. الصفحات المسمّاة تحسم هذا:
+   العنصر الذي يحمل .print-landscape يستدعي صفحته الخاصة صراحة. */
+@page { size: A4; margin: 16mm; }
+@page rpt-landscape { size: A4 landscape; margin: 12mm; }
+.print-landscape { page: rpt-landscape; }
 
 /* ---------------- وضع العرض (ملء الشاشة) ---------------- */
 .present {
@@ -732,7 +771,6 @@ hr { border: 0; border-top: 1px solid var(--hair); margin: 16px 0; }
   .print-slide .table-scroll { overflow: visible !important; }
   .print-slide .table-scroll > table { min-width: 0 !important; }
   html.presenting .sidebar, html.presenting .main > *:not(.present) { display: none !important; }
-  @page { size: A4 landscape; margin: 12mm; }
 }
 
 /* ---------------- حالات الفراغ (Empty/State) ---------------- */

@@ -15,6 +15,7 @@ import { balanceView } from '@/pages/Contractors';
 import { RemindModal } from '@/components/RemindModal';
 import { useAiEnabled } from '@/lib/useAi';
 import { ApiError } from '@/lib/api';
+import { Th, type SortState } from '@/components/ColumnMenu';
 
 /** أنواع الحركات في دفتر المقاول */
 const KIND: Record<string, { label: string; cls: string }> = {
@@ -40,6 +41,30 @@ export function ContractorDetail() {
   const [d, setD] = useState<ContractorDetailResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [projectFilter, setProjectFilter] = useState('');
+
+  // تصفية وترتيب دفتر الحساب — على العميل (لا الخادم): entries مصفوفة متداخلة
+  // داخل استجابة كشف المقاول الواحد، وهذا الجدول بلا سطر إجماليات خاص (المؤشرات
+  // أعلاه محسوبة في الخادم على كل الحركات). projectFilter الحالي (بطاقات المشاريع)
+  // يبقى كما هو ويُدمج هنا بدل مضاعفته.
+  const [entryDateFrom, setEntryDateFrom] = useState('');
+  const [entryDateTo, setEntryDateTo] = useState('');
+  const [entryKind, setEntryKind] = useState('');
+  const [entryDesc, setEntryDesc] = useState('');
+  const [debitMin, setDebitMin] = useState('');
+  const [debitMax, setDebitMax] = useState('');
+  const [creditMin, setCreditMin] = useState('');
+  const [creditMax, setCreditMax] = useState('');
+  const [entrySort, setEntrySort] = useState<SortState | null>(null);
+
+  // تصفية وترتيب المستخلصات — نفس أسلوب دفتر الحساب أعلاه، عميل لا خادم:
+  // claims مصفوفة متداخلة داخل استجابة الكشف ولا سطر إجماليات خاص بها.
+  // projectFilter مشترك مع بطاقات المشاريع والدفتر — لا مصدر ثانٍ للمشروع هنا.
+  const [claimNumber, setClaimNumber] = useState('');
+  const [claimDateFrom, setClaimDateFrom] = useState('');
+  const [claimDateTo, setClaimDateTo] = useState('');
+  const [netMin, setNetMin] = useState('');
+  const [netMax, setNetMax] = useState('');
+  const [claimSort, setClaimSort] = useState<SortState | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
   const [entryModal, setEntryModal] = useState<{ entry?: ContractorEntry; draft?: Partial<ContractorEntryBody> } | null>(null);
@@ -72,8 +97,80 @@ export function ContractorDetail() {
 
   const entries = useMemo(() => {
     if (!d) return [];
-    return projectFilter ? d.entries.filter((e) => e.project === projectFilter) : d.entries;
-  }, [d, projectFilter]);
+    let r = projectFilter ? d.entries.filter((e) => e.project === projectFilter) : d.entries;
+    if (entryDateFrom) r = r.filter((e) => e.date && e.date >= entryDateFrom);
+    if (entryDateTo) r = r.filter((e) => e.date && e.date <= entryDateTo);
+    if (entryKind) r = r.filter((e) => e.kind === entryKind);
+    if (entryDesc) r = r.filter((e) => (e.description || '').toLowerCase().includes(entryDesc.trim().toLowerCase()));
+    if (debitMin) r = r.filter((e) => (e.debit || 0) >= Number(debitMin));
+    if (debitMax) r = r.filter((e) => (e.debit || 0) <= Number(debitMax));
+    if (creditMin) r = r.filter((e) => (e.credit || 0) >= Number(creditMin));
+    if (creditMax) r = r.filter((e) => (e.credit || 0) <= Number(creditMax));
+    if (entrySort) {
+      const dir = entrySort.dir === 'asc' ? 1 : -1;
+      const key = entrySort.key;
+      r = [...r].sort((a, b) => {
+        let av: any; let bv: any;
+        switch (key) {
+          case 'date': av = a.date ?? ''; bv = b.date ?? ''; break;
+          case 'kind': av = a.kind ?? ''; bv = b.kind ?? ''; break;
+          case 'description': av = a.description ?? ''; bv = b.description ?? ''; break;
+          case 'project': av = a.project ?? ''; bv = b.project ?? ''; break;
+          case 'debit': av = a.debit ?? 0; bv = b.debit ?? 0; break;
+          case 'credit': av = a.credit ?? 0; bv = b.credit ?? 0; break;
+          default: av = 0; bv = 0;
+        }
+        if (av < bv) return -1 * dir;
+        if (av > bv) return 1 * dir;
+        return 0;
+      });
+    }
+    return r;
+  }, [d, projectFilter, entryDateFrom, entryDateTo, entryKind, entryDesc, debitMin, debitMax,
+      creditMin, creditMax, entrySort]);
+
+  const entryFiltering = Boolean(entryDateFrom || entryDateTo || entryKind || entryDesc
+    || debitMin || debitMax || creditMin || creditMax);
+  const clearEntryColumnFilters = () => {
+    setEntryDateFrom(''); setEntryDateTo(''); setEntryKind(''); setEntryDesc('');
+    setDebitMin(''); setDebitMax(''); setCreditMin(''); setCreditMax('');
+  };
+
+  const claims = useMemo(() => {
+    if (!d) return [];
+    let r = projectFilter ? d.claims.filter((c) => c.project === projectFilter) : d.claims;
+    if (claimNumber) r = r.filter((c) => (c.number || '').toLowerCase().includes(claimNumber.trim().toLowerCase()));
+    if (claimDateFrom) r = r.filter((c) => c.date && c.date >= claimDateFrom);
+    if (claimDateTo) r = r.filter((c) => c.date && c.date <= claimDateTo);
+    if (netMin) r = r.filter((c) => (c.netDue || 0) >= Number(netMin));
+    if (netMax) r = r.filter((c) => (c.netDue || 0) <= Number(netMax));
+    if (claimSort) {
+      const dir = claimSort.dir === 'asc' ? 1 : -1;
+      const key = claimSort.key;
+      r = [...r].sort((a, b) => {
+        let av: any; let bv: any;
+        switch (key) {
+          case 'number': av = a.number ?? ''; bv = b.number ?? ''; break;
+          case 'project': av = a.project ?? ''; bv = b.project ?? ''; break;
+          case 'date': av = a.date ?? ''; bv = b.date ?? ''; break;
+          case 'grossCumulative': av = a.grossCumulative ?? 0; bv = b.grossCumulative ?? 0; break;
+          case 'currentWork': av = a.grossCumulative - a.previousCumulative; bv = b.grossCumulative - b.previousCumulative; break;
+          case 'retentionAmount': av = a.retentionAmount ?? 0; bv = b.retentionAmount ?? 0; break;
+          case 'netDue': av = a.netDue ?? 0; bv = b.netDue ?? 0; break;
+          default: av = 0; bv = 0;
+        }
+        if (av < bv) return -1 * dir;
+        if (av > bv) return 1 * dir;
+        return 0;
+      });
+    }
+    return r;
+  }, [d, projectFilter, claimNumber, claimDateFrom, claimDateTo, netMin, netMax, claimSort]);
+
+  const claimFiltering = Boolean(claimNumber || claimDateFrom || claimDateTo || netMin || netMax);
+  const clearClaimColumnFilters = () => {
+    setClaimNumber(''); setClaimDateFrom(''); setClaimDateTo(''); setNetMin(''); setNetMax('');
+  };
 
   // المستخلصات من دفتر الحساب لا من جدول الوثائق — the ledger carries the claim
   // credits even before any مستخلص document is registered; summing the (initially
@@ -184,23 +281,56 @@ export function ContractorDetail() {
         <Card
           title={projectFilter ? `الدفتر — ${projectFilter}` : 'دفتر الحساب'}
           sub="مدين = دفعنا له أو خُصم منه · دائن = استحق له"
-          actions={projectFilter
-            ? <button className="btn sm" onClick={() => setProjectFilter('')}>إظهار الكل</button>
-            : undefined}
+          actions={
+            <>
+              {entryFiltering && (
+                <button className="btn sm" onClick={clearEntryColumnFilters}>مسح تصفية الأعمدة</button>
+              )}
+              {projectFilter && (
+                <button className="btn sm" onClick={() => setProjectFilter('')}>إظهار الكل</button>
+              )}
+            </>
+          }
         >
           {entries.length === 0 ? (
-            <EmptyState kind={projectFilter ? 'no-results' : 'no-data'}
-              title={projectFilter ? 'لا حركات لهذا المشروع' : 'لا توجد حركات بعد'}
-              body={projectFilter ? 'لم تُسجّل حركات على هذا المشروع.' : 'أضف حركة يدوية أو ارفع كشف حساب المقاول.'}
-              ctaLabel={projectFilter ? 'إظهار الكل' : 'إضافة حركة'}
-              onCta={() => projectFilter ? setProjectFilter('') : setEntryModal({})} />
+            <EmptyState kind={projectFilter || entryFiltering ? 'no-results' : 'no-data'}
+              title={projectFilter || entryFiltering ? 'لا حركات مطابقة' : 'لا توجد حركات بعد'}
+              body={projectFilter || entryFiltering
+                ? 'لم تطابق التصفية أي حركة.' : 'أضف حركة يدوية أو ارفع كشف حساب المقاول.'}
+              ctaLabel={projectFilter || entryFiltering ? 'مسح التصفية' : 'إضافة حركة'}
+              onCta={() => {
+                if (projectFilter || entryFiltering) { setProjectFilter(''); clearEntryColumnFilters(); }
+                else setEntryModal({});
+              }} />
           ) : (
-            <div className="table-scroll">
+            <div className="table-scroll wide">
             <table>
               <thead>
                 <tr>
-                  <th>التاريخ</th><th>النوع</th><th>الوصف</th><th>المشروع</th>
-                  <th className="ltr">مدين</th><th className="ltr">دائن</th>
+                  <Th label="التاريخ" sortKey="date" sort={entrySort} onSort={setEntrySort}
+                      ascLabel="الأقدم أولاً" descLabel="الأحدث أولاً" active={Boolean(entryDateFrom || entryDateTo)}
+                      filter={{ kind: 'dateRange', from: entryDateFrom, to: entryDateTo,
+                                onFrom: setEntryDateFrom, onTo: setEntryDateTo }} />
+                  <Th label="النوع" sortKey="kind" sort={entrySort} onSort={setEntrySort}
+                      active={Boolean(entryKind)}
+                      filter={{ kind: 'select', value: entryKind, onChange: setEntryKind,
+                                allLabel: 'كل الأنواع',
+                                options: Object.entries(KIND).map(([k, m]) => ({ value: k, label: m.label })) }} />
+                  <Th label="الوصف" sortKey="description" sort={entrySort} onSort={setEntrySort}
+                      active={Boolean(entryDesc)}
+                      filter={{ kind: 'text', value: entryDesc, onChange: setEntryDesc, placeholder: 'الوصف…' }} />
+                  <Th label="المشروع" sortKey="project" sort={entrySort} onSort={setEntrySort}
+                      active={Boolean(projectFilter)}
+                      filter={{ kind: 'select', value: projectFilter, onChange: setProjectFilter,
+                                allLabel: 'كل المشاريع', options: projects.map((p) => ({ value: p, label: p })) }} />
+                  <Th label="مدين" className="ltr" sortKey="debit" sort={entrySort} onSort={setEntrySort}
+                      ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً" active={Boolean(debitMin || debitMax)}
+                      filter={{ kind: 'range', min: debitMin, max: debitMax,
+                                onMin: setDebitMin, onMax: setDebitMax, unit: 'ر.س' }} />
+                  <Th label="دائن" className="ltr" sortKey="credit" sort={entrySort} onSort={setEntrySort}
+                      ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً" active={Boolean(creditMin || creditMax)}
+                      filter={{ kind: 'range', min: creditMin, max: creditMax,
+                                onMin: setCreditMin, onMax: setCreditMax, unit: 'ر.س' }} />
                   <th>المستند</th><th></th>
                 </tr>
               </thead>
@@ -256,45 +386,88 @@ export function ContractorDetail() {
           title="المستخلصات"
           sub={`${ar(d.claims.length)} مستخلصاً`}
           actions={
-            <button className="btn sm" onClick={() => { setFormErr(null); setClaimModal({}); }}>
-              إضافة مستخلص
-            </button>
+            <>
+              {claimFiltering && (
+                <button className="btn sm" onClick={clearClaimColumnFilters}>مسح تصفية الأعمدة</button>
+              )}
+              <button className="btn sm" onClick={() => { setFormErr(null); setClaimModal({}); }}>
+                إضافة مستخلص
+              </button>
+            </>
           }
         >
           <p className="muted" style={{ fontSize: 11, padding: '0 20px', marginTop: -4 }}>
             مستخلصات كشف الحساب تظهر في الدفتر أعلاه — هذا سجل وثائق المستخلصات التفصيلية (اختياري)
           </p>
+          {/* لا سطر إجماليات لهذا الجدول (الملخص أعلى الصفحة يُحسب في الخادم على كل
+              المستخلصات)، فسطر العدّ هنا هو الوصف الوحيد لما تُظهره التصفية فعلاً. */}
+          {(projectFilter || claimFiltering) && (
+            <p className="muted" style={{ fontSize: 11, padding: '0 20px', marginTop: -4 }}>
+              عرض {ar(claims.length)} من {ar(d.claims.length)}
+            </p>
+          )}
           {d.claims.length === 0 ? (
             <EmptyState kind="no-data" title="لا مستخلصات بعد"
               body="سجّل المستخلصات هنا لمتابعة الأعمال التراكمية والتأمينات."
               ctaLabel="إضافة مستخلص" onCta={() => { setFormErr(null); setClaimModal({}); }} />
+          ) : claims.length === 0 ? (
+            <EmptyState kind="no-results" title="لا مستخلصات مطابقة"
+              body="لم تطابق التصفية أي مستخلص."
+              ctaLabel="مسح التصفية"
+              onCta={() => { setProjectFilter(''); clearClaimColumnFilters(); }} />
           ) : (
             <div className="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th>الرقم</th><th>المشروع</th><th>التاريخ</th>
-                  <th className="ltr">التراكمي</th><th className="ltr">السابق</th>
-                  <th className="ltr">أعمال الفترة</th><th className="ltr">التأمين</th>
-                  <th className="ltr">خصومات أخرى</th><th className="ltr">الصافي المستحق</th><th></th>
+                  <Th label="الرقم" sortKey="number" sort={claimSort} onSort={setClaimSort}
+                      active={Boolean(claimNumber)}
+                      filter={{ kind: 'text', value: claimNumber, onChange: setClaimNumber, placeholder: 'رقم المستخلص…' }} />
+                  <Th label="المشروع" sortKey="project" sort={claimSort} onSort={setClaimSort}
+                      active={Boolean(projectFilter)}
+                      filter={{ kind: 'select', value: projectFilter, onChange: setProjectFilter,
+                                allLabel: 'كل المشاريع', options: projects.map((p) => ({ value: p, label: p })) }} />
+                  <Th label="التاريخ" sortKey="date" sort={claimSort} onSort={setClaimSort}
+                      ascLabel="الأقدم أولاً" descLabel="الأحدث أولاً" active={Boolean(claimDateFrom || claimDateTo)}
+                      filter={{ kind: 'dateRange', from: claimDateFrom, to: claimDateTo,
+                                onFrom: setClaimDateFrom, onTo: setClaimDateTo }} />
+                  {/* «السابق» طُوي تحت «التراكمي» و«خصومات أخرى» تحت «التأمين» — تسعة
+                      أعمدة كانت تدفع «الصافي المستحق» (بيت القصيد) خارج الشاشة عند
+                      1100px، كما حدث في جدول مماثل للموردين. */}
+                  <Th label="التراكمي" className="ltr" sortKey="grossCumulative" sort={claimSort} onSort={setClaimSort}
+                      ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً" />
+                  <Th label="أعمال الفترة" className="ltr" sortKey="currentWork" sort={claimSort} onSort={setClaimSort}
+                      ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً" />
+                  <Th label="التأمين" className="ltr" sortKey="retentionAmount" sort={claimSort} onSort={setClaimSort}
+                      ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً" />
+                  <Th label="الصافي المستحق" className="ltr" sortKey="netDue" sort={claimSort} onSort={setClaimSort}
+                      ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً" active={Boolean(netMin || netMax)}
+                      filter={{ kind: 'range', min: netMin, max: netMax, onMin: setNetMin, onMax: setNetMax, unit: 'ر.س' }} />
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
-                {d.claims.map((c) => (
+                {claims.map((c) => (
                   <tr key={c.id}>
                     <td className="num">{ar(c.number)}</td>
                     <td className="muted">{c.project}</td>
                     <td>{arDate(c.date)}</td>
-                    <td className="ltr"><Money v={c.grossCumulative} /></td>
-                    <td className="ltr muted"><Money v={c.previousCumulative} /></td>
+                    <td className="ltr">
+                      <Money v={c.grossCumulative} />
+                      <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                        سابق <Money v={c.previousCumulative} />
+                      </div>
+                    </td>
                     <td className="ltr"><Money v={c.grossCumulative - c.previousCumulative} /></td>
                     <td className="ltr">
                       <Money v={c.retentionAmount} />
                       {c.retentionRate != null && (
                         <span className="muted" style={{ fontSize: 11 }}> ({ar(c.retentionRate)}٪)</span>
                       )}
+                      <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                        خصومات {c.otherDeductions ? <Money v={c.otherDeductions} /> : '—'}
+                      </div>
                     </td>
-                    <td className="ltr">{c.otherDeductions ? <Money v={c.otherDeductions} /> : <span className="muted">—</span>}</td>
                     <td className="ltr"><Money v={c.netDue} cls="ok" /></td>
                     <td className="ltr">
                       {c.source === 'manual' ? (

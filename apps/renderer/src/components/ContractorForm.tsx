@@ -1,5 +1,20 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import type { ContractorBody } from '@/lib/api';
+
+/** تطبيع عربي محلي للمقارنة فقط — نسخة مطابقة لِـ SupplierForm.tsx، انظر تعليقها
+ * هناك لسبب عدم استيراد ملف مشترك. */
+function normalizeArLocal(s: string): string {
+  if (!s) return '';
+  return s.normalize('NFKC')
+    .replace(/[ؗ-ًؚ-ْٰۖ-ۭ]/g, '')
+    .replace(/ـ/g, '')
+    .replace(/[إأآٱا]/g, 'ا')
+    .replace(/[يیى]/g, 'ي')
+    .replace(/[کﻙﻚ]/g, 'ك')
+    .replace(/[ةھه]/g, 'ه')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 export type ContractorFormValues = ContractorBody;
 
@@ -32,6 +47,14 @@ export function ContractorForm({ initial, codeLocked = false, knownProjects, onS
   // (خلافاً للمورد)، فكل مشاريعه تعيش هنا فقط.
   const [projects, setProjects] = useState<string[]>(initial?.projects ?? []);
   const [newProject, setNewProject] = useState('');
+
+  // نفس اقتراح SupplierForm.tsx — مشروع قريب بإملاء مختلف بدل توأم صامت.
+  const projectSuggestion = useMemo(() => {
+    const v = newProject.trim();
+    if (!v) return null;
+    const key = normalizeArLocal(v);
+    return (knownProjects ?? []).find((p) => p !== v && normalizeArLocal(p) === key) ?? null;
+  }, [newProject, knownProjects]);
 
   function addProject(p: string) {
     const v = p.trim();
@@ -102,6 +125,14 @@ export function ContractorForm({ initial, codeLocked = false, knownProjects, onS
           </datalist>
           <button type="button" className="btn sm" onClick={() => addProject(newProject)}>إضافة</button>
         </div>
+        {projectSuggestion && (
+          <div className="callout" style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span>يوجد مشروع مشابه: «{projectSuggestion}» — هل تقصده؟</span>
+            <button type="button" className="btn sm" onClick={() => addProject(projectSuggestion)}>
+              استخدام «{projectSuggestion}»
+            </button>
+          </div>
+        )}
       </div>
       <div className="field-grid">
         <label style={field}>

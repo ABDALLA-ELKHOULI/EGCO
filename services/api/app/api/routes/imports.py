@@ -2,10 +2,11 @@
 """الرفع — the renderer never touches the filesystem: Electron picks the path,
 the backend reads it. That keeps the UI sandbox intact."""
 import datetime as dt
+import json
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import models
@@ -37,11 +38,16 @@ _RESURRECTION_WINDOW = dt.timedelta(minutes=3)
 
 
 @router.post('/preview')
-def preview(body: PreviewRequest) -> dict:
-    """قراءة بلا حفظ — feeds the review screen."""
+def preview(body: PreviewRequest, db: Session = Depends(get_session)) -> dict:
+    """قراءة بلا حفظ — feeds the review screen.
+
+    الجلسة تُمرَّر للمعاينة (كانت تُستدعى بلا جلسة) لسببين لا يكتب أيٌّ منهما شيئاً:
+    التصنيف المحفوظ للحساب، ومقارنة حركات الملف بما هو محفوظ للطرف نفسه لرصد
+    التكرار المحتمل قبل الحفظ.
+    """
     try:
         if body.source in import_service.STATEMENT_SOURCES:
-            return import_service.preview_statement(body.path, body.source)
+            return import_service.preview_statement(body.path, body.source, db)
         raise HTTPException(400, detail='المعاينة متاحة لكشف الحساب فقط')
     except _PARSE_ERRORS as e:
         raise HTTPException(422, detail=str(e))
@@ -151,6 +157,36 @@ def suggest_classification(body: ClassifySuggestRequest) -> dict:
         return {}
 
 
+# ---------------------------------------------------------------- التكرار المحتمل
+
+@router.get('/near-duplicates')
+def near_duplicates(account: str = Query(...),
+                    db: Session = Depends(get_session)) -> dict:
+    """التكرارات المحتملة لطرف واحد — تُفتح بعد الرفع بأيام، لا وقت الرفع فقط.
+
+    `pairs` تُحسب الآن من الحركات الحيّة المحفوظة (فتشمل زوجاً جاء من ملفين مختلفين
+    في وقتين مختلفين)، و`logged` تُقرأ من تحذيرات `ImportLog.issues` كما سُجّلت وقت
+    كل رفع — نفس آلية «الملاحظات» القائمة، بلا جدول جديد ولا تغيير في المخطط.
+    """
+    out = import_service.near_duplicates_for_account(db, account)
+    logged = []
+    logs = db.query(models.ImportLog).filter(
+        models.ImportLog.account == account,
+        models.ImportLog.deleted_at.is_(None)).order_by(
+        models.ImportLog.created_at.desc()).all()
+    for log in logs:
+        try:
+            stored = json.loads(log.issues or '[]')
+        except ValueError:
+            continue    # سجل قديم بصيغة غير JSON — يُتجاوز بصمت ولا يُفشل الطلب
+        for issue in stored:
+            if isinstance(issue, dict) and issue.get('kind') == 'near_duplicate':
+                logged.append(dict(issue, importedAt=log.created_at.isoformat(),
+                                   fileName=os.path.basename(log.path or '')))
+    out['logged'] = logged
+    return out
+
+
 # ---------------------------------------------------------------- الملفات المرفوعة
 
 def _count_linked(db: Session, log_id: str) -> int:
@@ -176,9 +212,42 @@ def _resolve_party_name(db: Session, account: str) -> Optional[str]:
     return None
 
 
+#: مفاتيح ترتيب «الملفات المرفوعة» — يُطبَّق الترتيب على كل الملفات المطابقة
+#: للتصفية، لا الصفحة المعروضة فقط، فيبقى العدد أعلى الجدول صحيحاً دائماً.
+_HISTORY_SORT_KEYS = {
+    'date': lambda r: r['date'],
+    'fileName': lambda r: r['fileName'] or '',
+    'detected': lambda r: r['detected'],
+    'partyName': lambda r: r['partyName'] or r['account'] or '',
+    'linkedRows': lambda r: r['added'] if r['legacy'] else r['linkedRows'],
+    'reconciled': lambda r: int(r['reconciled']),
+}
+
+
 @router.get('/history')
-def import_history(db: Session = Depends(get_session)) -> dict:
-    """الملفات التي رُفعت — أحدثها أولاً، مع عدد الحركات الحيّة التي أضافها كل ملف."""
+def import_history(
+    db: Session = Depends(get_session),
+    file_name: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    party: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    min_moves: Optional[int] = Query(None),
+    max_moves: Optional[int] = Query(None),
+    reconciled: Optional[str] = Query(None),
+    sort: Optional[str] = Query(None),
+    dir: Optional[str] = Query('desc'),
+) -> dict:
+    """الملفات التي رُفعت — أحدثها أولاً، مع عدد الحركات الحيّة التي أضافها كل ملف.
+
+    كل معاملات التصفية/الترتيب اختيارية وإضافية فوق السلوك القديم — طلب بلا
+    معاملات يُعيد نفس الشيء الذي كان يُعيده هذا المسار قبل هذا التغيير.
+    """
+    if sort is not None and sort not in _HISTORY_SORT_KEYS:
+        raise HTTPException(422, detail='مفتاح ترتيب غير معروف')
+    if dir not in (None, 'asc', 'desc'):
+        raise HTTPException(422, detail='اتجاه ترتيب غير معروف')
+
     logs = db.query(models.ImportLog).filter(
         models.ImportLog.deleted_at.is_(None)).order_by(
         models.ImportLog.created_at.desc()).all()
@@ -190,16 +259,40 @@ def import_history(db: Session = Depends(get_session)) -> dict:
         # still shown, still deletable (approximately), just flagged for the UI.
         legacy = linked == 0 and log.imported > 0
         can_delete = log.source not in _UNDELETABLE_SOURCES and (linked > 0 or legacy)
+        file_name_val = os.path.basename(log.path) if log.path else ''
+        party_name = _resolve_party_name(db, log.account)
+
+        if file_name and file_name.strip().lower() not in file_name_val.lower():
+            continue
+        if source and source != log.source:
+            continue
+        if party and party.strip().lower() not in (party_name or log.account or '').lower():
+            continue
+        date_str = log.created_at.isoformat()
+        if date_from and date_str[:10] < date_from:
+            continue
+        if date_to and date_str[:10] > date_to:
+            continue
+        moves = log.imported if legacy else linked
+        if min_moves is not None and moves < min_moves:
+            continue
+        if max_moves is not None and moves > max_moves:
+            continue
+        if reconciled == 'yes' and not log.reconciled:
+            continue
+        if reconciled == 'no' and log.reconciled:
+            continue
+
         rows.append(dict(
             id=log.id,
-            date=log.created_at.isoformat(),
-            fileName=os.path.basename(log.path) if log.path else '',
+            date=date_str,
+            fileName=file_name_val,
             path=log.path,
             source=log.source,
             detected=import_service.DETECTED_LABELS.get(
                 log.source, import_service.DETECTED_LABELS[None]),
             account=log.account or None,
-            partyName=_resolve_party_name(db, log.account),
+            partyName=party_name,
             added=log.imported,
             skipped=log.skipped,
             reconciled=bool(log.reconciled),
@@ -207,6 +300,9 @@ def import_history(db: Session = Depends(get_session)) -> dict:
             canDelete=can_delete,
             legacy=legacy,
         ))
+
+    if sort:
+        rows.sort(key=_HISTORY_SORT_KEYS[sort], reverse=(dir == 'desc'))
     return dict(rows=rows)
 
 

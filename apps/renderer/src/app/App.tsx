@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { HashRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/Sidebar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { initApi, api } from '@/lib/api';
+import { initApi, api, setApiBase } from '@/lib/api';
 import { CommandCentre } from '@/pages/CommandCentre';
 import { Dashboard } from '@/pages/Dashboard';
 import { Suppliers } from '@/pages/Suppliers';
@@ -15,6 +15,9 @@ import { Budget } from '@/pages/Budget';
 import { ProjectDetail } from '@/pages/ProjectDetail';
 import { CashFlow } from '@/pages/CashFlow';
 import { Revenues } from '@/pages/Revenues';
+import { Loans } from '@/pages/Loans';
+import { Obligations } from '@/pages/Obligations';
+import { Expenses } from '@/pages/Expenses';
 import { CoveragePage } from '@/pages/Coverage';
 import { CalendarPage } from '@/pages/Calendar';
 import { ImportPage } from '@/pages/Import';
@@ -26,6 +29,27 @@ export function App() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  // إشعار هادئ وقابل للإغلاق: الخدمة الخلفية ماتت وأعادت نفسها أثناء الجلسة.
+  const [restartRecovered, setRestartRecovered] = useState(false);
+
+  // الخدمة قد تموت وتُعاد على منفذ مختلف — العنوان الذي حفظه initApi() عند
+  // الإقلاع (lib/api.ts) لا يُعاد سؤاله أبداً بنفسه، فهذا هو ما يدفعه له.
+  // نجحت إعادة التشغيل: نحدّث العنوان بصمت ونعرض سطراً قابلاً للإغلاق.
+  // فشلت (أو تجاوزت ميزانية المحاولات): نعيد استخدام شاشة فشل الإقلاع نفسها
+  // بدل اختراع مسار موازٍ — نفس زر «إعادة المحاولة» يعمل لأنه يستدعي initApi()
+  // من جديد، وهي تسأل main عن العنوان الحالي الفعلي.
+  useEffect(() => {
+    if (!window.egco?.onBackendRestarted) return;
+    return window.egco.onBackendRestarted((info) => {
+      if (info.recovered) {
+        setApiBase(info.url);
+        setRestartRecovered(true);
+      } else {
+        setReady(false);
+        setError(info.error || 'انقطع الاتصال بالخدمة المحلية ولم تُفلح إعادة تشغيلها.');
+      }
+    });
+  }, []);
 
   // الخدمة المحلية تستغرق ثانية أو اثنتين عند الإقلاع البارد — فحص واحد فاشل كان
   // يترك التطبيق ميتاً بلا زر إعادة. الآن: 5 محاولات متباعدة ثم زر يدوي.
@@ -73,6 +97,17 @@ export function App() {
   return (
     <HashRouter>
       <div className="app">
+        {restartRecovered && (
+          <div style={{
+            position: 'fixed', top: 10, insetInlineEnd: 14, zIndex: 1000,
+            background: '#FBFAF7', border: '1px solid #D8D2C4', borderRadius: 8,
+            padding: '8px 14px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 10,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          }}>
+            <span>انقطع الاتصال بالخدمة المحلية للحظات ثم عاد للعمل تلقائياً.</span>
+            <button className="btn" onClick={() => setRestartRecovered(false)}>إغلاق</button>
+          </div>
+        )}
         <Sidebar />
         <main className="main">
           <RoutedPages />
@@ -105,6 +140,10 @@ function RoutedPages() {
             <Route path="/projects/:project" element={<ProjectDetail />} />
             <Route path="/cashflow" element={<CashFlow />} />
             <Route path="/revenues" element={<Revenues />} />
+            {/* أبواب السيولة القادمة — إطارٌ يشرح ما ستفعله الشاشة، بلا تفاصيل بعد */}
+            <Route path="/loans" element={<Loans />} />
+            <Route path="/obligations" element={<Obligations />} />
+            <Route path="/expenses" element={<Expenses />} />
             <Route path="/coverage" element={<CoveragePage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/import" element={<ImportPage />} />

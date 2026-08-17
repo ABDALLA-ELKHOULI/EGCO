@@ -1,4 +1,23 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+
+/**
+ * تطبيع عربي محلي للمقارنة فقط (لا يُخزَّن ولا يُعرض) — نفس قواعد
+ * app/utils/arabic.py على الخادم (الهمزات، التاء المربوطة، الياء الفارسية،
+ * التشكيل، التطويل)، منسوخة هنا لأن هذا الملف لا يملك حق استيراد ملف عميل
+ * مشترك جديد. الهدف الوحيد: اقتراح مشروع موجود بدل صمت يُنشئ توأماً له.
+ */
+function normalizeArLocal(s: string): string {
+  if (!s) return '';
+  return s.normalize('NFKC')
+    .replace(/[ؗ-ًؚ-ْٰۖ-ۭ]/g, '')
+    .replace(/ـ/g, '')
+    .replace(/[إأآٱا]/g, 'ا')
+    .replace(/[يیى]/g, 'ي')
+    .replace(/[کﻙﻚ]/g, 'ك')
+    .replace(/[ةھه]/g, 'ه')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 export interface SupplierFormValues {
   account: string;
@@ -30,6 +49,15 @@ export function SupplierForm({ initial, knownProjects, onSubmit, busy, error }: 
   const [newProject, setNewProject] = useState('');
 
   const canSubmit = account.trim() && name.trim() && !busy;
+
+  // مشروع قريب موجود بإملاء مختلف (المدينة/المدينه) — يُقترح بدل أن يُضاف
+  // الاسم المكتوب توأماً صامتاً لمشروع موجود أصلاً. تطابق حرفي كامل ليس اقتراحاً.
+  const projectSuggestion = useMemo(() => {
+    const v = newProject.trim();
+    if (!v) return null;
+    const key = normalizeArLocal(v);
+    return (knownProjects ?? []).find((p) => p !== v && normalizeArLocal(p) === key) ?? null;
+  }, [newProject, knownProjects]);
 
   function addProject(p: string) {
     const v = p.trim();
@@ -106,6 +134,16 @@ export function SupplierForm({ initial, knownProjects, onSubmit, busy, error }: 
           </datalist>
           <button type="button" className="btn sm" onClick={() => addProject(newProject)}>إضافة</button>
         </div>
+        {projectSuggestion && (
+          // يمنع توأماً صامتاً لنفس المشروع بإملاء آخر — «المدينة»/«المدينه» يصبحان
+          // مشروعين مختلفين في القائمة إن لم يُنبَّه المستخدم هنا.
+          <div className="callout" style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span>يوجد مشروع مشابه: «{projectSuggestion}» — هل تقصده؟</span>
+            <button type="button" className="btn sm" onClick={() => addProject(projectSuggestion)}>
+              استخدام «{projectSuggestion}»
+            </button>
+          </div>
+        )}
       </div>
 
       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

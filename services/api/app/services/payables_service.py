@@ -7,7 +7,7 @@ No arithmetic lives here — if you find yourself adding a calculation, it belon
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import datetime as dt
 from decimal import Decimal
@@ -29,11 +29,80 @@ def _supplier(row: models.Supplier) -> P.Supplier:
                       project=row.project, term=_term(row))
 
 
+# ---------------------------------------------------------------- «تخصيص الدفعات» settings
+
+#: مفتاح app_settings — انظر شرح كامل الميزة في models.PaymentAllocation.
+_SMART_ALLOCATION_KEY = 'payment_allocation_enabled'
+
+
+def is_smart_allocation_enabled(db: Session) -> bool:
+    """هل تخصيص الدفعات مفعّل؟ الغياب == متوقف — هذا ما يبقي السلوك القديم
+    كما هو لكل تركيب لم يفعّل الإعداد صراحةً (الافتراضي OFF بالتصميم)."""
+    row = db.query(models.AppSetting).filter_by(key=_SMART_ALLOCATION_KEY).one_or_none()
+    return row is not None and row.value == '1'
+
+
+def set_smart_allocation_enabled(db: Session, enabled: bool) -> None:
+    row = db.query(models.AppSetting).filter_by(key=_SMART_ALLOCATION_KEY).one_or_none()
+    if row is None:
+        row = models.AppSetting(key=_SMART_ALLOCATION_KEY)
+        db.add(row)
+    row.value = '1' if enabled else '0'
+    db.commit()
+
+
+def _load_decisions(db: Session, payment_ids: List[str]) -> Dict[str, List[tuple]]:
+    """يبني payment_id -> [(invoice_id أو None, Decimal amount), ...] من الجدول."""
+    if not payment_ids:
+        return {}
+    rows = (db.query(models.PaymentAllocation)
+            .filter(models.PaymentAllocation.payment_id.in_(payment_ids),
+                    models.PaymentAllocation.deleted_at.is_(None)).all())
+    out: Dict[str, List[tuple]] = {}
+    for r in rows:
+        out.setdefault(r.payment_id, []).append((r.invoice_id, D(r.amount)))
+    return out
+
+
+def save_payment_allocation(db: Session, payment_id: str, lines: List[dict]) -> None:
+    """يستبدل قرار دفعة بالكامل — يحذف الأسطر القديمة (soft) ويكتب الجديدة.
+
+    `lines`: [{invoiceId: str|None, amount: float}] — invoiceId=None يعني «على
+    الحساب». يتحقق المستدعي (route) من صحة المجموع والحساب قبل النداء؛ هذه
+    الدالة تخزّن القرار كما وصل، فتبقى domain/payables.py وحدها مصدر الحساب.
+    """
+    now = dt.datetime.now(dt.timezone.utc)
+    existing = db.query(models.PaymentAllocation).filter_by(
+        payment_id=payment_id, deleted_at=None).all()
+    for r in existing:
+        r.deleted_at = now
+    for line in lines:
+        db.add(models.PaymentAllocation(
+            payment_id=payment_id, invoice_id=line.get('invoiceId'),
+            amount=line['amount'],
+            kind='on_account' if line.get('invoiceId') is None else 'manual'))
+    db.commit()
+
+
+def clear_payment_allocation(db: Session, payment_id: str) -> None:
+    """يمحو قرار دفعة — تعود إلى قائمة المراجعة عند إعادة الحساب."""
+    now = dt.datetime.now(dt.timezone.utc)
+    for r in db.query(models.PaymentAllocation).filter_by(
+            payment_id=payment_id, deleted_at=None).all():
+        r.deleted_at = now
+    db.commit()
+
+
 def positions(db: Session, today: Optional[dt.date] = None,
               account: Optional[str] = None,
               project: Optional[str] = None,
-              include_empty: bool = False) -> list:
+              include_empty: bool = False,
+              smart: Optional[bool] = None) -> list:
+    """smart=None (الافتراضي) يقرأ إعداد app_settings؛ مرّر True/False صراحةً
+    لتجاوزه (مثال: أدوات القياس)."""
     today = today or dt.date.today()
+    if smart is None:
+        smart = is_smart_allocation_enabled(db)
     q = db.query(models.Supplier).filter(models.Supplier.deleted_at.is_(None))
     if account:
         q = q.filter(models.Supplier.account == account)
@@ -55,8 +124,21 @@ def positions(db: Session, today: Optional[dt.date] = None,
         # has nothing owing. Only the dashboard filters these out.
         if not invs and not pays and not include_empty:
             continue
-        out.append(P.position(_supplier(row), invs, pays, today))
+        decisions = _load_decisions(db, [p.id for p in pays]) if smart else None
+        out.append(P.position(_supplier(row), invs, pays, today,
+                              smart=smart, decisions=decisions))
     return out
+
+
+def count_pending_allocations(db: Session) -> int:
+    """عدد الدفعات المعلَّقة عبر كل الموردين — للعرض «٣ دفعات بانتظار التخصيص».
+
+    يُعاد حسابه من الصفر (لا يُخزَّن) لأنه مشتق: يتغيّر مع كل استيراد أو قرار
+    مراجعة جديد، وحسابه هنا هو نفس المسار الذي يبني به كشف كل مورد فرادى."""
+    if not is_smart_allocation_enabled(db):
+        return 0
+    ps = positions(db, include_empty=False, smart=True)
+    return sum(len(p.unallocated_payments) for p in ps)
 
 
 # ---------------------------------------------------------------- period window
@@ -134,6 +216,9 @@ def position_json(p, detail: bool = False,
         delay=dict(days=p.delay.days, bucket=p.delay.bucket,
                    amount=money(p.delay.amount),
                    byBucket={k: money(v) for k, v in p.delay.by_bucket.items()}),
+        # عدد الدفعات بانتظار التخصيص — [] دائماً حين إعداد تخصيص الدفعات متوقف،
+        # حتى لا يظهر رقم يوحي بميزة لا يعرف عنها المستخدم شيئاً بعد.
+        unallocatedCount=len(p.unallocated_payments),
     )
     # آخر دفعة — معلومة أساسية في القائمة: متى دُفع لهذا المورد آخر مرة وكم
     last_pay = max(p.payments, key=lambda x: x.date, default=None)
@@ -142,6 +227,14 @@ def position_json(p, detail: bool = False,
     if detail:
         d['invoices'] = [invoice_json(i) for i in p.invoices]
         d['payments'] = [payment_json(x) for x in p.payments]
+        # دفعات بانتظار التخصيص — تفصيل كامل فقط في شاشة المورد (شاشة القائمة
+        # تكتفي بـ unallocatedCount أعلاه، خفة الحمل).
+        d['unallocatedPayments'] = [
+            dict(payment=payment_json(u.payment),
+                 candidates=[invoice_json(c) for c in u.candidates],
+                 reason=u.reason)
+            for u in p.unallocated_payments
+        ]
         if date_from is not None or date_to is not None:
             b = period_breakdown(p, date_from, date_to)
             d['openingBalance'] = money(b['opening'])

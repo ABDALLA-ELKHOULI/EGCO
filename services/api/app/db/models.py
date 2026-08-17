@@ -338,6 +338,46 @@ class LearnedLayout(TimestampMixin, Base):
     learned_from_chars: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class AppSetting(TimestampMixin, Base):
+    """إعداد عام واحد للتطبيق — مفتاح/قيمة نصية. يبدأ بإعداد تخصيص الدفعات فقط.
+
+    جدول عام حتى لا يحتاج كل إعداد مستقبلي جدولاً مستقلاً؛ القيمة نص دائماً
+    (يفسّرها القارئ) لإبقاء البنية بسيطة. انظر payables_service.is_smart_allocation_enabled.
+    """
+    __tablename__ = 'app_settings'
+    key: Mapped[str] = mapped_column(String(60), unique=True, index=True)
+    value: Mapped[str] = mapped_column(Text, default='')
+
+
+class PaymentAllocation(TimestampMixin, Base):
+    """قرار تخصيص دفعة لفاتورة (أو فواتير عبر أسطر متعددة) أو «على الحساب».
+
+    جزء من ميزة «تخصيص الدفعات» الاختيارية (إعداد افتراضي متوقف — انظر AppSetting
+    أعلاه). يُقرأ فقط حين الإعداد مفعّل؛ إن كان متوقفاً يُتجاهل هذا الجدول كلياً
+    ويبقى السلوك القديم (allocate_fifo) كما هو.
+
+    صف واحد لكل (دفعة، فاتورة) — دفعة مقسّمة على عدة فواتير تحمل عدة صفوف بنفس
+    payment_id، ومجموع amount عبر أسطر الدفعة يُتحقّق منه في payables_service قبل
+    الحفظ (لا هنا — هذا الجدول يخزّن القرار كما اتُّخذ ولا يحاسب). invoice_id
+    فارغ = جزء «على الحساب» بلا فاتورة محددة (kind='on_account').
+
+    وجود أي صف بهذا payment_id يعني أن القرار اتُّخذ ولن تُسأل عنه الدفعة مرة
+    أخرى — domain/payables.allocate_smart يقرأ هذا الجدول كخرائط قرارات جاهزة.
+    القرار قابل للتعديل: يُحذف الصف/الصفوف القديمة ويُكتب قرار جديد محلها
+    (payables_service.save_payment_allocation).
+    """
+    __tablename__ = 'payment_allocations'
+    __table_args__ = (UniqueConstraint('payment_id', 'invoice_id',
+                                       name='uq_payment_allocation'),)
+    payment_id: Mapped[str] = mapped_column(ForeignKey('payments.id'), index=True)
+    #: NULL == على الحساب (لا فاتورة محددة)
+    invoice_id: Mapped[Optional[str]] = mapped_column(ForeignKey('invoices.id'),
+                                                       nullable=True, index=True)
+    amount: Mapped[float] = mapped_column(Float, default=0.0)
+    #: 'manual' (المستخدم اختار فاتورة/فواتير) | 'on_account' (على الحساب بلا فاتورة)
+    kind: Mapped[str] = mapped_column(String(20), default='manual')
+
+
 class ImportLog(TimestampMixin, Base):
     """سجل الرفع — audit trail so any imported number can be explained later."""
     __tablename__ = 'import_logs'

@@ -17,6 +17,7 @@ from app.db import models
 from app.domain import contractors as C
 from app.domain.payables import D, money
 from app.services import party_projects as PP
+from app.utils.arabic import contains_ar, normalize_ar
 
 
 # ---------------------------------------------------------------- known projects
@@ -275,12 +276,17 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
     # مشاريع يجب أن يظهر تحت الثلاثة. r['projects'] أعلاه مصدره الآن party_projects
     # (عضوية حقيقية)، لا اشتقاق من حركات الدفتر كما كان سابقاً.
     rows = []
+    # مطابقة مطبَّعة لصيغ المشروع المكافئة إملائياً (المدينة/المدينه) — تُحسب مرة
+    # واحدة خارج الحلقة لا لكل صف، نفس سبب حساب ids_in_project مرة في suppliers.py.
+    project_key = normalize_ar(project) if project else None
     for r in all_rows:
         if q:
-            needle = q.strip()
-            if needle not in r['name'] and needle not in r['code']:
+            # مقارنة مُطبَّعة عربياً — انظر app/utils/arabic.py وتعليق suppliers.py
+            # المطابق: الاسم كما كتبه المستخدم بحثاً قد يختلف حرفاً واحداً إملائياً
+            # عمّا كتبه نظام الحسابات القديم لنفس المقاول بالضبط.
+            if not contains_ar(r['name'], q) and not contains_ar(r['code'], q):
                 continue
-        if project and project not in r['projects']:
+        if project_key and not any(normalize_ar(p) == project_key for p in r['projects']):
             continue
         if direction and _direction_of(r['balance']) != direction:
             continue

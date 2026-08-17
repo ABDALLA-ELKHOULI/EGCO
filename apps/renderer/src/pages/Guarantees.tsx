@@ -173,8 +173,15 @@ function GuaranteeAccountModal({ account, onClose }:
         <>
           <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginBottom: 12 }}>
             <Kpi label="الرصيد" value={sar(d.account.balance)} unit="ر.س" />
+            {/* «فرق كذا ر.س» بلا شرح رقمٌ لا يُتحقَّق منه: لا يقول أي رقمين قُورنا
+                ولا أين يُبحث عن السبب. */}
             <Kpi label="المطابقة" value={d.account.matches == null ? '—' : (d.account.matches ? 'مطابق' : `فرق ${sar(Math.abs(d.account.difference ?? 0))} ر.س`)}
-                 tone={d.account.matches === false ? 'red' : d.account.matches ? 'ok' : undefined} />
+                 tone={d.account.matches === false ? 'red' : d.account.matches ? 'ok' : undefined}
+                 explain={<ExplainDot metric="guaranteeAccountMatch"
+                                      values={{ balance: d.account.balance,
+                                                // المتتبَّع مشتقّ من الرصيد والفرق — الخادم
+                                                // يرسل الاثنين، فلا حاجة لحقل ثالث.
+                                                tracked: d.account.balance - (d.account.difference ?? 0) }} />} />
           </div>
           {d.entries.length === 0 ? (
             <EmptyState kind="no-data" title="لا حركات" body="لا توجد حركات مسجّلة على هذا الحساب." />

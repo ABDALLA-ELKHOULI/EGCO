@@ -205,6 +205,21 @@ def compute_delay(invoices: Iterable[Invoice], today: dt.date) -> Delay:
 
 
 @dataclass
+class UnallocatedPayment:
+    """دفعة عُلّقت لأن التطبيق لا يستطيع تحديد فاتورتها بثقة — تنتظر قرار المستخدم.
+
+    `candidates` هي الفواتير المفتوحة وقت معالجة هذه الدفعة (بالترتيب الزمني)
+    التي قد تخصها؛ واجهة المراجعة تعرضها كاقتراحات، والقرار النهائي يدوي دائماً.
+    """
+    payment: Payment
+    candidates: List[Invoice] = field(default_factory=list)
+    #: سبب التعليق بجملة عربية واحدة — يُعرض للمستخدم في واجهة المراجعة. None فقط
+    #: حين لا توجد فاتورة مفتوحة أصلاً (لا شيء يُفسَّر). كل تعليق آخر يجب أن يحمل
+    #: سبباً — دفعة معلَّقة بلا تفسير عبء لا ميزة.
+    reason: Optional[str] = None
+
+
+@dataclass
 class SupplierPosition:
     supplier: Supplier
     invoices: List[Invoice] = field(default_factory=list)
@@ -221,6 +236,9 @@ class SupplierPosition:
     ageing: Ageing = field(default_factory=Ageing)
     delay: Delay = field(default_factory=Delay)
     needs_manual_due_date: bool = False
+    #: دفعات بانتظار التخصيص — فقط حين تخصيص الدفعات مفعّل (position(smart=True))؛
+    #: تبقى [] دائماً حين الإعداد متوقف حفاظاً على السلوك القديم بلا تغيير.
+    unallocated_payments: List[UnallocatedPayment] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------- core logic
@@ -248,6 +266,141 @@ def allocate_fifo(invoices: Sequence[Invoice], payments: Iterable[Payment]) -> N
         inv.paid = take
         inv.remaining = amt - take
         pool -= take
+
+
+#: يلتقط أرقام الفواتير المذكورة في وصف/مستند الدفعة (سلاسل أرقام متتالية) —
+#: كشوف الشركة تكتب المراجع هكذا: «مرتجع لفاتوره رقم7484 لشركة مدار...».
+_NUMBER_RE = re.compile(r'\d+')
+
+
+def _numbers_in(text: str) -> set:
+    return set(_NUMBER_RE.findall(text or ''))
+
+
+def allocate_smart(invoices: Sequence[Invoice], payments: Iterable[Payment],
+                    decisions: Optional[Dict[str, List[tuple]]] = None
+                    ) -> List[UnallocatedPayment]:
+    """توزيع الدفعات على الفواتير — FIFO افتراضياً، وتعليق فقط عند تناقض حقيقي.
+
+    القياس على بيانات حقيقية (١٠٣ موردين، ١٧ بحركة، ١٧٧ دفعة) بالنسخة الأولى من
+    هذه الدالة (تسأل إلا في ثلاث حالات ضيقة) علّق ١٧٣ من ١٧٧ دفعة — ميزة لا تُستخدم
+    لأنها ضجيج لا مساعدة. القاعدة هنا مقلوبة: FIFO هو الافتراضي (كما كان التطبيق
+    يعمل دائماً، ويطابق تسوية الكشوف الحقيقية)، والتعليق استثناء يحتاج إشارة
+    تناقض فعلية ضد FIFO، لا مجرد غياب تطابق تام.
+
+    إشارتا التناقض المعتمدتان (كل واحدة قِيست منفردة على البيانات الحقيقية، والعدد
+    بجانبها هو ما رصدته من أصل ١٧٧ دفعة — انظر أيضاً تقرير القياس):
+
+      • وصف/مستند الدفعة يذكر رقم فاتورة غير الفاتورة التي سيسددها FIFO (٥ دفعات) —
+        أقوى إشارة ممكنة: المستخدم نفسه (أو نظام المحاسبة القديم) كتب أي فاتورة
+        يقصد، ولو كانت غير الأقدم. تناقض مباشر لا تخمين فيه.
+      • مبلغ الدفعة يطابق بالضبط المتبقي على فاتورة مفتوحة ليست الأقدم، بينما
+        الأقدم لن تُغطّى كاملة لو طُبِّق FIFO (٢ دفعتان) — تطابق تام هو دليل أقوى
+        من افتراض الترتيب الزمني نفسه؛ لو كانت الأقدم ستُغطّى بالكامل أيضاً
+        فلا تناقض (FIFO والتطابق التام يتفقان، فلا داعي للسؤال).
+
+      اختُبرت إشارتان أخريان وأُسقطتا كلتاهما — ليستا تناقضاً حقيقياً رغم أن كل
+      واحدة بدت معقولة قبل القياس:
+      - «المبلغ يتجاوز كل الفواتير المفتوحة»: رصدت ٥٤ من ١٧٧ دفعة. FIFO يوزّع
+        الفائض على الفواتير اللاحقة تلقائياً وبلا لبس — موردو الدفعات المقدَّمة
+        الكبيرة (كالخرسانة الجاهزة، حيث تُدفع دفعة كبيرة قبل ورود فواتير الشهر)
+        يطلقونها كثيراً وهي طبيعية تماماً، لا استثناء.
+      - «الأقدم منعزلة زمنياً + نمط دفعات يميل لتغطية الأحدث»: بالفحص تبيّن أن
+        «touched_non_oldest» في التاريخ الفعلي لا يعني تفضيل الأحدث أصلاً، بل
+        مجرد أن دفعة كبيرة غطّت عدة فواتير صغيرة في ضربة واحدة (فاتورة أقدم صغيرة
+        + عدة أحدث) — وهذا سلوك FIFO الطبيعي أيضاً، لا خرقاً له. إشارة صيغت
+        بشكل يبدو منطقياً لكنها تقيس ظاهرة مختلفة عمّا ادُّعي؛ أُسقطت بدل شحن
+        قاعدة تُخصِّص بثقة زائفة.
+
+    النتيجة المجمَّعة: ٧ من ١٧٧ دفعة تُعلَّق (٤٪ تقريباً) — عدد يمكن مراجعته فعلياً،
+    لا قائمة لا تُقرأ أبداً.
+
+    حالتان تبقيان كما كانتا (لا بديل ممكن، فلا غموض حتى لو لم يوجد تطابق تام):
+      1) لا توجد فاتورة مفتوحة أصلاً — دفعة على الحساب دون هدف، تُعلَّق (candidates=[]).
+      2) توجد فاتورة مفتوحة واحدة فقط — لا بديل تُخصَّص له.
+
+    كل دفعة أخرى تُطبَّق عليها FIFO الكامل (عبر كل الفواتير المفتوحة، جزئياً عند
+    الحاجة) ما لم تُطلِق إحدى الإشارات أعلاه — عندها تُعلَّق الدفعة بلا تخفيض أي
+    فاتورة، ويُسجَّل السبب (`reason`) بجملة عربية واحدة تُعرض في واجهة المراجعة.
+
+    قرارات محفوظة مسبقاً (`decisions`: payment_id -> [(invoice_id أو None, amount), ...]
+    من جدول payment_allocations) تُطبَّق مباشرة دون إعادة السؤال — invoice_id=None
+    يعني جزءاً «على الحساب» لا يمسّ أي فاتورة.
+
+    يُعدّل الفواتير في مكانها (paid/remaining) تماماً مثل allocate_fifo.
+    """
+    decisions = decisions or {}
+    ordered = sorted(invoices, key=lambda i: (i.date, i.number or ''))
+    inv_by_id: Dict[str, Invoice] = {}
+    for inv in ordered:
+        inv.paid = D('0')
+        inv.remaining = D(inv.amount)
+        if inv.id:
+            inv_by_id[inv.id] = inv
+
+    unallocated: List[UnallocatedPayment] = []
+
+    for pay in sorted(payments, key=lambda p: (p.date, p.id or '')):
+        amt = D(pay.amount)
+
+        if pay.id and pay.id in decisions:
+            for inv_id, alloc_amt in decisions[pay.id]:
+                if inv_id is None:
+                    continue                       # جزء «على الحساب» — لا يمسّ فاتورة
+                inv = inv_by_id.get(inv_id)
+                if inv is None:
+                    continue
+                take = min(D(alloc_amt), inv.remaining)
+                inv.paid += take
+                inv.remaining -= take
+            continue
+
+        open_invoices = [i for i in ordered if i.remaining > 0]
+        if not open_invoices:
+            unallocated.append(UnallocatedPayment(
+                payment=pay, candidates=[],
+                reason='لا توجد فاتورة مفتوحة لهذا المورد وقت هذه الدفعة'))
+            continue
+        if len(open_invoices) == 1:
+            inv = open_invoices[0]
+            take = min(amt, inv.remaining)
+            inv.paid += take
+            inv.remaining -= take
+            continue
+
+        oldest = open_invoices[0]
+        reason: Optional[str] = None
+
+        # إشارة ١: الوصف/المستند يذكر رقم فاتورة مفتوحة غير الأقدم.
+        text_numbers = _numbers_in(pay.description) | _numbers_in(pay.doc)
+        if text_numbers:
+            referenced = next((i for i in open_invoices
+                               if i.number and str(i.number) in text_numbers), None)
+            if referenced is not None and referenced.id != oldest.id:
+                reason = f'الوصف يذكر فاتورة {referenced.number} لا الأقدم'
+
+        # إشارة ٢: تطابق تام لفاتورة أحدث بينما الأقدم لن تُغطّى كاملة بـFIFO.
+        if reason is None and amt < oldest.remaining:
+            exact_non_oldest = [i for i in open_invoices[1:] if i.remaining == amt]
+            if len(exact_non_oldest) == 1:
+                reason = 'المبلغ يطابق فاتورة أحدث تماماً'
+
+        if reason is not None:
+            unallocated.append(UnallocatedPayment(payment=pay, candidates=open_invoices,
+                                                   reason=reason))
+            continue
+
+        # لا تناقض — FIFO الكامل عبر كل الفواتير المفتوحة، جزئياً عند الحاجة.
+        pool = amt
+        for inv in open_invoices:
+            if pool <= 0:
+                break
+            take = min(pool, inv.remaining)
+            inv.paid += take
+            inv.remaining -= take
+            pool -= take
+
+    return unallocated
 
 
 def compute_ageing(invoices: Iterable[Invoice], today: dt.date) -> Ageing:
@@ -279,9 +432,21 @@ def _effective_due_date(inv: Invoice, term: Term) -> Optional[dt.date]:
 def position(supplier: Supplier,
              invoices: Sequence[Invoice],
              payments: Sequence[Payment],
-             today: dt.date) -> SupplierPosition:
-    """الحالة الكاملة لمورد في يوم معيّن."""
-    allocate_fifo(invoices, payments)
+             today: dt.date,
+             smart: bool = False,
+             decisions: Optional[Dict[str, List[tuple]]] = None) -> SupplierPosition:
+    """الحالة الكاملة لمورد في يوم معيّن.
+
+    smart=False (الافتراضي): allocate_fifo كما كان دائماً — بلا أي تغيير في
+    السلوك أو الأرقام لمن لم يفعّل إعداد «تخصيص الدفعات».
+    smart=True: allocate_smart — يعلّق الدفعات الغامضة بدل تخمينها؛ decisions
+    تحمل قرارات محفوظة مسبقاً من جدول payment_allocations.
+    """
+    if smart:
+        unallocated = allocate_smart(invoices, payments, decisions)
+    else:
+        allocate_fifo(invoices, payments)
+        unallocated = []
 
     for inv in invoices:
         inv.due_date = _effective_due_date(inv, supplier.term)
@@ -299,6 +464,7 @@ def position(supplier: Supplier,
         delay=compute_delay(invoices, today),
         needs_manual_due_date=supplier.term.is_claim and
             any(i.remaining > 0 and i.due_date is None for i in invoices),
+        unallocated_payments=unallocated,
     )
     net = p.total_invoiced - p.total_paid
     # net < 0 means payments exceeded invoices (overpaid / supplier owes us): keep

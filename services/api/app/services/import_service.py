@@ -8,10 +8,13 @@ failed import, so a mismatch is reported and nothing is written.
 from __future__ import annotations
 
 import datetime as dt
+import difflib
 import json
 import os
+import re
 import shutil
-from typing import List, Optional
+import unicodedata
+from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -45,6 +48,235 @@ _EXT_SOURCE = {
     '.xlsx': 'suppliers_excel',
     '.xlsm': 'suppliers_excel',
 }
+
+
+# ---------------------------------------------------------------- تحذير التكرار المحتمل
+#
+# القيد الفريد (uq_invoice_identity) يمنع الصف المطابق حرفياً فقط: الحركة نفسها إذا
+# أُعيد إصدار سندها برقم آخر (أو اختلف وصفها بين تصديرين متداخلين) تحمل هوية مختلفة،
+# فتمرّ من الفلترة ومن القيد معاً وتُضاعف المبلغ بصمت. هذا القسم يرصد هذه الحالة
+# ويعرضها فقط — لا يحذف ولا يدمج ولا يمنع الحفظ: القرار للمستخدم وحده، ولأن
+# «فاتورتان بنفس اليوم والمبلغ» حالة مشروعة تماماً (ولهذا الوصف والمستند جزء من
+# الهوية أصلاً — انظر تعليق uq_invoice_identity).
+#
+# لماذا لا يكفي «نفس التاريخ ونفس المبلغ»؟ قياسٌ على قاعدة المستخدم الحقيقية أعطى
+# ٨٧ زوجاً بهذه القاعدة، جميعها تقريباً فواتير مستقلة من مورد واحد بنفس اليوم
+# والقيمة (ارتك: بلاط بسعر ثابت، عدة فواتير يومياً) تختلف في **رقم الفاتورة**.
+# ورقم الفاتورة هو مفتاح النظام المحاسبي نفسه: اختلافه يعني حركتين مختلفتين قطعاً.
+# لذلك نشترط أن يبدو الطرفان الحركة نفسها:
+#   • رقما فاتورة موجودان ومختلفان        -> حركتان مختلفتان، لا تحذير.
+#   • رقما فاتورة موجودان ومتطابقان        -> نفس الفاتورة بسندين -> تحذير.
+#   • رقم مفقود (كشوف CSV والدفعات)        -> نقارن أرقام الوصف نفسه: أرقام الوصف
+#     بعد استبعاد رقم السند (الذي يُتوقّع اختلافه) يجب أن تتطابق، مع تشابه نصي عالٍ.
+# بهذه القاعدة نزل العدد على نفس القاعدة الحقيقية من ٨٧ إلى صفر (لا تكرار محتمل
+# قائماً اليوم)، أي أن التحذير حين يظهر يستحق النظر فعلاً.
+
+#: نص التحذير كما طلبه المستخدم — يسبق تفاصيل الحركتين
+NEAR_DUP_MESSAGE = ('حركتان بنفس التاريخ والمبلغ ويختلف سندهما — '
+                    'تأكّد أنهما ليستا حركة واحدة')
+
+#: أقصى عدد تحذيرات تُرسل مع الملف الواحد — كشف مشوّه قد يولّد مئات الأزواج،
+#: وقائمة لا تُقرأ لا تفيد أحداً. الباقي يُلخَّص في سطر واحد.
+_NEAR_DUP_LIMIT = 20
+
+#: حد التشابه النصي حين لا يوجد رقم فاتورة نحتكم إليه
+_NEAR_DUP_TEXT_RATIO = 0.75
+
+_ND_DIAC = re.compile('[ً-ْ]')
+_ND_DIGITS = re.compile(r'\d+')
+
+
+def _nd_norm(text: Optional[str]) -> str:
+    """توحيد النص العربي قبل المقارنة — الكشوف تكتب نفس الكلمة بأشكال مختلفة
+    (فاتوره/فاتورة، ارتك/ارتكك، ي/ى) وأحياناً بمحارف عرض مختلفة تماماً."""
+    s = unicodedata.normalize('NFKC', text or '')
+    s = s.replace('ـ', '')                     # التطويل
+    s = _ND_DIAC.sub('', s)
+    s = s.replace('ى', 'ي').replace('ة', 'ه')
+    s = s.replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
+    return re.sub(r'\s+', ' ', s).strip()
+
+
+def _nd_num(text: Optional[str]) -> str:
+    """رقم بلا أصفار بادئة — السند يُكتب 00002143 في عمود ويُذكر 2143 في الوصف."""
+    return (text or '').strip().lstrip('0')
+
+
+def _nd_desc_digits(description: Optional[str], docs: Tuple[str, ...]) -> frozenset:
+    """أرقام الوصف بعد استبعاد أرقام السندات نفسها.
+
+    الوصف عادةً يحمل رقم الفاتورة («فاتورة14553760 شركة مدار») وهو ما يفرّق حركتين
+    مستقلتين حتى لو تطابق كل شيء آخر؛ بينما رقم السند يُتوقّع اختلافه في الحالة التي
+    نبحث عنها أصلاً، فلا يصحّ أن يُحسب فرقاً."""
+    skip = set(_nd_num(d) for d in docs if _nd_num(d))
+    return frozenset(n for n in (_nd_num(m) for m in _ND_DIGITS.findall(description or ''))
+                     if n and n not in skip)
+
+
+def _nd_identity(row: dict) -> tuple:
+    return (row.get('number') or '', row.get('doc') or '', row.get('description') or '')
+
+
+def _nd_bucket(row: dict) -> tuple:
+    """المجموعة التي يُبحث داخلها فقط: نفس نوع السجل ونفس التاريخ ونفس المبلغ
+    بالضبط (المبلغ Decimal مقرّب مرة واحدة عند الحد)."""
+    return (row['kind'], row['date'], money(row['amount']))
+
+
+def _nd_same_transaction(a: dict, b: dict) -> bool:
+    """هل يبدو الصفّان الحركة الواحدة نفسها بسند/وصف مختلف؟ (انظر شرح القاعدة أعلاه)"""
+    if _nd_identity(a) == _nd_identity(b):
+        return False        # تطابق حرفي — يعالجه القيد الفريد وفلترة التكرار، لا هنا
+    an, bn = (a.get('number') or '').strip(), (b.get('number') or '').strip()
+    if an and bn:
+        return an == bn
+    docs = (a.get('doc') or '', b.get('doc') or '')
+    if _nd_desc_digits(a.get('description'), docs) != _nd_desc_digits(b.get('description'), docs):
+        return False
+    ratio = difflib.SequenceMatcher(
+        None, _nd_norm(a.get('description')), _nd_norm(b.get('description'))).ratio()
+    return ratio >= _NEAR_DUP_TEXT_RATIO
+
+
+def _nd_side(row: dict) -> dict:
+    return dict(number=row.get('number') or None, doc=row.get('doc') or '',
+                description=row.get('description') or '')
+
+
+def _nd_issue(a: dict, b: dict, scope: str) -> dict:
+    """تحذير واحد بصيغة `issues` المستعملة في كل مكان (severity/row/message) مع حقول
+    إضافية مُهيكلة — تُخزَّن كما هي في ImportLog.issues فتُقرأ بعد الرفع بأيام."""
+    amount = money(a['amount'])
+    date_str = a['date'].isoformat() if hasattr(a['date'], 'isoformat') else str(a['date'])
+    detail = ('%s · %s · %s ر.س · سند %s «%s» مقابل سند %s «%s»' % (
+        NEAR_DUP_MESSAGE, date_str, ('%.2f' % abs(amount)),
+        a.get('doc') or '—', (a.get('description') or '').strip() or '—',
+        b.get('doc') or '—', (b.get('description') or '').strip() or '—'))
+    return dict(severity='warning', row=None, message=detail,
+                kind='near_duplicate', scope=scope, ledger=a['kind'],
+                date=date_str, amount=amount,
+                a=_nd_side(a), b=_nd_side(b))
+
+
+def _nd_row(kind: str, date, amount, doc, description,
+            number: Optional[str] = None) -> dict:
+    return dict(kind=kind, date=date, amount=D(amount), doc=doc or '',
+                description=description or '', number=number)
+
+
+def find_near_duplicates(incoming: List[dict],
+                         existing: Optional[List[dict]] = None) -> List[dict]:
+    """تحذيرات التكرار المحتمل: داخل الملف نفسه (scope='file') ومقابل ما هو محفوظ
+    للطرف نفسه (scope='db'). لا تحذف ولا تعدّل شيئاً — تصف فقط."""
+    buckets = {}
+    for row in (existing or []):
+        buckets.setdefault(_nd_bucket(row), []).append(row)
+
+    issues: List[dict] = []
+    seen = set()
+    extra = 0
+    incoming_buckets = {}
+
+    for row in incoming:
+        key = _nd_bucket(row)
+        for other, scope in ([(o, 'file') for o in incoming_buckets.get(key, [])] +
+                             [(o, 'db') for o in buckets.get(key, [])]):
+            if not _nd_same_transaction(row, other):
+                continue
+            sig = (key, scope) + tuple(sorted((_nd_identity(row), _nd_identity(other))))
+            if sig in seen:
+                continue
+            seen.add(sig)
+            if len(issues) >= _NEAR_DUP_LIMIT:
+                extra += 1
+                continue
+            issues.append(_nd_issue(other, row, scope))
+        incoming_buckets.setdefault(key, []).append(row)
+
+    if extra:
+        issues.append(dict(severity='warning', row=None, kind='near_duplicate_more',
+                           message='و%d حالة أخرى مشابهة لم تُعرض هنا' % extra))
+    return issues
+
+
+def _nd_rows_from_parsed(parsed: dict) -> List[dict]:
+    """صفوف الكشف الواردة (مورد) بالشكل الذي يفهمه الفاحص."""
+    rows = [_nd_row('invoice', i.date, i.amount, i.doc, i.description, i.number)
+            for i in parsed['invoices']]
+    rows += [_nd_row('payment', p.date, p.amount, p.doc, p.description)
+             for p in parsed['payments']]
+    return rows
+
+
+def _nd_rows_from_supplier(db: Optional[Session], supplier_id: Optional[str]) -> List[dict]:
+    """الحركات الحيّة المحفوظة لهذا المورد — المحذوفة منطقياً لا تُقارن (نفس عرف
+    الحذف الناعم في بقية النظام: صفٌّ محذوف غير موجود)."""
+    if db is None or not supplier_id:
+        return []
+    rows = [_nd_row('invoice', i.date, i.amount, i.doc, i.description, i.number)
+            for i in db.query(models.Invoice).filter(
+                models.Invoice.supplier_id == supplier_id,
+                models.Invoice.deleted_at.is_(None)).all()]
+    rows += [_nd_row('payment', p.date, p.amount, p.doc, p.description)
+             for p in db.query(models.Payment).filter(
+                models.Payment.supplier_id == supplier_id,
+                models.Payment.deleted_at.is_(None)).all()]
+    return rows
+
+
+def _nd_rows_from_contractor(db: Optional[Session], contractor_id: Optional[str]) -> List[dict]:
+    if db is None or not contractor_id:
+        return []
+    # المبلغ موقّع (مدين − دائن) كي لا يُقارن قيد مدين بقيد دائن بنفس القيمة
+    return [_nd_row('entry', e.date, D(e.debit) - D(e.credit), e.doc, e.description)
+            for e in db.query(models.ContractorEntry).filter(
+                models.ContractorEntry.contractor_id == contractor_id,
+                models.ContractorEntry.deleted_at.is_(None)).all()]
+
+
+def _nd_supplier_issues(db: Optional[Session], parsed: dict) -> List[dict]:
+    supplier = None
+    if db is not None and parsed.get('account'):
+        supplier = db.query(models.Supplier).filter_by(
+            account=parsed['account']).filter(
+            models.Supplier.deleted_at.is_(None)).one_or_none()
+    return find_near_duplicates(
+        _nd_rows_from_parsed(parsed),
+        _nd_rows_from_supplier(db, supplier.id if supplier is not None else None))
+
+
+def _nd_contractor_issues(db: Optional[Session], parsed: dict) -> List[dict]:
+    contractor = None
+    if db is not None and parsed.get('account'):
+        contractor = db.query(models.Contractor).filter_by(
+            code=parsed['account']).filter(
+            models.Contractor.deleted_at.is_(None)).one_or_none()
+    incoming = [_nd_row('entry', r['date'], D(r['debit']) - D(r['credit']),
+                        r.get('doc'), r.get('description'))
+                for r in parsed['rows']]
+    return find_near_duplicates(
+        incoming, _nd_rows_from_contractor(db, contractor.id if contractor is not None else None))
+
+
+def near_duplicates_for_account(db: Session, account: str) -> dict:
+    """كل التكرارات المحتملة القائمة الآن لحساب واحد — تُطلب بعد الرفع بأيام.
+
+    تُحسب من الحركات المحفوظة نفسها (لا من سجل الرفع) كي تشمل ما يمتدّ بين ملفين
+    مرفوعين في وقتين مختلفين — وهي بالضبط الحالة التي لا يمكن لأي ملف وحده كشفها.
+    """
+    supplier = db.query(models.Supplier).filter_by(account=account).filter(
+        models.Supplier.deleted_at.is_(None)).one_or_none()
+    if supplier is not None:
+        rows = _nd_rows_from_supplier(db, supplier.id)
+        return dict(account=account, name=supplier.name, kind='supplier',
+                    pairs=find_near_duplicates(rows))
+    contractor = db.query(models.Contractor).filter_by(code=account).filter(
+        models.Contractor.deleted_at.is_(None)).one_or_none()
+    if contractor is not None:
+        rows = _nd_rows_from_contractor(db, contractor.id)
+        return dict(account=account, name=contractor.name, kind='contractor',
+                    pairs=find_near_duplicates(rows))
+    return dict(account=account, name=None, kind=None, pairs=[])
 
 
 # ---------------------------------------------------------------- backup
@@ -167,7 +399,7 @@ def _contractor_parsed_if_any(path: str, source: str,
     return None
 
 
-def _contractor_preview(parsed: dict) -> dict:
+def _contractor_preview(parsed: dict, db: Optional[Session] = None) -> dict:
     """Review-screen numbers for a contractor statement — computed vs printed,
     signed (the ledger convention), with kind='contractor' so the UI can label it."""
     rows = parsed['rows']
@@ -177,6 +409,8 @@ def _contractor_preview(parsed: dict) -> dict:
     stated = (D(parsed['printed_balance'])
               if parsed['printed_balance'] is not None else None)
     ok = stated is None or abs(computed - stated) <= Decimal('0.01')
+    # تحذير معلوماتي بحت — لا يدخل في `ok` ولا يغيّر بوابة المطابقة إطلاقاً
+    near_dups = _nd_contractor_issues(db, parsed)
     return dict(
         kind='contractor',
         account=parsed['account'], name=parsed['name'],
@@ -187,7 +421,8 @@ def _contractor_preview(parsed: dict) -> dict:
         statementBalance=money(stated) if stated is not None else None,
         reconciled=bool(ok),
         difference=money(computed - stated) if stated is not None else None,
-        issues=list(parsed['issues']),
+        issues=list(parsed['issues']) + near_dups,
+        nearDuplicates=near_dups,
     )
 
 
@@ -225,7 +460,7 @@ def preview_statement(path: str, source: str = 'pdf_statement',
             return guarantees_service.preview(probe)
     cparsed = _contractor_parsed_if_any(path, source, db)
     if cparsed is not None:
-        return _contractor_preview(cparsed)
+        return _contractor_preview(cparsed, db)
     parser = _PARSERS.get(source, pdf_statement.parse)
     parsed = parser(path)
     invoices, payments = parsed['invoices'], parsed['payments']
@@ -247,6 +482,10 @@ def preview_statement(path: str, source: str = 'pdf_statement',
     if stated is None and source == 'csv_statement':
         issues.append(dict(severity='warning', row=None,
                            message='لا يحتوي CSV على رصيد للمطابقة'))
+    # تحذير معلوماتي بحت: يُضاف بعد حساب `ok` ولا يُقرأ في أي شرط حفظ — ملف مطابق
+    # يبقى مطابقاً وملف غير مطابق يبقى مرفوضاً.
+    near_dups = _nd_supplier_issues(db, parsed)
+    issues += near_dups
 
     return dict(
         account=parsed['account'],
@@ -258,6 +497,7 @@ def preview_statement(path: str, source: str = 'pdf_statement',
         reconciled=bool(ok),
         difference=money(computed + stated) if stated is not None else None,
         issues=issues,
+        nearDuplicates=near_dups,
     )
 
 
@@ -336,6 +576,11 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
         # ويختلفان في المستند/الوصف هما حركتان مختلفتان، لا تكراراً.
         # .first() لا .one_or_none(): قواعد قديمة قد تحوي صفين متطابقين فيرفع
         # one_or_none استثناءً يُفشل الملف كله.
+        # ‏db.flush() قبل الاستعلام: الجلسة تعمل بـ autoflush=False، فصفٌّ أُضيف
+        # قبل قليل في هذه الحلقة نفسها لا يراه الاستعلام. كشفٌ يحمل سطرين
+        # متطابقين تماماً (وهو وارد) كان يمرّ بكليهما كأنهما جديدان، ثم يصطدم
+        # بقيد الهوية عند الحفظ فيفشل **الملف كله** برسالة ٥٠٠ لا معنى لها.
+        db.flush()
         exists = db.query(models.Invoice).filter_by(
             supplier_id=supplier.id, number=inv.number, date=inv.date,
             amount=inv.amount, doc=inv.doc,
@@ -356,6 +601,7 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
         added += 1
 
     for pay in parsed['payments']:
+        db.flush()          # نفس السبب أعلاه — الدفعات المتطابقة أشيع من الفواتير
         exists = db.query(models.Payment).filter_by(
             supplier_id=supplier.id, doc=pay.doc, date=pay.date,
             amount=pay.amount, description=pay.description).first()
@@ -386,7 +632,7 @@ def _commit_contractor(db: Session, parsed: dict, path: str,
     """حفظ كشف مقاول/متعامل — same reconciliation contract as the supplier flow:
     the computed signed balance must equal the printed «اجمالي الحساب», with the same
     allow_unreconciled escape hatch."""
-    pre = _contractor_preview(parsed)
+    pre = _contractor_preview(parsed, db)
 
     if not pre['reconciled'] and not allow_unreconciled:
         return dict(saved=False, reason='not_reconciled', **pre)
@@ -543,7 +789,8 @@ def batch_import(db: Session, paths: List[str], allow_unreconciled: bool = False
         row = dict(path=path, name=name, source=source, status='read_error',
                    detected=DETECTED_LABELS.get(source, DETECTED_LABELS[None]),
                    account=None, supplierName=None, added=0, skipped=0,
-                   computedBalance=None, statementBalance=None, message='')
+                   computedBalance=None, statementBalance=None, message='',
+                   nearDuplicates=[])
         try:
             # نفس الملف مرتين في نفس الدفعة — يحدث عند اختيار مجلد ثم إضافة ملفات يدوياً
             key = os.path.normcase(os.path.abspath(path))
@@ -596,6 +843,9 @@ def batch_import(db: Session, paths: List[str], allow_unreconciled: bool = False
                 res = commit_statement(db, path, allow_unreconciled=allow_unreconciled,
                                        source=source, backup=False)
                 row['account'] = res.get('account')
+                # تحذير التكرار المحتمل يُرافق الصف سواء حُفظ الملف أو رُفض — فهو
+                # وصف لما في الملف، لا نتيجة للحفظ، ولا يغيّر status أبداً.
+                row['nearDuplicates'] = res.get('nearDuplicates') or []
                 row['computedBalance'] = res.get('computedBalance')
                 row['statementBalance'] = res.get('statementBalance')
                 if res.get('saved'):
