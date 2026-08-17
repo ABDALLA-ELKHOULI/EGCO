@@ -371,11 +371,15 @@ ipcMain.handle('export:pdf', async (event, opts: { filename: string; landscape?:
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
     });
     if (r.canceled || !r.filePath) return { canceled: true };
+    // ‏preferCSSPageSize كان true فيتجاهل pageSize أدناه ويتبع @page في CSS.
+    // ‏Chromium لا يدعم @page المسمّاة (page: اسم)، فكانت القاعدة تسقط ويعود
+    // المحرّك إلى حجمه الافتراضي (Letter) بدل A4. الحجم يُملى من هنا الآن،
+    // وهو المكان الوحيد الذي يعرف اتجاه كل تصدير على حدة.
     const data = await sender.printToPDF({
       printBackground: true,
       landscape: !!opts.landscape,
       pageSize: 'A4',
-      preferCSSPageSize: true,
+      preferCSSPageSize: false,
     });
     await fs.promises.writeFile(r.filePath, data);
     shell.showItemInFolder(r.filePath);

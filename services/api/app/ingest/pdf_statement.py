@@ -25,7 +25,13 @@ from app.domain.payables import Invoice, Payment
 #: يُقسَّم قبل العلامة لا عليها، فيبقى سطر العلامة هو lines[0] في كلا التخطيطين
 #: وتظل فهارس بقية السطور كما هي.
 BLOCK_MARKER = r'(?=ID=0\dTrxType=)'
-ACCOUNT_RE = re.compile(r'\b(\d{7})\b')
+#: رقم الحساب ليس طولاً ثابتاً — قِيس عبر 60+ كشفاً حقيقياً فظهرت أطوال 5 و6 و7 و8
+#: أرقام (ضمان القدس 21620 بخمسة، الرسين 211181 بستة، أغلب الكشوف بسبعة، ديار الوادي
+#: 21201020 بثمانية). لذلك لا نُثبِّت العدد، بل نربط المطابقة بمجاورة تسمية «الحساب»
+#: نفسها بدل الاعتماد على عدد الأرقام — الترويسة تطبعه كسطر رقم يليه سطر «: الحساب»
+#: (RTL يقلب ترتيب الكلمة والنقطتين). هذا يمنع الوقوع في فخ التواريخ والمبالغ المجاورة
+#: (2025-01-01، 01-07-1446) التي كانت ستُلتقط لو وُسِّع عدد الأرقام بلا مرساة.
+ACCOUNT_RE = re.compile(r'(\d{4,9})\s*\n\s*:\s*الحساب')
 INVOICE_NO_RE = re.compile(r'رقم\s*(\d+)')
 TOTAL_RE = re.compile(r'اجمالي\s*الحساب\s*(-?[\d,]+\.\d{2})')
 
@@ -149,8 +155,10 @@ def parse(path: str) -> dict:
     # deferred until after the opening line has had its chance — see below.
 
     # The account number appears in the header, before the first transaction block.
+    # ACCOUNT_RE anchors on the "الحساب" label, which in this PDF's raw text is stored
+    # as Unicode presentation forms — normalise first or the label never matches.
     account = None
-    m = ACCOUNT_RE.search(blocks[0])
+    m = ACCOUNT_RE.search(_norm(blocks[0]))
     if m:
         account = m.group(1)
     else:

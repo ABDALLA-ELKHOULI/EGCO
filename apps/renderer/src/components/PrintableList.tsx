@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { arDate } from '@/lib/format';
 import { State } from '@/components/ui';
 import logoFull from '@/assets/logo-full.png';
@@ -12,6 +12,10 @@ import logoFull from '@/assets/logo-full.png';
  * الخادم المصفّاة التي يعرضها الجدول التفاعلي) — هذا المكوّن لا يحسب مبلغاً
  * ولا يعيد فرزاً أو تصفيةً، فقط يعرض ما وُصِف له بالضبط.
  */
+// يشترك المورّدون والمقاولون في نفس المفتاح — اختيار عمودي/أفقي قرار عن «طباعة
+// PDF» عموماً لا عن قائمة بعينها، فيُطبَّق نفس التفضيل عبر الشاشتين.
+const ORIENTATION_STORAGE_KEY = 'egco-print-landscape';
+
 export type PrintableColumn = {
   key: string;
   label: string;
@@ -45,11 +49,22 @@ export function PrintableList({
   const stamp = new Date().toISOString().slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
 
+  // اتجاه الورقة — عمودي افتراضياً (طلب المستخدم صراحة)، ويُتذكَّر بنفس نمط
+  // تخزين حالة الشريط الجانبي (Sidebar.tsx) حتى لا يُعاد اختياره في كل تصدير.
+  const [landscape, setLandscape] = useState<boolean>(
+    () => localStorage.getItem(ORIENTATION_STORAGE_KEY) === '1'
+  );
+  useEffect(() => {
+    localStorage.setItem(ORIENTATION_STORAGE_KEY, landscape ? '1' : '0');
+  }, [landscape]);
+
   // نفس دالة Report.tsx بالحرف: حوار حفظ أصلي داخل التطبيق، وwindow.print في المتصفح.
+  // landscape يقود الطرفين معاً: علم التصدير الفعلي هنا، وقاعدة @page عبر className
+  // على .sheet أدناه — أي انفصال بينهما ينتج ورقة بحجم غير ما اختاره المستخدم.
   async function exportPdf() {
     if (!window.egco?.exportPdf) { window.print(); return; }
     setExporting(true); setExportErr(null);
-    const r = await window.egco.exportPdf({ filename: `EGCO-${fileStamp}-${stamp}.pdf`, landscape: true });
+    const r = await window.egco.exportPdf({ filename: `EGCO-${fileStamp}-${stamp}.pdf`, landscape });
     setExporting(false);
     if (r.error) setExportErr(r.error);
   }
@@ -61,6 +76,24 @@ export function PrintableList({
           <h1>{docTitle}</h1>
           <p>جاهزة للطباعة أو الحفظ بصيغة PDF</p>
         </div>
+        <div className="no-print" role="group" aria-label="اتجاه الورقة" style={{ display: 'flex', gap: 6 }}>
+          <button
+            type="button"
+            className={`btn sm${!landscape ? ' primary' : ''}`}
+            aria-pressed={!landscape}
+            onClick={() => setLandscape(false)}
+          >
+            عمودي A4
+          </button>
+          <button
+            type="button"
+            className={`btn sm${landscape ? ' primary' : ''}`}
+            aria-pressed={landscape}
+            onClick={() => setLandscape(true)}
+          >
+            أفقي A4
+          </button>
+        </div>
         <button className="btn" onClick={onBack}>رجوع إلى القائمة</button>
         <button className="btn primary" disabled={exporting} onClick={exportPdf}>
           {exporting ? 'جارٍ إنشاء PDF…' : 'طباعة / حفظ PDF'}
@@ -70,8 +103,10 @@ export function PrintableList({
 
       {/* .print-landscape تستدعي صفحة @page مسمّاة صراحةً (رأت tokens.css) —
           بدونها يتنازع حجم الصفحة مع قواعد @page أخرى في الملف والنتيجة حجمٌ
-          عشوائي لا A4 أفقي كما طُلب من printToPDF. */}
-      <div className="sheet print-landscape">
+          عشوائي. بلا الفئة، .sheet يستخدم @page الافتراضي (A4 عمودي) — نفس
+          العلم landscape يقود كلا الجانبين فلا ينفصل حجم الصفحة عن ما صدّره
+          window.egco.exportPdf فعلياً. */}
+      <div className={`sheet${landscape ? ' print-landscape' : ''}`}>
         <header className="rpt-head" style={{ alignItems: 'center', gap: 10 }}>
           <img src={logoFull} alt="" style={{ height: 34, width: 'auto', display: 'block', flex: 'none' }} />
           <div>
@@ -93,7 +128,11 @@ export function PrintableList({
         </p>
         <hr />
 
-        <div className="table-scroll wide">
+        {/* لا table-scroll هنا: تلك الفئة تفرض min-width مصمَّماً لجداول الشاشة
+            (١٠٤٠ بكسل) فيتجاوز عرض ورقة A4 العمودية (٧٨٦) ويدفع عمودَي المال —
+            «المديونية المفتوحة» و«التأخر» — خارج الصفحة المطبوعة تماماً. الورقة
+            لا تُمرَّر أفقياً، فما خرج عن عرضها ضاع ولم يُقرأ. */}
+        <div className="print-table-wrap">
           <table className="rpt-table">
             <thead>
               <tr>

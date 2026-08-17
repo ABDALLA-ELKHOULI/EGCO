@@ -671,6 +671,17 @@ hr { border: 0; border-top: 1px solid var(--hair); margin: 16px 0; }
 .rpt-table tfoot td { padding: 9px 8px; }
 /* شريط ذهبي أسفل ترويسة الوثيقة — لمسة هوية بصرية بدل خط رفيع محايد */
 .rpt-head { border-bottom: 3px solid var(--gold); padding-bottom: 12px; }
+
+/* جدول الورقة المطبوعة ينكمش ليسع عرض الصفحة بدل أن يفيض عنها.
+   الورق لا يُمرَّر أفقياً: أي عمود يتجاوز حدّ الصفحة لا يُقرأ أبداً — وعمودا
+   المال هما آخر ما يجوز فقده في وثيقة يُبنى عليها قرار سداد. */
+.print-table-wrap { width: 100%; }
+.print-table-wrap > .rpt-table { width: 100%; min-width: 0; table-layout: auto; }
+/* اسم المورد يلتف على أسطر بدل أن يفرض عرضاً يزيح بقية الأعمدة */
+.print-table-wrap .rpt-table td:first-child,
+.print-table-wrap .rpt-table th:first-child { white-space: normal; word-break: break-word; }
+/* خلايا الأرقام تبقى بلا التفاف حتى لا ينكسر الرقم على سطرين */
+.print-table-wrap .rpt-table td.num, .print-table-wrap .rpt-table th.ltr { white-space: nowrap; }
 .rpt-notes > div { margin-bottom: 8px; }
 .rpt-notes b { font-size: 12px; display: block; }
 .rpt-notes p { margin: 1px 0 0; font-size: 12px; color: var(--muted); }
@@ -684,6 +695,20 @@ hr { border: 0; border-top: 1px solid var(--hair); margin: 16px 0; }
   .main { padding: 0; overflow: visible; }
   .sheet { border: 0; border-radius: 0; padding: 0; max-width: none; }
   body { background: #fff; }
+  /* .table-scroll.wide يفرض min-width: 1040px للتمرير الأفقي على الشاشة — في
+     الطباعة لا تمرير، فأي عرض أدنى يتجاوز عرض الصفحة يُقصّ صامتاً بدل أن يظهر
+     خطأ. الجدول يجب أن يتقلّص ليملأ عرض الصفحة الفعلي، عمودياً كان أو أفقياً. */
+  .sheet .table-scroll { overflow: visible !important; }
+  .sheet .table-scroll > table { min-width: 0 !important; }
+  /* A4 عمودي (الوضع الافتراضي) أضيق بكثير من الأفقي — ستة أعمدة موردين أو خمسة
+     أعمدة مقاولين تحتاج خطاً وحشوة أدق كي لا تتزاحم الأعمدة، ويظل توزيع العرض
+     ثابتاً (table-layout: fixed) بدل أن يتمدد عمود الاسم فيضغط أعمدة المديونية/
+     التأخر/الرصيد — وهي أرقام هذه الورقة الأساسية ولا يجوز أن تُقصّ. */
+  .sheet:not(.print-landscape) .rpt-table { font-size: 10.5px; table-layout: fixed; }
+  .sheet:not(.print-landscape) .rpt-table th,
+  .sheet:not(.print-landscape) .rpt-table td {
+    padding: 5px 4px; overflow-wrap: break-word;
+  }
 }
 /* حجم الصفحة يُحدَّد بالعنصر لا بترتيب القواعد. Chromium (الذي يعتمد عليه
    printToPDF) يجمع كل قواعد @page عالمياً بصرف النظر عن الفئة المحيطة بها —
