@@ -42,6 +42,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
 from app.domain.payables import D, money
+from app.ingest.friendly_errors import check_basic_file, describe_excel_open_error
 
 #: الصف صفر-الفهرس الذي يحمل عناوين المجموعات (تبويب / الرصيد / اجمالي الحركة / ...)
 HEADER_ROW1 = 3
@@ -156,10 +157,11 @@ def parse(path: str) -> dict:
     except ImportError as e:      # pragma: no cover
         raise DebtsReportParseError('xlrd مطلوب لقراءة ملفات xls القديمة') from e
 
+    check_basic_file(path, 'تقرير المديونيات المجمّع', DebtsReportParseError)
     try:
         wb = xlrd.open_workbook(path)
     except Exception as e:
-        raise DebtsReportParseError('تعذّرت قراءة الملف: %s' % e) from e
+        raise DebtsReportParseError(str(describe_excel_open_error(e, path, 'xls'))) from e
 
     rows: List[dict] = []
     issues: List[dict] = []

@@ -56,6 +56,12 @@ def import_receivables(db: Session, path: str, source: str = 'receivables_legacy
 
     added = skipped = 0
     for r in rows:
+        # الجلسة تعمل بـ autoflush=False، فصفٌّ أُضيف قبل قليل في هذه الحلقة نفسها
+        # لا يراه الاستعلام أدناه. ملفٌ يحمل صفين متطابقين تماماً (وارد فعلاً —
+        # جدولا التحصيل قد يكرران نفس الوحدة) كان يمرّ بكليهما كأنهما جديدان، ثم
+        # يصطدم قيد الهوية عند db.commit() فيفشل **الملف كله** بخطأ ٥٠٠. نفس
+        # الإصلاح المطبَّق على الموردين والمقاولين في import_service.py.
+        db.flush()
         exists = db.query(models.Receivable).filter_by(
             unit=r.unit, client=r.client, amount=r.amount,
             status=r.status, source=source).one_or_none()

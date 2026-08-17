@@ -26,9 +26,12 @@ from decimal import Decimal
 from app.ingest import (contractor_statement, csv_statement, debts_report_xls,
                         pdf_statement, receivables_excel, receivables_legacy,
                         suppliers_excel)
+from app.ingest.budget_xlsx import BudgetParseError
 from app.ingest.csv_statement import CsvStatementParseError
 from app.ingest.debts_report_xls import DebtsReportParseError
 from app.ingest.pdf_statement import StatementParseError
+from app.ingest.receivables_excel import ReceivablesExcelParseError
+from app.ingest.receivables_legacy import ReceivablesParseError
 from app.ingest.suppliers_excel import SuppliersParseError
 from app.services import party_projects as PP
 
@@ -43,7 +46,8 @@ _PARSERS = {
 RECEIVABLE_SOURCES = {'receivables_legacy_html', 'receivables_excel'}
 
 _PARSE_ERRORS = (StatementParseError, CsvStatementParseError, SuppliersParseError,
-                 DebtsReportParseError)
+                 DebtsReportParseError, BudgetParseError, ReceivablesExcelParseError,
+                 ReceivablesParseError)
 
 #: extension -> source classification for the folder scanner
 #: .xls (legacy BIFF) is currently only used by the consolidated debts report —

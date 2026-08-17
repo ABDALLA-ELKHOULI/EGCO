@@ -21,6 +21,7 @@ import unicodedata
 from typing import List, Optional
 
 from app.domain.payables import Invoice, Payment
+from app.ingest.friendly_errors import check_basic_file, describe_pdf_open_error
 
 #: يُقسَّم قبل العلامة لا عليها، فيبقى سطر العلامة هو lines[0] في كلا التخطيطين
 #: وتظل فهارس بقية السطور كما هي.
@@ -62,7 +63,18 @@ def extract_text(path: str) -> str:
         import fitz  # PyMuPDF
     except ImportError as e:      # pragma: no cover
         raise StatementParseError('PyMuPDF (fitz) is required to read PDF statements') from e
-    doc = fitz.open(path)
+
+    check_basic_file(path, 'كشف PDF', StatementParseError)
+    try:
+        doc = fitz.open(path)
+    except Exception as e:
+        raise StatementParseError(str(describe_pdf_open_error(e, path))) from e
+    if doc.is_encrypted and not doc.authenticate(''):
+        # doc.needs_pass لا يكفي وحده — بعض الملفات "مشفّرة" بكلمة مرور فارغة تُفتح
+        # بها تلقائياً؛ authenticate('') يميّز الحالتين بدل رفض ملف يمكن فتحه فعلاً.
+        raise StatementParseError(
+            'ملف الـPDF محمي بكلمة مرور — أزل الحماية (أو اطلب نسخة غير محمية من '
+            'الجهة المُصدرة) ثم أعد رفعه.')
     return '\n'.join(page.get_text() for page in doc)
 
 

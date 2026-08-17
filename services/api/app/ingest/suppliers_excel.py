@@ -14,6 +14,7 @@ The account number is the key — supplier names repeat across projects
 from __future__ import annotations
 
 from app.domain.payables import Supplier, parse_term
+from app.ingest.friendly_errors import check_basic_file, describe_excel_open_error
 
 COL_PROJECT = 0
 COL_TERM = 1
@@ -33,7 +34,11 @@ def parse(path: str) -> dict:
     except ImportError as e:      # pragma: no cover
         raise SuppliersParseError('openpyxl is required to read the suppliers file') from e
 
-    wb = openpyxl.load_workbook(path, data_only=True)
+    check_basic_file(path, 'ملف مدد الموردين', SuppliersParseError)
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True)
+    except Exception as e:
+        raise SuppliersParseError(str(describe_excel_open_error(e, path, 'xlsx'))) from e
     ws = wb.active
 
     suppliers: list[Supplier] = []

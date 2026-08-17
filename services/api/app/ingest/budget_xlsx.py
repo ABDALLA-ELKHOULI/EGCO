@@ -21,6 +21,8 @@ import datetime as dt
 import re
 from typing import Any, List, Optional
 
+from app.ingest.friendly_errors import check_basic_file, describe_excel_open_error
+
 MAX_COL = 12           # real content lives in columns A..H; phantom cols reach 16k+
 
 #: Arabic month names → month number (keys stored in normalised form)
@@ -214,10 +216,11 @@ def parse(path: str) -> List[dict]:
     BudgetParseError is raised only when no sheet matches at all.
     """
     import openpyxl
+    check_basic_file(path, 'تقرير انحراف الموازنة', BudgetParseError)
     try:
         wb = openpyxl.load_workbook(path, data_only=True)
     except Exception as e:
-        raise BudgetParseError(f'تعذر فتح الملف: {e}') from e
+        raise BudgetParseError(str(describe_excel_open_error(e, path, 'xlsx'))) from e
 
     sheets: List[dict] = []
     skipped: List[str] = []

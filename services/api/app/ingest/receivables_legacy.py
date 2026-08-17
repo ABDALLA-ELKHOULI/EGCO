@@ -85,8 +85,14 @@ class ReceivableRow:
 
 def parse(path: str) -> dict:
     """Return {receivables: [ReceivableRow], issues: [dict]}."""
-    with open(path, encoding='utf-8', errors='ignore') as f:
-        html = f.read()
+    from app.ingest.friendly_errors import check_basic_file, describe_text_open_error
+    check_basic_file(path, 'ملف report4.html', ReceivablesParseError)
+    try:
+        with open(path, encoding='utf-8', errors='ignore') as f:
+            html = f.read()
+    except OSError as e:
+        raise ReceivablesParseError(
+            str(describe_text_open_error(e, path, 'ملف report4.html'))) from e
 
     extractor = _TableExtractor()
     extractor.feed(html)

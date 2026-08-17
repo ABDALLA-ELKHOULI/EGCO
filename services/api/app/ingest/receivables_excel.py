@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import List, Optional
 
+from app.ingest.friendly_errors import check_basic_file, describe_excel_open_error
+
 _HEADER_MAP = {
     'الوحدة': 'unit', 'unit': 'unit',
     'العميل': 'client', 'client': 'client',
@@ -84,7 +86,11 @@ def parse(path: str) -> dict:
     except ImportError as e:   # pragma: no cover
         raise ReceivablesExcelParseError('openpyxl is required to read the receivables file') from e
 
-    wb = openpyxl.load_workbook(path, data_only=True)
+    check_basic_file(path, 'ملف التحصيلات', ReceivablesExcelParseError)
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True)
+    except Exception as e:
+        raise ReceivablesExcelParseError(str(describe_excel_open_error(e, path, 'xlsx'))) from e
     ws = wb.active
     rows_iter = ws.iter_rows(values_only=True)
 

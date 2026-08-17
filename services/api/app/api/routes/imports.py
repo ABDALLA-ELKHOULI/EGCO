@@ -16,6 +16,8 @@ from app.ingest import contractor_statement
 from app.ingest.csv_statement import CsvStatementParseError
 from app.ingest.debts_report_xls import DebtsReportParseError
 from app.ingest.pdf_statement import StatementParseError
+from app.ingest.receivables_excel import ReceivablesExcelParseError
+from app.ingest.receivables_legacy import ReceivablesParseError
 from app.ingest.suppliers_excel import SuppliersParseError
 from app.schemas.common import (AccountClassificationIn, BatchImportRequest,
                                 ClassifySuggestRequest, ImportRequest, PreviewRequest,
@@ -24,8 +26,11 @@ from app.services import import_service, receivables_service
 
 router = APIRouter()
 
+#: مصادر التحصيلات (receivables_legacy_html / receivables_excel) تمر بنفس مسار
+#: /preview و /import مثل كشوف الحساب — استثناءاتها يجب أن تُلتقط هنا أيضاً وإلا
+#: خرجت كخطأ 500 غير معالج بدل رسالة 422 عربية واضحة.
 _PARSE_ERRORS = (StatementParseError, SuppliersParseError, CsvStatementParseError,
-                 DebtsReportParseError)
+                 DebtsReportParseError, ReceivablesExcelParseError, ReceivablesParseError)
 
 #: sources managed from their own dedicated screen — deleting them here would be
 #: dangerous (the supplier list drives every FIFO calculation; budget snapshots feed

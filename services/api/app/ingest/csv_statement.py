@@ -22,6 +22,7 @@ import datetime as dt
 import io
 
 from app.domain.payables import Invoice, Payment
+from app.ingest.friendly_errors import check_basic_file, describe_text_open_error
 
 HEADER_MAP = {
     'التاريخ': 'date', 'date': 'date',
@@ -62,8 +63,12 @@ def _parse_money(s: str) -> float:
 
 
 def parse(path: str) -> dict:
-    with open(path, 'r', encoding='utf-8-sig', newline='') as fh:
-        content = fh.read()
+    check_basic_file(path, 'كشف CSV', CsvStatementParseError)
+    try:
+        with open(path, 'r', encoding='utf-8-sig', newline='') as fh:
+            content = fh.read()
+    except (OSError, UnicodeDecodeError) as e:
+        raise CsvStatementParseError(str(describe_text_open_error(e, path, 'كشف CSV'))) from e
 
     reader = csv.reader(io.StringIO(content))
     rows = list(reader)
