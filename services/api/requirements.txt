@@ -3,6 +3,10 @@ uvicorn[standard]==0.34.0
 pydantic==2.10.4
 SQLAlchemy==2.0.36
 openpyxl==3.1.5
+# openpyxl تحتاجها فعلياً (لا اختيارية) لإدراج شعار الشركة في ورقة Excel —
+# كانت مثبَّتة يدوياً على جهاز التطوير فمرّت الاختبارات محلياً وفشلت على
+# GitHub Actions (بيئة نظيفة)، نفس فخّ PyInstaller السابق بالضبط.
+Pillow==11.1.0
 PyMuPDF==1.25.1
 pytest==8.3.4
 httpx==0.28.1
