@@ -153,12 +153,49 @@ def init_db() -> None:
         Base.metadata.tables['payment_allocations'].create(bind=conn, checkfirst=True)
     _migrate_211_contractors_to_suppliers()
     _backfill_import_log_id()
+    _strip_branch_prefix_from_descriptions()
 
 
 #: marker for the one-time backfill below.
 _SEED_PARTY_PROJECTS_FLAG = 'seed_party_projects_v1'
 
 _BACKFILL_IMPORT_LOG_FLAG = 'backfill_import_log_id_v1'
+
+_STRIP_BRANCH_PREFIX_FLAG = 'strip_branch_prefix_from_desc_v1'
+
+
+def _strip_branch_prefix_from_descriptions() -> None:
+    """يزيل رمز الفرع الملتصق ببداية الوصف من الصفوف المخزَّنة.
+
+    المحلّل كان يُدخل رمز الفرع («0001دفعة بيت الاباء») ضمن الوصف، والوصف جزءٌ
+    من هوية الحركة. بعد إصلاح المحلّل صار الرفع الجديد يُنتج وصفاً نظيفاً — فلو
+    بقيت الصفوف القديمة متسخة لرأى الترميز هويتين مختلفتين لنفس الحركة وأدخلها
+    مرتين. أُعيد إنتاج هذا فعلياً على نسخة من قاعدة المستخدم: ١٤ دفعة تضاعفت،
+    كل زوج بنفس التاريخ والمبلغ ونفس رقم السند.
+
+    On his real database this touches ~1219 rows (161 payments + 1058 invoices).
+    Cleaning the stored side is what makes the parser fix actually prevent the
+    duplication rather than merely stop adding to it.
+    """
+    import re as _re
+    with engine.begin() as conn:
+        if _migration_applied(conn, _STRIP_BRANCH_PREFIX_FLAG):
+            return
+
+    pat = _re.compile(r'^0*\d{3,4}(?=[^\d])')
+    cleaned = 0
+    with SessionLocal() as db:
+        for model in (models.Invoice, models.Payment, models.ContractorEntry):
+            for row in db.query(model).filter(model.description.isnot(None)).all():
+                new = pat.sub('', row.description or '').strip()
+                if new != (row.description or ''):
+                    row.description = new
+                    cleaned += 1
+        db.commit()
+    logger.info('stripped branch prefix from %d stored descriptions', cleaned)
+
+    with engine.begin() as conn:
+        _mark_migration_applied(conn, _STRIP_BRANCH_PREFIX_FLAG)
 
 
 def _backfill_import_log_id() -> None:

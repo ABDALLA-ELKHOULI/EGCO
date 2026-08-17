@@ -116,6 +116,19 @@ def header_name(header_norm: str, account: Optional[str]) -> str:
     return ''
 
 
+#: رمز الفرع يُطبع ملتصقاً ببداية الوصف في التخطيط المفكوك («0001دفعة بيت الاباء»).
+#: وهو ليس جزءاً من الوصف، والوصف جزءٌ من هوية الحركة — فبقاؤه يجعل نفس الدفعة
+#: تُقرأ بهويتين مختلفتين بين نسختي المحلّل، فتدخل مرتين ولا يكشفها الترميز.
+#: هذا بالضبط سبب تضاعف دفعات «بيت الاباء» بعد تحديث المحلّل: ١٤ دفعة مكرّرة،
+#: كل زوج بنفس التاريخ والمبلغ ونفس رقم السند، ولا فرق إلا هذه الأرقام الأربعة.
+BRANCH_PREFIX_RE = re.compile(r'^0*\d{3,4}(?=[^\d])')
+
+
+def _clean_desc(desc: str) -> str:
+    """يزيل رمز الفرع الملتصق ببداية الوصف — الهوية يجب أن تصف الحركة لا الفرع."""
+    return BRANCH_PREFIX_RE.sub('', desc).strip()
+
+
 def _read_block(lines: List[str]):
     """(date, debit, credit, doc, balance, desc) من كتلة حركة، أياً كان تخطيطها."""
     md = GLUED_DATE_RE.match(lines[1])
@@ -137,8 +150,8 @@ def _read_block(lines: List[str]):
     credit = _money(lines[3])
     doc = lines[4]
     balance = _money(lines[5])
-    return date, debit, credit, doc, balance, _norm(
-        next((x for x in lines[6:] if len(x) > 8), ''))
+    return date, debit, credit, doc, balance, _clean_desc(
+        _norm(next((x for x in lines[6:] if len(x) > 8), '')))
 
 
 def parse(path: str) -> dict:
