@@ -328,3 +328,32 @@ def test_truncated_description_updates_instead_of_duplicating(db, tmp_path):
     # وصف مختلف تماماً ← حركة أخرى، لا تُدمج
     assert _match_ignoring_description(
         db, models.Invoice, new_description='فاتوره رقم6967', **keys) is None
+
+
+def test_old_stored_description_with_branch_prefix_is_not_a_new_row(db):
+    """وصفٌ مخزَّن يحمل رمز الفرع + وصفٌ جديد بدونه = نفس الحركة.
+
+    هذا عطب v0.9.2 الذي رآه المستخدم: النسخ الأقدم كانت تُبقي «0001» في بداية
+    الوصف على التخطيط الملتصق. القاعدة السابقة قارنت النصّين خاماً وقبلت
+    «الأقدم بدايةُ الأحدث» فقط — و«0001فاتوره…» ليس بدايةَ «فاتوره…»، فأُضيفت
+    الحركة من جديد مع كل رفع. المقارنة يجب أن تجري على نصٍّ مُطبَّع: بلا رمز
+    فرع، وبتطبيع عربي موحّد، وبلا مسافات.
+    """
+    from app.services.import_service import _match_ignoring_description
+    from app.db import models
+
+    sup = models.Supplier(name='ارتك', account='2110099')
+    db.add(sup); db.flush()
+    inv = models.Invoice(supplier_id=sup.id, number='3508', date=dt.date(2025, 1, 26),
+                         amount=8249.82, doc='00000123',
+                         description='0001فاتوره رقم3508 لشركھ ارتك للبلاط')
+    db.add(inv); db.flush()
+
+    keys = dict(supplier_id=sup.id, date=inv.date, amount=inv.amount, doc=inv.doc)
+    assert _match_ignoring_description(
+        db, models.Invoice,
+        new_description='فاتوره رقم3508 لشركه ارتك للبلاط', **keys) is inv
+    # وفاتورة أخرى برقم مختلف تبقى حركة مستقلة
+    assert _match_ignoring_description(
+        db, models.Invoice,
+        new_description='فاتوره رقم3509 لشركه ارتك للبلاط', **keys) is None

@@ -317,6 +317,29 @@ def _looks_like_same_row(members: List) -> bool:
     return True
 
 
+#: تطبيع الوصف للمقارنة وحدها — لا يُخزَّن.
+#:
+#: الوصف المخزَّن قد يختلف عن الوصف الذي ينتجه القارئ اليوم بأكثر من الاقتطاع:
+#: النسخ الأقدم كانت تُبقي رمز الفرع في البداية («0001فاتوره رقم…»)، وتُطبِّع
+#: الحروف العربية تطبيعاً مختلفاً، وتترك مسافات متعدّدة. أيّ فرقٍ من هذه يجعل
+#: النصّين غير متطابقين وغير بادئٍ أحدهما بالآخر، فتُضاف الحركة من جديد.
+#:
+#: قِيس على نسخة من قاعدة المستخدم بعد إعادتها إلى الشكل القديم: استيراد ٣٢
+#: كشفاً أنتج ١١٣٣ مجموعة مكرّرة بـ٦٣ مليون ريال. المقارنة على نصّ خام كانت
+#: تكفي حين لا يتغيّر القارئ — وهو ما لا يبقى صحيحاً أبداً.
+def _desc_key(s) -> str:
+    from app.ingest.pdf_statement import _clean_desc as _strip_branch
+    from app.utils.arabic import normalize_ar
+    txt = _strip_branch((s or '').strip())
+    txt = normalize_ar(txt)
+    return re.sub(r'[\s_\-()،,.:]+', '', txt)
+
+
+def _num_in_desc(s) -> Optional[str]:
+    m = _DESC_NUMBER_RE.search(s or '')
+    return m.group(1) if m else None
+
+
 def _match_ignoring_description(db: Session, model, new_description=None, **keys):
     """يجد صفاً بنفس الهوية عدا الوصف — لتحديثه بدل تكراره.
 
@@ -340,14 +363,20 @@ def _match_ignoring_description(db: Session, model, new_description=None, **keys
     # الحالة المشروعة الوحيدة هي الوصف المقتطع: نصٌّ قديم قصير هو بدايةُ النصّ
     # الكامل الذي صار القارئ يُنتجه بعد إصلاح ضمّ سطور الوصف. ما عدا ذلك حركةٌ
     # مستقلة تُضاف.
-    new_desc = (new_description or '').strip()
+    new_desc = _desc_key(new_description)
     if not new_desc:
         return None
+    new_num = _num_in_desc(new_description)
     for r in live:
-        old_desc = (r.description or '').strip()
-        if old_desc == new_desc:
-            return r
-        if len(old_desc) < len(new_desc) and new_desc.startswith(old_desc):
+        old_desc = _desc_key(r.description)
+        if not old_desc:
+            continue
+        # رقما فاتورة مختلفان صراحةً = حركتان مختلفتان، مهما تشابه الباقي.
+        old_num = _num_in_desc(r.description)
+        if old_num and new_num and old_num != new_num:
+            continue
+        if (old_desc == new_desc
+                or new_desc.startswith(old_desc) or old_desc.startswith(new_desc)):
             return r
     return None
 
