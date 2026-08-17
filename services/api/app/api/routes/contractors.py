@@ -88,6 +88,15 @@ def list_contractors(q: Optional[str] = Query(None),
                                     has_guarantees=has_guarantees, sort=sort, dir=dir)
 
 
+@router.get('/overview')
+def contractors_overview(db: Session = Depends(get_session)) -> dict:
+    """لوحة نظرة المقاولين — التوزيع على المشاريع، أكبر المستحقات، الضمانات
+    المستقلة (216)، واختلافات الرصيد مقابل أحدث تقرير مديونيات مجمّع تم استيراده.
+    مسار مستقل عن `list_contractors` أعلاه: هذا مُجمَّع على مستوى الشركة كاملة
+    ولا يتأثر بأي تصفية شاشة القائمة (بحث/مشروع/اتجاه)."""
+    return CS.contractors_overview_json(db)
+
+
 @router.get('/export.xlsx')
 def export_contractors_xlsx(q: Optional[str] = Query(None),
                             project: Optional[str] = Query(None),

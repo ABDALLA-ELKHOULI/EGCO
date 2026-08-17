@@ -13,7 +13,12 @@ hidden = (
     + collect_submodules('fastapi')
     + collect_submodules('pydantic')
     + collect_submodules('sqlalchemy.dialects.sqlite')
-    + ['anyio', 'openpyxl', 'fitz', 'email.mime.multipart', 'email.mime.text']
+    # xlrd يقرأ .xls القديم (تقرير المديونيات المجمّع) و PIL يُدرج الشعار في
+    # تصدير Excel. الاثنان يُستوردان ديناميكياً داخل openpyxl/الكود، فلا يراهما
+    # PyInstaller تلقائياً: البناء ينجح ثم يفشل الرفع على جهاز المستخدم وحده —
+    # وهو الفخّ نفسه الذي أوقع Pillow في فشل نشر سابق.
+    + ['anyio', 'openpyxl', 'xlrd', 'PIL', 'PIL.Image', 'fitz',
+       'email.mime.multipart', 'email.mime.text']
 )
 
 a = Analysis(

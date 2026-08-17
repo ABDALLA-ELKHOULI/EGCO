@@ -68,6 +68,7 @@ const LABEL: Record<string, string> = {
   pdf_statement: 'كشف حساب مورد (PDF)',
   csv_statement: 'كشف حساب مورد (CSV)',
   suppliers_excel: 'ملف مدد الموردين (Excel)',
+  debts_report_xls: 'تقرير مديونيات مجمّع (Excel قديم .xls)',
 };
 
 type QueueStatus =
@@ -76,6 +77,7 @@ type QueueStatus =
   | 'ready'         // جاهز للحفظ (ملفات الموردين)
   | 'reconciled'    // ✓ مطابق
   | 'unreconciled'  // ✕ غير مطابق
+  | 'debts_previewed' // تقرير مديونيات مجمّع — عُوين، لا بوابة مطابقة تمنع الحفظ
   | 'read_error'    // خطأ قراءة
   | 'saving'
   | 'saved'
@@ -92,6 +94,7 @@ interface QueueItem {
 }
 
 const isStatementSource = (s: string) => s === 'pdf_statement' || s === 'csv_statement';
+const isDebtsReportSource = (s: string) => s === 'debts_report_xls';
 
 const isSavedStatus = (s: string) =>
   s === 'saved' || s === 'contractor_saved' || s === 'duplicate';
@@ -191,6 +194,7 @@ const SOURCE_LABEL: Record<string, string> = {
   pdf_statement: 'كشف PDF',
   csv_statement: 'كشف CSV',
   suppliers_excel: 'ملف موردين',
+  debts_report_xls: 'تقرير مديونيات مجمّع (xls)',
 };
 
 const BATCH_STATUS: Record<string, { text: string; kind: string }> = {
@@ -245,7 +249,12 @@ export function ImportPage() {
   const [done, setDone] = useState(false);
   const [rescueTarget, setRescueTarget] = useState<{ path: string; name: string } | null>(null);
   const [classifyTarget, setClassifyTarget] =
-    useState<{ path: string; fileName: string; account: string; parsedName: string; source: string } | null>(null);
+    useState<{
+      path: string; fileName: string; account: string; parsedName: string; source: string;
+      /** موجود فقط حين يأتي التصنيف من صفّ في قائمة الرفع المفرد (لا جدول الدفعة) —
+       * بعد الحفظ نعيد معاينة هذا الصف بعينه بدل إعادة استيراد ملف دفعة. */
+      queueIdx?: number;
+    } | null>(null);
 
   // ---- وضع اختيار مجلد كامل ----
   const [folderErr, setFolderErr] = useState<string | null>(null);
@@ -326,6 +335,21 @@ export function ImportPage() {
       }));
     }
     loadHistory();
+  }
+
+  /** بعد تصنيف حساب ظهر داخل معاينة «تقرير مديونيات مجمّع» في قائمة الرفع المفرد
+   * (لا جدول الدفعة) — نعيد معاينة هذا الصف وحده فقط (ما زال لم يُحفظ بعد، فلا
+   * حاجة لإعادة استيراد كامل). فشل إعادة المعاينة يُعرض كخطأ قراءة بدل الصمت. */
+  async function reimportPreviewAfterClassification(idx: number) {
+    const item = queue[idx];
+    if (!item) return;
+    patch(idx, { status: 'reading' as QueueStatus });
+    try {
+      const preview = await api.previewImport(item.file.path, item.file.source);
+      patch(idx, { status: 'debts_previewed' as QueueStatus, preview });
+    } catch (e: any) {
+      patch(idx, { status: 'read_error' as QueueStatus, error: e?.message ?? String(e) });
+    }
   }
 
   /** «إنشاء مورد…» على صف مورد غير معروف في الرفع الجماعي — يعيد قراءة الملف
@@ -423,17 +447,24 @@ export function ImportPage() {
     ];
     const items: QueueItem[] = ordered.map((file) => ({
       file,
-      status: isStatementSource(file.source) ? 'pending' : 'ready',
+      status: (isStatementSource(file.source) || isDebtsReportSource(file.source)) ? 'pending' : 'ready',
     }));
     setQueue(items);
 
-    // معاينة تسلسلية للكشوفات فقط
+    // معاينة تسلسلية للكشوفات وتقرير المديونيات المجمّع (الموردون وحدهم بلا معاينة)
     for (let i = 0; i < items.length; i++) {
-      if (!isStatementSource(items[i].file.source)) continue;
+      const src = items[i].file.source;
+      if (!isStatementSource(src) && !isDebtsReportSource(src)) continue;
       patch(i, { status: 'reading' });
       try {
-        const preview = await api.previewImport(items[i].file.path, items[i].file.source);
-        patch(i, { status: preview?.reconciled ? 'reconciled' : 'unreconciled', preview });
+        const preview = await api.previewImport(items[i].file.path, src);
+        if (isDebtsReportSource(src)) {
+          // لا بوابة مطابقة على هذا الملف (reconciled دائماً true من الخادم — انظر
+          // preview_debts_report) فحالة واحدة فقط تعني «عُوين، جاهز للحفظ».
+          patch(i, { status: 'debts_previewed', preview });
+        } else {
+          patch(i, { status: preview?.reconciled ? 'reconciled' : 'unreconciled', preview });
+        }
       } catch (e: any) {
         patch(i, { status: 'read_error', error: e?.message ?? String(e) });
       }
@@ -458,6 +489,7 @@ export function ImportPage() {
       const order = [
         ...current.map((it, i) => ({ it, i })).filter(({ it }) => it.status === 'ready'),
         ...current.map((it, i) => ({ it, i })).filter(({ it }) => it.status === 'reconciled'),
+        ...current.map((it, i) => ({ it, i })).filter(({ it }) => it.status === 'debts_previewed'),
       ];
 
       for (const { i } of order) {
@@ -489,7 +521,8 @@ export function ImportPage() {
     }
   }
 
-  const savable = queue.filter((it) => it.status === 'ready' || it.status === 'reconciled');
+  const savable = queue.filter((it) =>
+    it.status === 'ready' || it.status === 'reconciled' || it.status === 'debts_previewed');
   const stillReading = queue.some((it) => it.status === 'pending' || it.status === 'reading');
   const canSave = queue.length > 0 && !busy && !stillReading && savable.length > 0 && !done;
 
@@ -500,7 +533,10 @@ export function ImportPage() {
       <div className="page-head">
         <div className="grow">
           <h1>رفع ملفات</h1>
-          <p>كشف حساب مورد (PDF/CSV) أو ملف مدد الموردين (Excel) — ملفات منفردة أو مجلد كامل دفعة واحدة</p>
+          <p>
+            كشف حساب مورد (PDF/CSV)، ملف مدد الموردين (Excel)، أو تقرير مديونيات مجمّع (xls) —
+            ملفات منفردة أو مجلد كامل دفعة واحدة
+          </p>
         </div>
         {(queue.length > 0 || scanResult || batchResult) && (
           <button className="btn" onClick={reset}>اختيار من جديد</button>
@@ -521,7 +557,7 @@ export function ImportPage() {
           <div className="dropzone" onClick={pick}>
             <div style={{ fontSize: 16, fontWeight: 600 }}>اضغط لاختيار الملفات (يمكن تحديد أكثر من ملف)</div>
             <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-              الصيغ المقبولة: PDF · Excel (XLSX/XLSM) · CSV
+              الصيغ المقبولة: PDF · Excel (XLSX/XLSM) · CSV · XLS (تقرير مديونيات مجمّع)
             </div>
           </div>
         )}
@@ -666,7 +702,11 @@ export function ImportPage() {
           <QueueCard key={item.file.path + i} item={item} aiEnabled={aiEnabled}
             onRescue={() => setRescueTarget({ path: item.file.path, name: item.file.name })}
             onConfirmNewSupplier={(form) => confirmNewSupplierForQueueItem(i, form)}
-            onDeclineNewSupplier={() => declineNewSupplierForQueueItem(i)} />
+            onDeclineNewSupplier={() => declineNewSupplierForQueueItem(i)}
+            onClassifyAccount={(account, name) => setClassifyTarget({
+              path: item.file.path, fileName: item.file.name, account, parsedName: name,
+              source: item.file.source, queueIdx: i,
+            })} />
         ))}
 
         {queue.length > 0 && !done && (
@@ -710,7 +750,8 @@ export function ImportPage() {
           onSaved={() => {
             const t = classifyTarget;
             setClassifyTarget(null);
-            reimportAfterClassification(t);
+            if (t.queueIdx !== undefined) reimportPreviewAfterClassification(t.queueIdx);
+            else reimportAfterClassification(t);
           }}
         />
       )}
@@ -794,12 +835,14 @@ function ClassifyModal({ target, aiEnabled, onClose, onSaved }: {
   );
 }
 
-function QueueCard({ item, aiEnabled, onRescue, onConfirmNewSupplier, onDeclineNewSupplier }: {
+function QueueCard({ item, aiEnabled, onRescue, onConfirmNewSupplier, onDeclineNewSupplier, onClassifyAccount }: {
   item: QueueItem; aiEnabled: boolean; onRescue: () => void;
   onConfirmNewSupplier: (form: { name: string; project: string; term: string }) => Promise<void>;
   onDeclineNewSupplier: () => void;
+  onClassifyAccount: (account: string, name: string) => void;
 }) {
   const { file, status, preview, saveResult, error } = item;
+  const isDebts = isDebtsReportSource(file.source);
   return (
     <Card>
       <div className="card-body top flow">
@@ -813,7 +856,11 @@ function QueueCard({ item, aiEnabled, onRescue, onConfirmNewSupplier, onDeclineN
 
         {status === 'reading' && <State>جارٍ القراءة…</State>}
 
-        {(status === 'reconciled' || status === 'unreconciled') && preview && (
+        {status === 'debts_previewed' && preview && (
+          <DebtsReportPreview preview={preview} onClassify={onClassifyAccount} />
+        )}
+
+        {!isDebts && (status === 'reconciled' || status === 'unreconciled') && preview && (
           <div className="muted" style={{ fontSize: 12 }}>
             رقم الحساب: {preview.account ?? '—'} · فواتير: {ar(preview.invoiceCount)} · دفعات: {ar(preview.paymentCount)}
             {' '}· رصيد الكشف: {sar(preview.statementBalance ?? 0)} ر.س · المحسوب: {sar(preview.computedBalance)} ر.س
@@ -859,7 +906,19 @@ function QueueCard({ item, aiEnabled, onRescue, onConfirmNewSupplier, onDeclineN
           </div>
         )}
 
-        {status === 'saved' && saveResult && (
+        {status === 'saved' && saveResult && isDebts && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="muted" style={{ fontSize: 12 }}>
+              تم الحفظ — {ar(saveResult.created ?? 0)} حساب جديد، {ar(saveResult.updated ?? 0)} محدَّث
+              {saveResult.skipped ? `، ${ar(saveResult.skipped)} بانتظار تصنيف` : ''}
+            </div>
+            {/* أهم مخرجات هذا الملف: فرق بين رصيد الملف ودفتر الحركات — يظهر بارزاً
+                منفصلاً، لا مطوياً داخل ملاحظات عامة (طلب صريح — انظر رأس الملف). */}
+            <BalanceMismatchPanel warnings={saveResult.reconcileWarnings ?? []} />
+          </div>
+        )}
+
+        {status === 'saved' && saveResult && !isDebts && (
           <div className="muted" style={{ fontSize: 12 }}>
             {isStatementSource(file.source)
               ? `تم الحفظ — أُضيف ${ar(saveResult.added ?? 0)}، تُجوهل ${ar(saveResult.skipped ?? 0)} مكرراً`
@@ -877,6 +936,7 @@ const CHIP: Record<QueueStatus, { text: string; kind: string }> = {
   ready: { text: 'جاهز للحفظ', kind: '' },
   reconciled: { text: '✓ مطابق', kind: 'ok' },
   unreconciled: { text: '✕ غير مطابق', kind: 'red' },
+  debts_previewed: { text: 'عُوين — جاهز للحفظ', kind: 'ok' },
   read_error: { text: 'خطأ قراءة', kind: 'red' },
   saving: { text: 'جارٍ الحفظ', kind: 'warn' },
   saved: { text: 'تم الحفظ', kind: 'ok' },
@@ -888,6 +948,103 @@ const CHIP: Record<QueueStatus, { text: string; kind: string }> = {
 function StatusChip({ status }: { status: QueueStatus }) {
   const c = CHIP[status];
   return <Pill kind={c.kind}>{c.text}</Pill>;
+}
+
+const DEBTS_KIND_ORDER: Array<'contractor' | 'supplier' | 'guarantee'> = ['contractor', 'supplier', 'guarantee'];
+
+/**
+ * معاينة «تقرير مديونيات مجمّع» قبل الحفظ. الهدف الأساسي هنا حجم التغيير: كم
+ * مقاولاً/مورداً/ضماناً في الملف، وكم منهم *جديد* لم تره القاعدة من قبل (قد يكون
+ * بالمئات، انظر مثال ٣٢٠ مقاولاً جديداً من أصل ٣٢١) مقابل معروف مسبقاً — فرق
+ * جوهري يجب أن يراه المستخدم قبل أن يضغط حفظ، لا أن يكتشفه بعدها. حسابات
+ * بادئتها ليست ٢١١/٢١٢/٢١٦ (مثل ٢١٧) لا تُخمَّن أبداً — تُعرض هنا صراحة وتحتاج
+ * قراره عبر نفس نافذة «تصنيف…» المستخدمة في جدول الرفع الجماعي (لا آلية موازية).
+ */
+function DebtsReportPreview({ preview, onClassify }: {
+  preview: {
+    rowCounts?: Record<string, number>;
+    newVsKnown?: Record<string, { total: number; new: number; known: number }>;
+    needsClassification?: { account: string; name: string; project?: string; sheet?: string; prefix?: string }[];
+    parseIssues?: { severity?: string; message: string; sheet?: string }[];
+  };
+  onClassify: (account: string, name: string) => void;
+}) {
+  const nc = preview.needsClassification ?? [];
+  const issues = preview.parseIssues ?? [];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        {DEBTS_KIND_ORDER.map((k) => {
+          const nvk = preview.newVsKnown?.[k];
+          const total = preview.rowCounts?.[k] ?? nvk?.total ?? 0;
+          if (total === 0) return null;
+          return (
+            <div key={k} style={{
+              border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', minWidth: 160,
+            }}>
+              <div className="muted" style={{ fontSize: 12 }}>{KIND_LABEL[k]}</div>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>{ar(total)}</div>
+              {nvk && (
+                <div style={{ fontSize: 12, marginTop: 4 }}>
+                  {nvk.new > 0 && <span style={{ color: 'var(--red, #b91c1c)', fontWeight: 700 }}>{ar(nvk.new)} جديد</span>}
+                  {nvk.new > 0 && nvk.known > 0 && ' · '}
+                  {nvk.known > 0 && <span className="muted">{ar(nvk.known)} معروف مسبقاً</span>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {nc.length > 0 && (
+        <div className="callout warn" style={{ margin: 0 }}>
+          <b>{ar(nc.length)} حساب يحتاج تصنيفك قبل أن يُحفظ</b>
+          <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+            رقم الحساب لا يبدأ بـ٢١١ (مورد) ولا ٢١٢ (مقاول) ولا ٢١٦ (ضمان) — لن يُحفظ حتى
+            تختار تصنيفه؛ بقية الملف يُحفظ بلا انتظاره.
+          </div>
+          <ul style={{ margin: '8px 0 0', paddingInlineStart: 18, display: 'grid', gap: 6 }}>
+            {nc.map((n, i) => (
+              <li key={n.account + i} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span>{n.account} — «{n.name}»{n.project ? ` (${n.project})` : ''}</span>
+                <button className="btn sm" onClick={() => onClassify(n.account, n.name)}>تصنيف…</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {issues.length > 0 && (
+        <div className="muted" style={{ fontSize: 12 }}>
+          {ar(issues.length)} ملاحظة قراءة (صفوف بلا رقم حساب أو أوراق غير متعرَّف عليها) —
+          لن تمنع الحفظ.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * تحذير «فرق بين رصيد الملف ورصيد سجل الحركات» — أهم مخرجات هذا الملف: التقرير
+ * الخارجي يذكر رصيداً لطرف تحمل قاعدة البيانات حركاته فعلاً، وحين يختلف الرقمان
+ * فهذا تعارض محاسبي حقيقي يستحق مراجعة، لا ملاحظة عابرة. يظهر بارزاً منفصلاً بعد
+ * الحفظ مباشرة، لا مطوياً داخل قائمة ملاحظات عامة — رسالة الخادم (message) تحمل
+ * بالفعل اسم الطرف ورقم حسابه ورصيد الملف والرصيد المحسوب معاً فتُعرض كما وردت.
+ */
+function BalanceMismatchPanel({ warnings }: {
+  warnings: { account?: string; name?: string; message: string }[];
+}) {
+  if (warnings.length === 0) return null;
+  return (
+    <div className="callout bad" style={{ margin: 0 }}>
+      <b>{ar(warnings.length)} فرق بين رصيد الملف ورصيد سجل الحركات — يستحق مراجعتك</b>
+      <ul style={{ margin: '8px 0 0', paddingInlineStart: 18, display: 'grid', gap: 6 }}>
+        {warnings.map((w, i) => (
+          <li key={(w.account ?? '') + i} style={{ fontSize: 13 }}>{w.message}</li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /**
@@ -1012,6 +1169,7 @@ const SOURCE_FILTER_OPTIONS = [
   { value: 'guarantee', label: 'كشف حساب ضمان (216)' },
   { value: 'budget_deviation', label: 'تقرير انحراف الموازنة' },
   { value: 'ai_extract', label: 'استخراج بالذكاء الاصطناعي' },
+  { value: 'debts_report_xls', label: 'تقرير مديونيات مجمّع (xls)' },
 ];
 
 const RECONCILED_FILTER_OPTIONS = [

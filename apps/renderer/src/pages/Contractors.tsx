@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, apiBase, ApiError, type ContractorQuery, type ContractorRow } from '@/lib/api';
 import { Th, type SortState } from '@/components/ColumnMenu';
@@ -8,6 +8,7 @@ import { Modal } from '@/components/Modal';
 import { ContractorForm, type ContractorFormValues } from '@/components/ContractorForm';
 import { ExplainDot } from '@/components/Explain';
 import { PrintableList, type PrintableColumn } from '@/components/PrintableList';
+import { Carousel, loadStoredCarouselView } from '@/components/Carousel';
 
 /**
  * المقاولون — قاعدة الإشارة (متفق عليها مع المستخدم):
@@ -28,9 +29,15 @@ const DIRECTIONS: { value: string; label: string }[] = [
   { value: 'balanced', label: 'متوازن' },
 ];
 
+/** مفتاح localStorage للصفحة الفعالة في شريط «نظرة المقاولين» — نفس نمط تسمية
+ * مفاتيح Sidebar.tsx وKPI_VIEW_STORAGE_KEY في CashFlow.tsx. */
+const OVERVIEW_STORAGE_KEY = 'egco.contractors.overviewView';
+
 export function Contractors() {
   const nav = useNavigate();
   const [d, setD] = useState<any>(null);
+  const [overview, setOverview] = useState<any>(null);
+  const [overviewErr, setOverviewErr] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [project, setProject] = useState('');
@@ -116,6 +123,19 @@ export function Contractors() {
     }, 200);
     return () => clearTimeout(t);
   }, [query]);
+
+  // نظرة المقاولين — مُجمَّعة على مستوى الشركة كاملة، لا تتأثر بفلاتر الجدول أعلاه
+  // (بحث/مشروع/اتجاه) ولذلك تُحمَّل مرة واحدة بمعزل عن query. لا تعديل على
+  // lib/api.ts المملوك لوكيل آخر — نبني الرابط مباشرة عبر apiBase() تماماً كما
+  // تفعل CashFlow.tsx مع fetchBreakdown.
+  const loadOverview = () => {
+    setOverviewErr(null);
+    fetch(apiBase() + '/api/v1/contractors/overview')
+      .then((res) => { if (!res.ok) throw new Error('تعذّر جلب نظرة المقاولين'); return res.json(); })
+      .then(setOverview)
+      .catch((e) => setOverviewErr(e.message));
+  };
+  useEffect(loadOverview, []);
 
   const projects = useMemo(() => {
     const set = new Set<string>();
@@ -205,6 +225,8 @@ export function Contractors() {
                explain={<ExplainDot metric="contractorsRetention" values={{ contractorsRetention: d.totals.retentionHeld }} />} />
         </div>
       )}
+
+      <ContractorsOverview data={overview} error={overviewErr} onRetry={loadOverview} onImport={() => nav('/import')} />
 
       <div className="toolbar">
         <input placeholder="بحث بالاسم أو الرمز…" value={q}
@@ -366,6 +388,220 @@ export function Contractors() {
         />
       )}
     </>
+  );
+}
+
+// ============================================================== نظرة المقاولين (Carousel)
+
+/**
+ * أربع صفحات لا تتكرر مع بطاقات «إجمالي مستحق للمقاولين / لنا / الضمانات المحتجزة»
+ * الظاهرة دائماً أعلى الشاشة — هذه الشاشة كانت تعرض مقاولاً واحداً فقط قبل استيراد
+ * تقرير المديونيات المجمّع؛ بعده تعرض نحو ٣٢١ مقاولاً، فلا تكفي بطاقات الإجمالي وحدها
+ * لاتخاذ قرار سداد. الصفحات الأربع اختيرت لأنها الأسئلة التي يطرحها القرار فعلاً:
+ * أي مشروع يستحق الأولوية، من أكبر عشرة مقاولين، كم محتجز في حسابات الضمان
+ * المستقلة (216 — منفصلة تماماً عن ضمانات المشاريع per-contractor أعلاه)،
+ * وأين قد يكون الرقم نفسه غير موثوق (اختلاف رصيد الملف عن المحسوب من الحركات).
+ * رُفض عرض «إجمالي المستحق وعدد المقاولين» كصفحة مستقلة لأنه مكرر حرفياً لبطاقة
+ * الإجمالي الثابتة أعلى الشاشة. كل رقم هنا من /api/v1/contractors/overview —
+ * لا حساب مالي في هذا الملف.
+ */
+const OVERVIEW_VIEWS: { key: string; title: string }[] = [
+  { key: 'byProject', title: 'التوزيع على المشاريع' },
+  { key: 'topOwed', title: 'أكبر ١٠ مقاولين بالمستحق' },
+  { key: 'guarantees216', title: 'الضمانات المستقلة (216)' },
+  { key: 'mismatches', title: 'اختلافات الرصيد' },
+];
+
+function ContractorsOverview({ data, error, onRetry, onImport }: {
+  data: any; error: string | null; onRetry: () => void; onImport: () => void;
+}) {
+  const [activeView, setActiveView] = useState<number>(
+    () => loadStoredCarouselView(OVERVIEW_STORAGE_KEY, OVERVIEW_VIEWS.length));
+
+  useEffect(() => {
+    localStorage.setItem(OVERVIEW_STORAGE_KEY, String(activeView));
+  }, [activeView]);
+
+  const bodyStyle: CSSProperties = { padding: '0 10px' };
+
+  if (error) return <ErrorState message={error} onRetry={onRetry} />;
+  if (!data) return null; // نفس اللحظة تُغطّى بـ «جارٍ التحميل…» في الجدول أسفل — لا تكرار هنا
+
+  // قبل أي استيراد لتقرير المديونيات المجمّع ولا حركات مقاولين على الإطلاق: الشاشة
+  // كانت فارغة قبل هذه الميزة تماماً، فبدل عرض أصفار كأنها حقيقة نقول ماذا ستعرضه
+  // هذه اللوحة وكيف يصل إليها المستخدم — نفس مبدأ EmptyState «no-data» في باقي التطبيق.
+  if (!data.hasDebtsReportImport && data.totals.contractorCount === 0) {
+    return (
+      <div style={{ border: '1px dashed var(--hair)', borderRadius: 'var(--r-card, 10px)',
+                   padding: '16px 20px', marginBottom: 14 }}>
+        <b style={{ fontSize: 13 }}>نظرة المقاولين ستظهر هنا بعد الرفع</b>
+        <p className="muted" style={{ fontSize: 12, margin: '6px 0 10px', lineHeight: 1.7 }}>
+          بعد رفع تقرير مديونيات المقاولين والموردين (أو كشوف حساب فردية) ستعرض هذه
+          اللوحة: توزيع المستحق على المشاريع، أكبر عشرة مقاولين بالمستحق، إجمالي
+          حسابات الضمان المستقلة، وأي اختلاف بين رصيد الملف والرصيد المحسوب من الحركات.
+        </p>
+        <button className="btn primary" onClick={onImport}>رفع الملفات</button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <Carousel views={OVERVIEW_VIEWS} activeView={activeView} onViewChange={setActiveView}
+                ariaLabel="نظرة المقاولين">
+        <div style={bodyStyle}>
+          {/* الطبقة المُبلَّغة هي التي تصف الحقيقة بعد استيراد التقرير: ٣٢٠ من
+              ٣٢١ مقاولاً بلا قيود دفترية، فالمشتقّ من الحركات يصف واحداً فقط
+              (٥٦٬٦٥١.٩٩ مقابل ٧٬٧٨٢٬٢٦٦.٩٠ الحقيقية). نرجع للمشتقّ فقط قبل
+              أي استيراد للتقرير. */}
+          {activeView === 0 && <ByProjectView rows={data.reported?.byProject?.length ? data.reported.byProject : data.byProject} />}
+          {activeView === 1 && <TopOwedView rows={data.reported?.topOwed?.length ? data.reported.topOwed : data.topOwed} />}
+          {activeView === 2 && <Guarantees216View g={data.guaranteeAccounts216} />}
+          {activeView === 3 && <MismatchesView rows={data.balanceMismatches}
+            hasImport={data.hasDebtsReportImport} importedAt={data.lastDebtsReportImport} />}
+        </div>
+      </Carousel>
+      {/* الرقمان مصدران مختلفان ولا يُجمعان أبداً: «المُبلَّغ» من تقرير المديونيات
+          المجمّع (يغطي كل المقاولين)، و«المشتقّ» من قيود الدفتر (يغطي من رُفعت
+          كشوفهم فقط). عرض أحدهما بلا الآخر يجعل الرقم صحيح الحساب خاطئ الوصف. */}
+      {data.hasDebtsReportImport && data.reported && (
+        <p className="muted text-caption-micro" style={{ margin: '-10px 4px 14px', lineHeight: 1.7 }}>
+          الأرقام أعلاه من <b>تقرير المديونيات المجمّع</b> ({sar(data.reported.owed)} ر.س
+          على {ar(data.reported.contractorCount)} مقاولاً). المحسوب من حركات الدفتر
+          المرفوعة فعلاً: {sar(data.totals.owedToContractors)} ر.س — الفرق طبيعي لأن معظم
+          المقاولين لم تُرفع كشوف حساباتهم بعد، وليس خطأً حسابياً.
+        </p>
+      )}
+    </>
+  );
+}
+
+/** «التوزيع على المشاريع» — أي مشروع يحمل أكبر مستحق للمقاولين. النطاق: مجموع
+ * أرصدة المقاولين السالبة (له) لكل مشروع من حركاتهم الحيّة، لا رصيدهم الكلي —
+ * مقاول على أكثر من مشروع يظهر تحت كل مشروع بنصيبه منه فقط. */
+function ByProjectView({ rows }: { rows: any[] }) {
+  if (!rows || rows.length === 0) return <State>لا بيانات مشاريع بعد.</State>;
+  const max = Math.max(1, ...rows.map((r) => r.owed || 0));
+  return (
+    <div className="table-scroll">
+      <table>
+        <thead>
+          <tr><th>المشروع</th><th className="ltr">المستحق للمقاولين (المشروع)</th><th>عدد المقاولين</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.project}>
+              <td>{r.project}</td>
+              <td className="ltr">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+                  <div style={{ width: 60, height: 6, borderRadius: 3, background: 'var(--tint)', overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.max(4, ((r.owed || 0) / max) * 100)}%`, height: '100%', background: 'var(--red)' }} />
+                  </div>
+                  <Money v={r.owed} cls="red" />
+                </div>
+              </td>
+              <td>{ar(r.contractorCount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted text-caption-micro" style={{ margin: '8px 0 0' }}>
+        النطاق: مجموع مستحق المقاولين (رصيد سالب) على حركات كل مشروع وحده — لا الرصيد
+        الكلي للمقاول عبر كل مشاريعه. مشروع برصيد موجب فقط (مستحق لنا) لا يظهر هنا.
+      </p>
+    </div>
+  );
+}
+
+/** «أكبر ١٠ مقاولين بالمستحق» — نفس ترتيب الجدول الافتراضي (الأشد سالبية أولاً)،
+ * مقصور على أول عشرة، بلا تصفية شاشة القائمة أسفل (يعرض دائماً المستحق كاملاً). */
+function TopOwedView({ rows }: { rows: any[] }) {
+  if (!rows || rows.length === 0) return <State>لا مستحقات مسجَّلة للمقاولين.</State>;
+  return (
+    <div className="table-scroll">
+      <table>
+        <thead><tr><th>المقاول</th><th>المشاريع</th><th className="ltr">المستحق</th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.code}>
+              <td><Link to={`/contractors/${r.code}`}>{r.name}</Link></td>
+              <td>{(r.projects ?? []).length > 0 ? r.projects.join('، ') : <span className="muted">—</span>}</td>
+              <td className="ltr"><Money v={Math.abs(r.balance)} cls="red" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted text-caption-micro" style={{ margin: '8px 0 0' }}>
+        النطاق: كل المقاولين، بلا فلترة الجدول أسفل — رصيد سالب (له) فقط، الأكبر أولاً.
+      </p>
+    </div>
+  );
+}
+
+/** «الضمانات المستقلة (216)» — إجمالي حسابات الضمان المستوردة من تقرير المديونيات
+ * المجمّع (جدول GuaranteeAccount)، مستقل تماماً عن «الضمانات المحتجزة» في بطاقة
+ * الإجمالي أعلى الشاشة (تلك من ضمانات المشاريع لكل مقاول — ContractorGuarantee).
+ * لم تُربط هذه الحسابات بمقاول بعد في أغلبها؛ الرابط اليدوي مهمة لاحقة. */
+function Guarantees216View({ g }: { g: any }) {
+  if (!g || g.count === 0) {
+    return <State>لا حسابات ضمان مستقلة (216) مستوردة بعد.</State>;
+  }
+  return (
+    <div style={{ padding: '4px 0 0' }}>
+      <div className="kpi-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <Kpi label="إجمالي حسابات الضمان المستقلة (216)" value={sar(g.total)} unit="ر.س" hero={false} />
+        <Kpi label="عدد الحسابات" value={ar(g.count)} hero={false} />
+      </div>
+      <p className="muted text-caption-micro" style={{ margin: '10px 0 0', lineHeight: 1.7 }}>
+        النطاق: حسابات بادئتها 216 من تقرير المديونيات المجمّع فقط — رقم مختلف تماماً
+        عن «الضمانات المحتجزة» في بطاقة الإجمالي أعلى الشاشة (تلك ضمانات مشاريع
+        مربوطة بمقاول بعينه). لم يُربط أغلب هذه الحسابات بمقاول محدد بعد.
+      </p>
+    </div>
+  );
+}
+
+/** «اختلافات الرصيد» — أكثر ما يستحق ثقة المستخدم: حين يختلف رصيد الملف المرفوع
+ * عن الرصيد المشتق من حركات الدفتر المحفوظة لنفس الحساب. من أحدث استيراد لتقرير
+ * المديونيات المجمّع فقط — استيراد لاحق يستبدل قائمة التحذيرات المرجعية بالكامل. */
+function MismatchesView({ rows, hasImport, importedAt }: {
+  rows: any[]; hasImport: boolean; importedAt: string | null;
+}) {
+  if (!hasImport) {
+    return <State>لا يوجد استيراد لتقرير مديونيات مجمّع بعد — لا مطابقة لعرضها.</State>;
+  }
+  if (!rows || rows.length === 0) {
+    return (
+      <EmptyState kind="all-clear" title="لا اختلافات رصيد"
+        body="رصيد كل مقاول في آخر تقرير مديونيات مجمّع مطابق (بحدود الهللة) للرصيد المحسوب من حركاته المحفوظة." />
+    );
+  }
+  return (
+    <div className="table-scroll">
+      <table>
+        <thead>
+          <tr><th>المقاول</th><th className="ltr">رصيد الملف</th><th className="ltr">المحسوب من الحركات</th><th className="ltr">الفرق</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.account}>
+              <td><Link to={`/contractors/${r.account}`}>{r.name || r.account}</Link></td>
+              <td className="ltr">{r.fileBalance != null ? <Money v={r.fileBalance} /> : '—'}</td>
+              <td className="ltr">{r.derivedBalance != null ? <Money v={r.derivedBalance} /> : '—'}</td>
+              <td className="ltr">
+                {r.fileBalance != null && r.derivedBalance != null
+                  ? <Money v={r.fileBalance - r.derivedBalance} cls="red" /> : '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted text-caption-micro" style={{ margin: '8px 0 0' }}>
+        النطاق: مقاولون فقط (بادئة حساب 212) من أحدث استيراد لتقرير مديونيات مجمّع
+        {importedAt ? ` (${arDate(importedAt)})` : ''} — استيراد لاحق للتقرير نفسه يستبدل
+        هذه القائمة بالكامل.
+      </p>
+    </div>
   );
 }
 

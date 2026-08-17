@@ -8,6 +8,8 @@ payables_service.py.
 from __future__ import annotations
 
 import datetime as dt
+import json
+import re
 from decimal import Decimal
 from typing import List, Optional
 
@@ -369,4 +371,160 @@ def contractor_detail_json(row: models.Contractor, today: Optional[dt.date] = No
                        key=lambda c: c.date, reverse=True)],
         guarantees=[guarantee_json(g, today) for g in row.guarantees
                     if g.deleted_at is None],
+    )
+
+
+# ---------------------------------------------------------------- overview (321-contractor scale)
+
+#: يستخرج المبلغين المضمَّنين في نص تحذير المطابقة الذي يكتبه import_service.py
+#: (commit_debts_report) — الحقل هناك نص جاهز للعرض فقط، بلا حقلين رقميين منفصلين،
+#: وimport_service.py مملوك لوكيل آخر فلا يجوز تعديله ليُخرج الرقمين صراحةً. هذا
+#: أرخص بديل: نص التحذير ثابت الصياغة (راجع commit_debts_report)، فاستخراجه
+#: بتعبير نمطي أدق من إعادة اشتقاق الأرقام بحساب مختلف قد ينحرف عن رقم المطابقة نفسه.
+_MISMATCH_RE = re.compile(
+    r'رصيد الملف (-?[\d.]+) يختلف عن الرصيد المحسوب من الحركات (-?[\d.]+)')
+
+#: بادئة حساب المقاول الثابتة — نفس قاعدة التصنيف المطلقة في dispatch_kind
+#: (import_service.py): 211=مورد، 212=مقاول، 216=ضمان. سجل المطابقة يخلط تحذيرات
+#: المقاولين والموردين معاً فنُميّز مقاولي هذه الشاشة بالبادئة، لا بالتخمين.
+_CONTRACTOR_ACCOUNT_PREFIX = '212'
+
+
+def _latest_debts_report_log(db: Session) -> Optional[models.ImportLog]:
+    return db.query(models.ImportLog).filter_by(source='debts_report_xls').order_by(
+        models.ImportLog.created_at.desc()).first()
+
+
+def _contractor_balance_mismatches(db: Session) -> List[dict]:
+    """اختلافات الرصيد بين تقرير المديونيات المجمّع ودفتر الحركات — من أحدث استيراد
+    لهذا المصدر فقط (استيراد لاحق يحل محل السابق كسجل التحذيرات المرجعي)."""
+    log = _latest_debts_report_log(db)
+    if log is None:
+        return []
+    try:
+        issues = json.loads(log.issues or '[]')
+    except (ValueError, TypeError):
+        return []
+    out = []
+    for it in issues:
+        if it.get('kind') != 'balance_mismatch':
+            continue
+        account = it.get('account') or ''
+        if not account.startswith(_CONTRACTOR_ACCOUNT_PREFIX):
+            continue
+        m = _MISMATCH_RE.search(it.get('message') or '')
+        out.append(dict(
+            account=account, name=it.get('name') or '',
+            fileBalance=money(D(m.group(1))) if m else None,
+            derivedBalance=money(D(m.group(2))) if m else None,
+            message=it.get('message') or ''))
+    # الأكبر فرقاً أولاً — أكثرها استحقاقاً للمراجعة يظهر أولاً بلا تمرير.
+    out.sort(key=lambda r: abs((r['fileBalance'] or 0) - (r['derivedBalance'] or 0)),
+             reverse=True)
+    return out
+
+
+def _by_project_debt(db: Session) -> List[dict]:
+    """توزيع «المستحق للمقاولين» على المشاريع — من حركات الدفاتر الحيّة مباشرة
+    (نفس معادلة الرصيد: مدين − دائن)، لا من صف واحد لكل مقاول، لأن مقاولاً واحداً
+    قد يعمل على أكثر من مشروع بمبالغ مختلفة لكل منها. حساب سالب (مستحق للمقاول)
+    فقط يُجمع هنا — رصيد موجب في مشروع ما «مستحق لنا» لا يُحسب ديناً على المشروع."""
+    buckets: dict = {}
+    q = (db.query(models.ContractorEntry.project, models.ContractorEntry.contractor_id,
+                 models.ContractorEntry.debit, models.ContractorEntry.credit)
+         .join(models.Contractor, models.Contractor.id == models.ContractorEntry.contractor_id)
+         .filter(models.ContractorEntry.deleted_at.is_(None),
+                 models.Contractor.deleted_at.is_(None)))
+    per_contractor_project: dict = {}
+    for project, contractor_id, debit, credit in q.all():
+        key = (project or '', contractor_id)
+        b = per_contractor_project.setdefault(key, Decimal('0'))
+        per_contractor_project[key] = b + D(debit or 0) - D(credit or 0)
+
+    for (project, contractor_id), balance in per_contractor_project.items():
+        if balance >= 0:
+            continue  # لا دين على هذا المشروع من هذا المقاول
+        b = buckets.setdefault(project, dict(owed=Decimal('0'), contractorIds=set()))
+        b['owed'] += abs(balance)
+        b['contractorIds'].add(contractor_id)
+
+    rows = [dict(project=p or '(بلا مشروع)', owed=money(b['owed']),
+                contractorCount=len(b['contractorIds']))
+           for p, b in buckets.items()]
+    rows.sort(key=lambda r: r['owed'], reverse=True)
+    return rows
+
+
+def _reported_debt(db: Session) -> dict:
+    """المستحق حسب تقرير المديونيات المجمّع — الرصيد المُبلَّغ لا المشتقّ.
+
+    لماذا هذا الرقم موجود أصلاً: بعد استيراد التقرير صار في القاعدة ٣٢١ مقاولاً،
+    لكن ٣٢٠ منهم بلا قيود دفترية (التقرير يعطي أرصدة لا حركات). فالرصيد المشتقّ
+    من الحركات يصف مقاولاً واحداً ويقول ٥٦٬٦٥١.٩٩، بينما الملف يقول ٧٬٧٨٢٬٤٣١.٧٤ —
+    أقلّ من الحقيقة بـ١٣٧ ضعفاً. عرض المشتقّ وحده على لوحة عنوانها «المستحق
+    للمقاولين» رقمٌ كاذب بالمعنى الذي يهم: صحيح الحساب، خاطئ الوصف.
+
+    الرقمان يُعرضان منفصلَين بتسميتيهما، ولا يُجمعان أبداً — لكل منهما مصدر مختلف،
+    وخلطهما يخلق ثالثاً لا يصف شيئاً.
+    """
+    rows = (db.query(models.Contractor)
+            .filter(models.Contractor.deleted_at.is_(None),
+                    models.Contractor.reported_balance.isnot(None)).all())
+    owed = sum((abs(D(r.reported_balance)) for r in rows
+                if D(r.reported_balance) < 0), Decimal('0'))
+    by_project: dict = {}
+    for r in rows:
+        bal = D(r.reported_balance)
+        if bal >= 0:
+            continue
+        for proj in PP.projects_of(db, PP.CONTRACTOR, r.id) or ['']:
+            b = by_project.setdefault(proj, dict(owed=Decimal('0'), count=0))
+            b['owed'] += abs(bal)
+            b['count'] += 1
+            break            # الرصيد المُبلَّغ صفٌّ واحد لكل مقاول، فلا يُوزَّع
+    projects = sorted(
+        (dict(project=k or 'بلا مشروع', owed=money(v['owed']), contractors=v['count'])
+         for k, v in by_project.items()),
+        key=lambda x: -x['owed'])
+    top = sorted((r for r in rows if D(r.reported_balance) < 0),
+                 key=lambda r: D(r.reported_balance))[:10]
+    return dict(
+        owed=money(owed),
+        contractorCount=len(rows),
+        byProject=projects,
+        topOwed=[dict(code=r.code, name=r.name,
+                      balance=money(D(r.reported_balance))) for r in top],
+    )
+
+
+def contractors_overview_json(db: Session, today: Optional[dt.date] = None) -> dict:
+    """أرقام لوحة نظرة المقاولين — تُبنى فوق تقرير المديونيات المجمّع (321 مقاولاً)،
+    لا فوق الرصيد المفرد الذي كانت الشاشة تعرضه قبل هذا الاستيراد. كل رقم مُجمَّع
+    هنا خادمياً (لا حساب في الواجهة) ومحدود النطاق صراحة في تسميته."""
+    listing = contractors_list_json(db)  # نفس ترتيب وحساب شاشة القائمة تماماً
+    rows = listing['rows']
+
+    top_owed = [r for r in rows if r['balance'] < 0][:10]
+
+    guarantee_accounts = db.query(models.GuaranteeAccount).filter(
+        models.GuaranteeAccount.deleted_at.is_(None)).all()
+    guarantees_216_total = sum((D(g.balance or 0) for g in guarantee_accounts), Decimal('0'))
+
+    log = _latest_debts_report_log(db)
+
+    return dict(
+        totals=dict(
+            owedToContractors=listing['totals']['owedToContractors'],
+            contractorCount=listing['totals']['count'],
+            retentionHeld=listing['totals']['retentionHeld'],
+        ),
+        reported=_reported_debt(db),
+        byProject=_by_project_debt(db),
+        topOwed=[dict(code=r['code'], name=r['name'], balance=r['balance'],
+                     projects=r['projects']) for r in top_owed],
+        guaranteeAccounts216=dict(
+            total=money(guarantees_216_total), count=len(guarantee_accounts)),
+        balanceMismatches=_contractor_balance_mismatches(db),
+        lastDebtsReportImport=log.created_at.isoformat() if log else None,
+        hasDebtsReportImport=log is not None,
     )

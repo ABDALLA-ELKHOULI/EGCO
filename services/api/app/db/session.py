@@ -144,6 +144,10 @@ def init_db() -> None:
         Base.metadata.tables['learned_layouts'].create(bind=conn, checkfirst=True)
         # `party_projects` is new as of multi-project support — additive table only.
         Base.metadata.tables['party_projects'].create(bind=conn, checkfirst=True)
+        # الرصيد المُبلَّغ من تقرير المديونيات المجمّع — عمودان مضافان فقط، لا
+        # تغيير على أي عمود قائم. مرجع للمقارنة لا مصدر حقيقة (انظر models.py).
+        _migrate_add_column(conn, 'contractors', 'reported_balance', 'FLOAT', 'NULL')
+        _migrate_add_column(conn, 'contractors', 'reported_balance_at', 'DATETIME', 'NULL')
         _seed_party_projects(conn)
         # `app_settings` / `payment_allocations` are new as of the opt-in payment
         # allocation review feature — additive tables only (no ALTER on existing

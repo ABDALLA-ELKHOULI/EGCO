@@ -14,7 +14,7 @@ import os
 import re
 import shutil
 import unicodedata
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -23,11 +23,14 @@ from app.db import models
 from app.domain import payables as P
 from app.domain.payables import D, money, parse_term
 from decimal import Decimal
-from app.ingest import (contractor_statement, csv_statement, pdf_statement,
-                        receivables_excel, receivables_legacy, suppliers_excel)
+from app.ingest import (contractor_statement, csv_statement, debts_report_xls,
+                        pdf_statement, receivables_excel, receivables_legacy,
+                        suppliers_excel)
 from app.ingest.csv_statement import CsvStatementParseError
+from app.ingest.debts_report_xls import DebtsReportParseError
 from app.ingest.pdf_statement import StatementParseError
 from app.ingest.suppliers_excel import SuppliersParseError
+from app.services import party_projects as PP
 
 STATEMENT_SOURCES = {'pdf_statement', 'csv_statement'}
 
@@ -39,14 +42,18 @@ _PARSERS = {
 #: مصادر التحصيلات (الداخل) — تُحفظ عبر receivables_service لا عبر مسار الكشوفات
 RECEIVABLE_SOURCES = {'receivables_legacy_html', 'receivables_excel'}
 
-_PARSE_ERRORS = (StatementParseError, CsvStatementParseError, SuppliersParseError)
+_PARSE_ERRORS = (StatementParseError, CsvStatementParseError, SuppliersParseError,
+                 DebtsReportParseError)
 
 #: extension -> source classification for the folder scanner
+#: .xls (legacy BIFF) is currently only used by the consolidated debts report —
+#: unlike .xlsx there is no second .xls file type to disambiguate via sheet peeking.
 _EXT_SOURCE = {
     '.pdf': 'pdf_statement',
     '.csv': 'csv_statement',
     '.xlsx': 'suppliers_excel',
     '.xlsm': 'suppliers_excel',
+    '.xls': 'debts_report_xls',
 }
 
 
@@ -379,6 +386,201 @@ def dispatch_kind(db: Optional[Session], account: Optional[str]) -> Optional[str
     if cls is not None and cls.kind in ('supplier', 'contractor', 'guarantee'):
         return cls.kind
     return None
+
+
+# ---------------------------------------------------------------- تقرير المديونيات المجمّع (xls)
+#
+# ملف واحد يذكر ٣٢٢ مقاولاً/متعاملاً و١٠٤ موردين وحسابات ضمان — القاعدة اليوم لا
+# تعرف إلا مقاولاً واحداً، فهذا الملف قيمته الأساسية هي إنشاء السجلات المفقودة
+# (حساب + اسم + مشروع)، لا حركاته المالية (الملف يذكر أرصدة مجمّعة لا حركات
+# فردية، فلا توجد سطور فواتير/دفعات لكتابتها في Invoice/ContractorEntry).
+#
+# القرار: نُنشئ السجل الناقص (a) ونترك رصيده مشتقاً من دفتر الحركات كما هو مُقرَّر
+# في كل مكان آخر بالتطبيق — لا نكتب رصيد الملف مباشرة على Contractor/Supplier
+# (لا يملكان عمود رصيد أصلاً؛ لو أُضيف لأصبح مصدر حقيقة ثانياً يتعارض مع المشتقّ
+# من الحركات وهذا بالضبط ما صُمم النظام لمنعه). حين توجد حركات محفوظة مسبقاً لنفس
+# الحساب، نقارن رصيد الملف بالرصيد المحسوب ونُبلّغ عن أي فرق كتحذير تدقيق (b) —
+# الملف يتحوّل بذلك إلى أداة تدقيق لا دفتر منافس. حساب الضمان (216) استثناء: عمود
+# `balance` عليه مُصمَّم أصلاً ليُكتب من آخر كشف/تقرير (نفس ما يفعله
+# guarantees_service.commit من كشف PDF فردي) لا أن يُشتق من حركات — فتخزين رصيد
+# هذا التقرير هناك مطابقة للنمط القائم، لا مصدر حقيقة إضافي.
+
+_RECONCILE_TOLERANCE = Decimal('0.01')
+
+
+def _debts_report_supplier_balance(db: Session, supplier_id: str) -> Optional[Decimal]:
+    invoices = db.query(models.Invoice).filter(
+        models.Invoice.supplier_id == supplier_id, models.Invoice.deleted_at.is_(None)).all()
+    payments = db.query(models.Payment).filter(
+        models.Payment.supplier_id == supplier_id, models.Payment.deleted_at.is_(None)).all()
+    if not invoices and not payments:
+        return None      # لا حركات بعد — لا معنى لمقارنة رصيد
+    paid = sum((D(p.amount) for p in payments), Decimal('0'))
+    invoiced = sum((D(i.amount) for i in invoices), Decimal('0'))
+    return paid - invoiced      # نفس إشارة payables.reconciles: سالب = نحن مدينون للمورد
+
+
+def _debts_report_contractor_balance(db: Session, contractor_id: str) -> Optional[Decimal]:
+    entries = db.query(models.ContractorEntry).filter(
+        models.ContractorEntry.contractor_id == contractor_id,
+        models.ContractorEntry.deleted_at.is_(None)).all()
+    if not entries:
+        return None
+    debit = sum((D(e.debit) for e in entries), Decimal('0'))
+    credit = sum((D(e.credit) for e in entries), Decimal('0'))
+    return debit - credit      # موجب = هو مدين لنا — نفس اتفاقية الرصيد في الملف
+
+
+def _debts_report_plan(db: Session, parsed: dict) -> dict:
+    """يبني خطة الحفظ (أو المعاينة) بلا كتابة: لكل صف — جديد/معروف، والتصنيف،
+    وأي مطابقة رصيد ممكنة. مشترك بين preview_debts_report و commit_debts_report
+    حتى لا تختلف أرقام المعاينة عمّا يُحفظ فعلاً."""
+    rows_by_kind = {'contractor': [], 'supplier': [], 'guarantee': []}
+    needs_classification: List[dict] = []
+    seen_prefixes: Dict[str, int] = {}
+
+    for r in parsed['rows']:
+        k = dispatch_kind(db, r['account'])
+        prefix = _account_prefix(r['account'])
+        if k is None:
+            seen_prefixes[prefix] = seen_prefixes.get(prefix, 0) + 1
+            needs_classification.append(dict(
+                account=r['account'], name=r['name'], project=r['project'],
+                sheet=r['sheet'], prefix=prefix))
+            continue
+        rows_by_kind[k].append(r)
+
+    new_vs_known = {}
+    for k, model, key_col in (('contractor', models.Contractor, 'code'),
+                              ('supplier', models.Supplier, 'account'),
+                              ('guarantee', models.GuaranteeAccount, 'account')):
+        accounts = [r['account'] for r in rows_by_kind[k]]
+        known = set()
+        if accounts:
+            existing = db.query(getattr(model, key_col)).filter(
+                getattr(model, key_col).in_(accounts)).all()
+            known = {a for (a,) in existing}
+        new_vs_known[k] = dict(total=len(accounts), new=len(accounts) - len(known),
+                               known=len(known))
+
+    return dict(rows_by_kind=rows_by_kind, needs_classification=needs_classification,
+               new_vs_known=new_vs_known)
+
+
+def preview_debts_report(path: str, db: Session) -> dict:
+    """معاينة بلا حفظ — أعداد لكل نوع، جديد/معروف، وأي حساب يحتاج تصنيفاً يدوياً."""
+    parsed = debts_report_xls.parse(path)
+    plan = _debts_report_plan(db, parsed)
+    return dict(
+        kind='debts_report',
+        sheets=parsed['sheets'],
+        rowCounts={k: len(v) for k, v in plan['rows_by_kind'].items()},
+        newVsKnown=plan['new_vs_known'],
+        needsClassification=plan['needs_classification'],
+        parseIssues=parsed['issues'],
+        reconciled=True,      # لا بوابة مطابقة تمنع الحفظ — الملف لا يكتب أرصدة مقاولين/موردين
+    )
+
+
+def commit_debts_report(db: Session, path: str, backup: bool = True) -> dict:
+    """يحفظ التقرير المجمّع: ينشئ سجلات المقاولين/الموردين/الضمان الناقصة (a)
+    ويحدّث رصيد الضمان مباشرة (b، مطابق لنمط guarantees_service)، ويُبلّغ عن أي
+    فرق بين رصيد الملف والرصيد المشتق من الحركات المحفوظة حين توجد حركات."""
+    parsed = debts_report_xls.parse(path)
+    plan = _debts_report_plan(db, parsed)
+    if backup:
+        backup_db()
+
+    created = updated = 0
+    reconcile_warnings: List[dict] = []
+
+    now_utc = dt.datetime.now(dt.timezone.utc)
+    for r in plan['rows_by_kind']['contractor']:
+        row = db.query(models.Contractor).filter_by(code=r['account']).one_or_none()
+        if row is None:
+            row = models.Contractor(code=r['account'], name=r['name'])
+            db.add(row)
+            db.flush()
+            if r['project']:
+                PP.set_projects(db, PP.CONTRACTOR, row.id, [r['project']])
+            created += 1
+        else:
+            if row.deleted_at is not None:
+                row.deleted_at = None
+            updated += 1
+            computed = _debts_report_contractor_balance(db, row.id)
+            if computed is not None and abs(computed - D(r['balance'])) > _RECONCILE_TOLERANCE:
+                reconcile_warnings.append(dict(
+                    severity='warning', kind='balance_mismatch', account=r['account'],
+                    name=row.name,
+                    message='%s (%s): رصيد الملف %.2f يختلف عن الرصيد المحسوب من الحركات '
+                            '%.2f — يستحق المراجعة' % (
+                                row.name, r['account'], money(D(r['balance'])),
+                                money(computed))))
+        # الرصيد المُبلَّغ يُخزَّن دائماً — للجديد والقائم. بدونه تعرض لوحة النظرة
+        # رصيد المقاولين الذين لهم قيود فقط: ٥٦٬٦٥١.٩٩ بدل ٧٬٧٨٢٬٤٣١.٧٤ التي
+        # يقولها الملف، أي أقل من الحقيقة بـ١٣٧ ضعفاً. الحقل مرجع لا مصدر حقيقة:
+        # كشف المقاول يبقى مشتقاً من قيوده كما كان (انظر models.Contractor).
+        row.reported_balance = money(D(r['balance']))
+        row.reported_balance_at = now_utc
+
+    for r in plan['rows_by_kind']['supplier']:
+        row = db.query(models.Supplier).filter_by(account=r['account']).one_or_none()
+        if row is None:
+            row = models.Supplier(account=r['account'], name=r['name'],
+                                  project=r['project'] or '')
+            db.add(row)
+            db.flush()
+            if r['project']:
+                PP.set_projects(db, PP.SUPPLIER, row.id, [r['project']])
+            created += 1
+        else:
+            if row.deleted_at is not None:
+                row.deleted_at = None
+            updated += 1
+            computed = _debts_report_supplier_balance(db, row.id)
+            if computed is not None and abs(computed - D(r['balance'])) > _RECONCILE_TOLERANCE:
+                reconcile_warnings.append(dict(
+                    severity='warning', kind='balance_mismatch', account=r['account'],
+                    name=row.name,
+                    message='%s (%s): رصيد الملف %.2f يختلف عن الرصيد المحسوب من الحركات '
+                            '%.2f — يستحق المراجعة' % (
+                                row.name, r['account'], money(D(r['balance'])),
+                                money(computed))))
+
+    for r in plan['rows_by_kind']['guarantee']:
+        row = db.query(models.GuaranteeAccount).filter_by(account=r['account']).one_or_none()
+        if row is None:
+            row = models.GuaranteeAccount(account=r['account'], name=r['name'],
+                                          balance=money(abs(D(r['balance']))))
+            db.add(row)
+            created += 1
+        else:
+            if row.deleted_at is not None:
+                row.deleted_at = None
+            row.name = r['name']
+            row.balance = money(abs(D(r['balance'])))
+            updated += 1
+
+    all_issues = (list(parsed['issues']) + reconcile_warnings +
+                 [dict(severity='info', kind='needs_classification', **nc)
+                  for nc in plan['needs_classification']])
+
+    log = models.ImportLog(source='debts_report_xls', path=path,
+                           imported=created + updated, skipped=len(plan['needs_classification']),
+                           reconciled=1, issues=json.dumps(all_issues, ensure_ascii=False))
+    db.add(log)
+    db.commit()
+
+    return dict(
+        created=created, updated=updated, imported=created + updated,
+        skipped=len(plan['needs_classification']),
+        rowCounts={k: len(v) for k, v in plan['rows_by_kind'].items()},
+        newVsKnown=plan['new_vs_known'],
+        needsClassification=plan['needs_classification'],
+        reconcileWarnings=reconcile_warnings,
+        issues=all_issues,
+    )
 
 
 def _contractor_parsed_if_any(path: str, source: str,
@@ -766,6 +968,7 @@ DETECTED_LABELS = {
     'contractor': 'كشف حساب مقاول/متعامل',
     'guarantee': 'كشف حساب ضمان (216)',
     'ai_extract': 'استخراج بالذكاء الاصطناعي',
+    'debts_report_xls': 'تقرير مديونيات مجمّع (مقاولين وموردين)',
     None: 'صيغة غير معروفة',
 }
 
@@ -809,6 +1012,26 @@ def batch_import(db: Session, paths: List[str], allow_unreconciled: bool = False
                 continue
             if not os.path.isfile(path):
                 row['message'] = 'الملف غير موجود'
+                results.append(row)
+                continue
+
+            if source == 'debts_report_xls':
+                res = commit_debts_report(db, path, backup=False)
+                row['added'] = res['created']
+                row['skipped'] = res['skipped']
+                if res['created'] == 0 and res['updated'] == 0:
+                    row['status'] = 'duplicate'
+                    row['message'] = 'لا سجلات جديدة أو محدَّثة — الملف مرفوع سابقاً'
+                    duplicates += 1
+                else:
+                    row['status'] = 'saved'
+                    parts = ['%d جديد' % res['created']]
+                    if res['updated']:
+                        parts.append('%d محدَّث' % res['updated'])
+                    if res['skipped']:
+                        parts.append('%d يحتاج تصنيفاً يدوياً' % res['skipped'])
+                    row['message'] = 'تقرير المديونيات المجمّع: ' + '، '.join(parts)
+                    saved += 1
                 results.append(row)
                 continue
 

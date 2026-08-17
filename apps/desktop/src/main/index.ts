@@ -232,17 +232,24 @@ ipcMain.handle('update:install', async () => {
  * extension instead of being asked for up front.
  */
 const PICK_FILTERS = [
-  { name: 'كل الملفات المدعومة', extensions: ['pdf', 'xlsx', 'xlsm', 'csv'] },
+  // ‏xls مُدرج: تقرير المديونيات المجمّع يصدر من النظام المحاسبي بصيغة Excel
+  // القديمة (BIFF 97-2003). بدونه لا يستطيع المستخدم اختيار الملف أصلاً، مهما
+  // كان الخادم قادراً على قراءته.
+  { name: 'كل الملفات المدعومة', extensions: ['pdf', 'xlsx', 'xlsm', 'xls', 'csv'] },
   { name: 'كشف حساب PDF', extensions: ['pdf'] },
-  { name: 'Excel', extensions: ['xlsx', 'xlsm'] },
+  { name: 'Excel', extensions: ['xlsx', 'xlsm', 'xls'] },
   { name: 'CSV', extensions: ['csv'] },
   { name: 'كل الملفات', extensions: ['*'] },
 ];
 
-function detectSource(filePath: string): 'pdf_statement' | 'csv_statement' | 'suppliers_excel' {
+function detectSource(filePath: string):
+    'pdf_statement' | 'csv_statement' | 'suppliers_excel' | 'debts_report_xls' {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === '.pdf') return 'pdf_statement';
   if (ext === '.csv') return 'csv_statement';
+  // ‏.xls القديم هو تقرير المديونيات المجمّع؛ يقرأه xlrd لا openpyxl. نفس التصنيف
+  // الذي يطبّقه الخادم في _classify() عند مسح مجلد، فلا يختلف المساران.
+  if (ext === '.xls') return 'debts_report_xls';
   return 'suppliers_excel';
 }
 

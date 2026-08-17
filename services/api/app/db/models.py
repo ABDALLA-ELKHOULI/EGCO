@@ -157,6 +157,13 @@ class Contractor(TimestampMixin, Base):
     default_retention_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     #: default guarantee period in days — editable per project guarantee
     default_guarantee_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    #: الرصيد كما ورد في تقرير المديونيات المجمّع — **مرجع للمقارنة لا مصدر حقيقة**.
+    #: الرصيد المعروض في كشف المقاول يبقى مشتقاً من قيوده كما كان دائماً؛ هذا الحقل
+    #: يخدم لوحة النظرة العامة (٣٢١ مقاولاً لا قيود لهم بعد) ويكشف الاختلاف بين ما
+    #: يقوله النظام المحاسبي وما تحسبه الحركات. خلطهما يخلق مصدرَي حقيقة متنافسين
+    #: لنفس الرقم — وهو ما يمنعه هذا الفصل صراحةً.
+    reported_balance: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    reported_balance_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
 
     entries: Mapped[List['ContractorEntry']] = relationship(back_populates='contractor')
     claims: Mapped[List['ContractorClaim']] = relationship(back_populates='contractor')

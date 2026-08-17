@@ -26,7 +26,8 @@ class NewSupplierIn(BaseModel):
 
 class ImportRequest(BaseModel):
     path: str
-    source: Literal['pdf_statement', 'suppliers_excel', 'csv_statement', 'receivables_legacy_html', 'receivables_excel']
+    source: Literal['pdf_statement', 'suppliers_excel', 'csv_statement', 'receivables_legacy_html',
+                    'receivables_excel', 'debts_report_xls']
     allow_unreconciled: bool = False
     #: يُملأ فقط بعد أن يؤكّد المستخدم إنشاء الحساب الجديد
     create_supplier: Optional[NewSupplierIn] = None
@@ -34,7 +35,8 @@ class ImportRequest(BaseModel):
 
 class PreviewRequest(BaseModel):
     path: str
-    source: Literal['pdf_statement', 'suppliers_excel', 'csv_statement', 'receivables_legacy_html', 'receivables_excel'] = 'pdf_statement'
+    source: Literal['pdf_statement', 'suppliers_excel', 'csv_statement', 'receivables_legacy_html',
+                    'receivables_excel', 'debts_report_xls'] = 'pdf_statement'
 
 
 class ScanDirRequest(BaseModel):

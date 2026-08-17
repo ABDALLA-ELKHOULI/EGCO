@@ -3,7 +3,7 @@ export {};
 export interface PickedFile {
   path: string;
   name: string;
-  source: 'pdf_statement' | 'suppliers_excel' | 'csv_statement';
+  source: 'pdf_statement' | 'suppliers_excel' | 'csv_statement' | 'debts_report_xls';
 }
 
 export interface BackendRestartInfo {

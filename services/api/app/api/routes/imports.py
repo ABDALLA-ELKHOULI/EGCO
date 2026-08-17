@@ -13,6 +13,7 @@ from app.db import models
 from app.db.session import get_session
 from app.ingest import contractor_statement
 from app.ingest.csv_statement import CsvStatementParseError
+from app.ingest.debts_report_xls import DebtsReportParseError
 from app.ingest.pdf_statement import StatementParseError
 from app.ingest.suppliers_excel import SuppliersParseError
 from app.schemas.common import (AccountClassificationIn, BatchImportRequest,
@@ -22,7 +23,8 @@ from app.services import import_service, receivables_service
 
 router = APIRouter()
 
-_PARSE_ERRORS = (StatementParseError, SuppliersParseError, CsvStatementParseError)
+_PARSE_ERRORS = (StatementParseError, SuppliersParseError, CsvStatementParseError,
+                 DebtsReportParseError)
 
 #: sources managed from their own dedicated screen — deleting them here would be
 #: dangerous (the supplier list drives every FIFO calculation; budget snapshots feed
@@ -48,7 +50,9 @@ def preview(body: PreviewRequest, db: Session = Depends(get_session)) -> dict:
     try:
         if body.source in import_service.STATEMENT_SOURCES:
             return import_service.preview_statement(body.path, body.source, db)
-        raise HTTPException(400, detail='المعاينة متاحة لكشف الحساب فقط')
+        if body.source == 'debts_report_xls':
+            return import_service.preview_debts_report(body.path, db)
+        raise HTTPException(400, detail='المعاينة متاحة لكشف الحساب أو تقرير المديونيات المجمّع فقط')
     except _PARSE_ERRORS as e:
         raise HTTPException(422, detail=str(e))
 
@@ -58,6 +62,8 @@ def run_import(body: ImportRequest, db: Session = Depends(get_session)) -> dict:
     try:
         if body.source == 'suppliers_excel':
             return import_service.import_suppliers(db, body.path)
+        if body.source == 'debts_report_xls':
+            return import_service.commit_debts_report(db, body.path)
         if body.source in import_service.RECEIVABLE_SOURCES:
             # التحصيلات (الداخل) — لا تمر بمطابقة رصيد الكشف لأنها ليست كشف حساب
             return receivables_service.import_receivables(db, body.path, body.source)

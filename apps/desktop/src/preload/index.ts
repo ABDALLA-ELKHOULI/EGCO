@@ -6,7 +6,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 export interface PickedFile {
   path: string;
   name: string;
-  source: 'pdf_statement' | 'suppliers_excel' | 'csv_statement';
+  source: 'pdf_statement' | 'suppliers_excel' | 'csv_statement' | 'debts_report_xls';
 }
 
 /** ما يصل بعد أن ماتت الخدمة الخلفية وأُعيد تشغيلها — العنوان الفعلي دائماً،
