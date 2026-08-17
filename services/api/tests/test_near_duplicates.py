@@ -302,3 +302,29 @@ def test_near_duplicates_route_unknown_account_is_empty(client, env, db):
     r = client.get('/import/near-duplicates', params=dict(account='2119000'))
     assert r.status_code == 200
     assert r.json()['pairs'] == [] and r.json()['kind'] is None
+
+
+def test_truncated_description_updates_instead_of_duplicating(db, tmp_path):
+    """وصفٌ قديم مقتطع + وصفٌ كامل لنفس الحركة = تحديث، لا صفٌّ ثانٍ.
+
+    هذا الطرف المقابل لاختبار الفاتورتين المشروعتين أعلاه: القاعدة نفسها يجب
+    أن تفرّق بين نصٍّ هو بدايةُ الآخر (نسخة أقدم من المحلّل) ونصّين مختلفين
+    (حركتان). كسْرُ أيّ الطرفين يكلّف مالاً: الأول تكراراً، والثاني محواً.
+    """
+    from app.services.import_service import _match_ignoring_description
+    from app.db import models
+
+    sup = models.Supplier(name='مدار', account='2110808')
+    db.add(sup); db.flush()
+    inv = models.Invoice(supplier_id=sup.id, number='6966', date=dt.date(2025, 5, 5),
+                         amount=100.0, doc='00000496', description='فاتوره رقم6966')
+    db.add(inv); db.flush()
+
+    keys = dict(supplier_id=sup.id, date=inv.date, amount=inv.amount, doc=inv.doc)
+    # الوصف الكامل يبدأ بالمقتطع ← نفس الحركة
+    assert _match_ignoring_description(
+        db, models.Invoice,
+        new_description='فاتوره رقم6966 ( لشركة مدار لمواد البناء )', **keys) is inv
+    # وصف مختلف تماماً ← حركة أخرى، لا تُدمج
+    assert _match_ignoring_description(
+        db, models.Invoice, new_description='فاتوره رقم6967', **keys) is None

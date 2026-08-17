@@ -286,6 +286,153 @@ def near_duplicates_for_account(db: Session, account: str) -> dict:
     return dict(account=account, name=None, kind=None, pairs=[])
 
 
+#: رقم الفاتورة كما يرد داخل الوصف: «فاتوره رقم7425»، «فاتورة14554265»،
+#: «مرتجع لفاتوره رقم481». حقل number يبقى فارغاً في كثير من الكشوف، فيكون
+#: الوصف هو الموضع الوحيد الذي يميّز حركتين متطابقتي المبلغ والسند.
+_DESC_NUMBER_RE = re.compile(r'فاتور[هة]\s*(?:رقم)?\s*(\d{2,})')
+
+
+def _looks_like_same_row(members: List) -> bool:
+    """هل هذه الصفوف حركةٌ واحدة قُرئت مرتين، أم حركات مختلفة تصادف تشابهها؟"""
+    numbers = {(getattr(m, 'number', None) or '').strip() for m in members}
+    numbers.discard('')
+    if not numbers:
+        # حقل الرقم فارغ في الطرفين — اقرأه من الوصف. قِيس على بيانات حقيقية:
+        # سندٌ واحد يحمل فاتورتين متتاليتين بنفس المبلغ (14554265 و14554266)،
+        # وسندُ مرتجعٍ يحمل مرتجعَي فاتورتين مختلفتين (481 و475). بلا هذه
+        # القراءة تُعرَض حركاتٌ مشروعة على المستخدم كتكرار، فيحذف مالاً حقيقياً.
+        in_desc = {m.group(1) for r in members
+                   for m in [_DESC_NUMBER_RE.search(r.description or '')] if m}
+        if len(in_desc) > 1:
+            return False
+    if len(numbers) > 1:
+        # أرقام فواتير مختلفة فعلاً = حركات مختلفة، إلا أن يكون أحد الوصفين
+        # مقتطعاً من الآخر (فيكون الرقم قد قُرئ خطأً من موضع مختلف).
+        descs = sorted(((m.description or '').strip() for m in members), key=len)
+        return bool(descs[0]) and descs[-1].startswith(descs[0]) and descs[0] != descs[-1]
+    return True
+
+
+def _match_ignoring_description(db: Session, model, new_description=None, **keys):
+    """يجد صفاً بنفس الهوية عدا الوصف — لتحديثه بدل تكراره.
+
+    الوصف نصٌّ يستخرجه المحلّل، وكل تحسين في استخراجه يغيّره. جعله جزءاً من
+    هوية المطابقة يعني أن تحسين القراءة نفسه يُنتج تكراراً ضد ما هو مخزَّن.
+    السند + التاريخ + المبلغ + الطرف تكفي لتعريف الحركة في هذا النظام المحاسبي.
+
+    تُفضَّل الصفوف الحيّة على المحذوفة منطقياً حتى لا يُحيا صفٌّ حذفه المستخدم
+    عمداً بينما يوجد صفٌّ حيّ يطابق.
+    """
+    rows = [r for r in db.query(model).filter_by(**keys).all()
+            if (r.description or '').strip()]
+    if not rows:
+        return None
+    live = [r for r in rows if r.deleted_at is None] or rows
+
+    # لا يكفي أن يتطابق كل شيء عدا الوصف. كشوفٌ حقيقية تحمل فاتورتين مشروعتين
+    # في اليوم نفسه بنفس المبلغ وعلى السند نفسه، ولا يفرّق بينهما إلا الوصف؛
+    # ومطابقةُ أيّ وصفٍ مختلف كانت تجعل الثانية تُحدِّث الأولى بدل أن تُضاف —
+    # أي محو حركة مالية كاملة بصمت (كشفه اختبار الفاتورتين في اليوم الواحد).
+    # الحالة المشروعة الوحيدة هي الوصف المقتطع: نصٌّ قديم قصير هو بدايةُ النصّ
+    # الكامل الذي صار القارئ يُنتجه بعد إصلاح ضمّ سطور الوصف. ما عدا ذلك حركةٌ
+    # مستقلة تُضاف.
+    new_desc = (new_description or '').strip()
+    if not new_desc:
+        return None
+    for r in live:
+        old_desc = (r.description or '').strip()
+        if old_desc == new_desc:
+            return r
+        if len(old_desc) < len(new_desc) and new_desc.startswith(old_desc):
+            return r
+    return None
+
+
+def scan_all_duplicates(db: Session) -> dict:
+    """مسح شامل للتكرارات القائمة في كل الحسابات — لا لحساب بعينه.
+
+    لماذا هذا موجود: إصلاح المحلّل يمنع تكراراً *جديداً*، لكن الصفوف التي دخلت
+    قبله تبقى. والمستخدم لا يعرف أي حساب يفحص — رآه صدفةً في شاشة مورد واحد.
+    هذا المسح يجد كل ما بقي دفعة واحدة.
+
+    القاعدة متحفّظة عمداً: نفس الطرف ونفس التاريخ ونفس المبلغ **ونفس رقم السند**.
+    السند هو ما يجعل الزوج حركةً واحدة قُرئت مرتين لا حركتين حقيقيتين — وقد ثبت
+    وجود زوج مشروع (انظمة الطلاء: مرتجعان لفاتورتين ٤٨١ و٤٧٥ بنفس المبلغ والسند)،
+    فلا يُحذف شيء تلقائياً أبداً: تُعرض الأزواج والقرار للمستخدم.
+    """
+    out: List[dict] = []
+    sup_names = {s.id: (s.account, s.name) for s in db.query(models.Supplier).filter(
+        models.Supplier.deleted_at.is_(None)).all()}
+    ctr_names = {c.id: (c.code, c.name) for c in db.query(models.Contractor).filter(
+        models.Contractor.deleted_at.is_(None)).all()}
+
+    def _amount_of(r):
+        # حركة المقاول قيدٌ مزدوج (مدين/دائن) لا حقل مبلغ واحد — الفارق بينهما هو
+        # قيمة الحركة، وهو ما يُقارن به التكرار.
+        if hasattr(r, 'amount'):
+            return round(float(r.amount or 0), 2)
+        return round(float(r.debit or 0) - float(r.credit or 0), 2)
+
+    def _collect(rows, party_map, party_key, kind):
+        groups: dict = {}
+        for r in rows:
+            key = (getattr(r, party_key), r.date, _amount_of(r), (r.doc or '').strip())
+            groups.setdefault(key, []).append(r)
+        for (pid, date, amount, doc), members in groups.items():
+            if len(members) < 2:
+                continue
+            # نفس المبلغ والسند والتاريخ لا يكفي: كشوف حقيقية تحمل فاتورتين
+            # متتاليتين (٣٩١٦ و٣٩١٧) بنفس المبلغ على سند واحد، وهما حركتان
+            # مشروعتان. التكرار الحقيقي هو أن يكون رقم الفاتورة نفسه — أو أن
+            # يغيب عن إحداهما — أو أن يكون أحد الوصفين بداية الآخر (وصف مقتطع
+            # مقابل وصف كامل، وهو أثر تحسين القراءة).
+            if not _looks_like_same_row(members):
+                continue
+            acc, nm = party_map.get(pid, ('—', '—'))
+            out.append(dict(
+                kind=kind, account=acc, party=nm,
+                date=date.isoformat(), amount=amount, doc=doc,
+                rows=[dict(id=m.id,
+                           description=(m.description or ''),
+                           number=getattr(m, 'number', None),
+                           source=m.source or '',
+                           createdAt=m.created_at.isoformat() if m.created_at else None)
+                      for m in sorted(members, key=lambda x: x.created_at or dt.datetime.min)]))
+
+    _collect(db.query(models.Invoice).filter(models.Invoice.deleted_at.is_(None)).all(),
+             sup_names, 'supplier_id', 'invoice')
+    _collect(db.query(models.Payment).filter(models.Payment.deleted_at.is_(None)).all(),
+             sup_names, 'supplier_id', 'payment')
+    _collect(db.query(models.ContractorEntry).filter(
+        models.ContractorEntry.deleted_at.is_(None)).all(),
+        ctr_names, 'contractor_id', 'contractor_entry')
+
+    out.sort(key=lambda g: -g['amount'])
+    return dict(groups=out, count=len(out),
+                totalAmount=money(sum((D(g['amount']) for g in out), Decimal('0'))))
+
+
+_DUP_MODELS = dict(invoice=models.Invoice, payment=models.Payment,
+                   contractor_entry=models.ContractorEntry)
+
+
+def delete_duplicate_row(db: Session, kind: str, row_id: str) -> dict:
+    """حذف ناعم لصفٍّ واحد اختاره المستخدم من زوج مكرّر.
+
+    حذف ناعم لا نهائي — نفس عرف بقية النظام، فيبقى الصف قابلاً للاسترجاع إن
+    تبيّن أن القرار خاطئ. لا يُحذف أي صف تلقائياً في أي مسار.
+    """
+    model = _DUP_MODELS.get(kind)
+    if model is None:
+        raise ValueError('نوع حركة غير معروف: %s' % kind)
+    row = db.query(model).filter_by(id=row_id).one_or_none()
+    if row is None or row.deleted_at is not None:
+        return dict(deleted=False, reason='الحركة غير موجودة أو محذوفة أصلاً')
+    row.deleted_at = dt.datetime.now(dt.timezone.utc)
+    db.commit()
+    return dict(deleted=True)
+
+
 # ---------------------------------------------------------------- backup
 
 def backup_db() -> None:
@@ -689,8 +836,23 @@ def preview_statement(path: str, source: str = 'pdf_statement',
     near_dups = _nd_supplier_issues(db, parsed)
     issues += near_dups
 
+    # اسم الطرف — من قاعدة البيانات إن كان معروفاً، وإلا من ترويسة الكشف نفسه.
+    # كانت المعاينة تعرض رقم الحساب وأرقاماً فقط، بلا اسم أي شركة: فيرى المستخدم
+    # «2110122» ويظنّ أن التطبيق لا يعرف الشركة، وهو يعرفها تماماً — «شركة كون
+    # مكس للخرسانة سدن» موجودة في قاعدته. ملفٌّ لا يقول لمن هو، قرارٌ يُتخذ على
+    # العمياء.
+    known = None
+    if db is not None and parsed['account']:
+        known = db.query(models.Supplier).filter_by(
+            account=parsed['account']).filter(
+            models.Supplier.deleted_at.is_(None)).one_or_none()
+    header_nm = parsed.get('name') or ''
+
     return dict(
         account=parsed['account'],
+        supplierName=(known.name if known is not None else None),
+        statementName=header_nm or None,
+        isKnownSupplier=known is not None,
         invoiceCount=len(invoices), paymentCount=len(payments),
         totalInvoiced=money(total_inv), totalPaid=money(total_pay),
         computedBalance=money(computed),
@@ -787,6 +949,22 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
             supplier_id=supplier.id, number=inv.number, date=inv.date,
             amount=inv.amount, doc=inv.doc,
             description=inv.description).first()
+        if exists is None:
+            # مطابقة احتياطية بلا الوصف: نفس المورد والتاريخ والمبلغ والسند حركةٌ
+            # واحدة بالضرورة — السند مرجع فريد في النظام المحاسبي. الوصف وحده قد
+            # يختلف بين نسختي المحلّل («فاتوره رقم6966» مقابل النص الكامل بعد
+            # إصلاح اقتطاع الوصف)، فالاعتماد عليه في الهوية يجعل كل تحسين في
+            # القراءة يُنتج تكراراً ضد البيانات القديمة — وقد قِيس ذلك فعلياً:
+            # ٤١٧ مجموعة بـ١٤ مليون ريال على نسخة من قاعدة المستخدم.
+            # هنا يُحدَّث الوصف المخزَّن إلى الأكمل بدل إضافة صفّ ثانٍ.
+            exists = _match_ignoring_description(
+                db, models.Invoice, new_description=inv.description,
+                supplier_id=supplier.id, date=inv.date,
+                amount=inv.amount, doc=inv.doc)
+            if exists is not None:
+                exists.description = inv.description
+                if inv.number and not exists.number:
+                    exists.number = inv.number
         if exists:
             # a soft-deleted row matching this identity is resurrected, not skipped —
             # otherwise upload -> delete -> re-upload silently imports 0 rows.
@@ -807,6 +985,14 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
         exists = db.query(models.Payment).filter_by(
             supplier_id=supplier.id, doc=pay.doc, date=pay.date,
             amount=pay.amount, description=pay.description).first()
+        if exists is None:
+            # نفس منطق الفواتير أعلاه — الوصف ليس هوية، والسند والتاريخ والمبلغ هي.
+            exists = _match_ignoring_description(
+                db, models.Payment, new_description=pay.description,
+                supplier_id=supplier.id, date=pay.date,
+                amount=pay.amount, doc=pay.doc)
+            if exists is not None:
+                exists.description = pay.description
         if exists:
             if exists.deleted_at is not None:
                 exists.deleted_at = None

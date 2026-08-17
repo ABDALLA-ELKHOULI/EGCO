@@ -7,6 +7,7 @@ import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import models
@@ -191,6 +192,30 @@ def near_duplicates(account: str = Query(...),
                                    fileName=os.path.basename(log.path or '')))
     out['logged'] = logged
     return out
+
+
+@router.get('/duplicates')
+def all_duplicates(db: Session = Depends(get_session)) -> dict:
+    """كل الحركات المكرّرة القائمة في القاعدة — عبر كل الحسابات دفعة واحدة.
+
+    إصلاح المحلّل يمنع تكراراً جديداً؛ هذا يكشف ما دخل قبله ويبقى في البيانات.
+    """
+    return import_service.scan_all_duplicates(db)
+
+
+class DeleteDuplicateRequest(BaseModel):
+    kind: str
+    id: str
+
+
+@router.post('/duplicates/delete')
+def delete_duplicate(body: DeleteDuplicateRequest,
+                     db: Session = Depends(get_session)) -> dict:
+    """حذف ناعم لصفٍّ اختاره المستخدم من زوج مكرّر — لا حذف تلقائي أبداً."""
+    try:
+        return import_service.delete_duplicate_row(db, body.kind, body.id)
+    except ValueError as e:
+        raise HTTPException(422, detail=str(e))
 
 
 # ---------------------------------------------------------------- الملفات المرفوعة

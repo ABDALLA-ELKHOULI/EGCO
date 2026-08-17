@@ -144,14 +144,47 @@ def _read_block(lines: List[str]):
                 m.group('doc'),
                 _money(bal if bal.startswith('-') else '(%s)' % bal
                        if tail[m.end('doc'):].lstrip().startswith('(') else bal),
-                _norm(m.group('desc').strip()))
+                _clean_desc(_norm(m.group('desc').strip())))
     date = _date(lines[1])
     debit = _money(lines[2])
     credit = _money(lines[3])
     doc = lines[4]
     balance = _money(lines[5])
-    return date, debit, credit, doc, balance, _clean_desc(
-        _norm(next((x for x in lines[6:] if len(x) > 8), '')))
+    return date, debit, credit, doc, balance, _clean_desc(_join_desc(lines[6:]))
+
+
+#: سطور لا تخص الوصف: علامة الكتلة التالية، أو مبلغ/رقم صرف، أو تذييل الصفحة.
+_DESC_STOP_RE = re.compile(r'^(CompanyCode=|ID=0\d|Page\b)')
+_MONEY_LINE_RE = re.compile(r'^[\d,.()\-\s]+$')
+
+
+def _join_desc(tail_lines: List[str]) -> str:
+    """يجمع الوصف عبر كل سطوره لا سطره الأول فقط.
+
+    الوصف ينكسر على سطرين متى طال أو انتهى برقم: «0001فاتوره رقم562» ثم
+    «( لمؤسسة انظمة الطلاء)مورد المدینھ». أخذُ أول سطر يزيد عن ٨ محارف كان
+    يُسقط بقية الوصف صامتاً — والوصف جزءٌ من هوية الحركة، فاقتطاعه يجعل نفس
+    السطر يُقرأ بهويتين بين تصديرين للكشف نفسه، فيدخل مرتين.
+
+    هذا هو الميكانيزم الذي ضاعف صفوفاً في بيانات حقيقية: صفٌّ بوصفٍ كامل وآخر
+    بوصفٍ مقتطع لا يحوي «رقم73» أصلاً — فيظهر بلا رقم فاتورة في الشاشة.
+    """
+    parts: List[str] = []
+    for raw in tail_lines:
+        ln = _norm(raw).strip()
+        if not ln:
+            continue
+        if _DESC_STOP_RE.match(ln):
+            break
+        if not parts:
+            if len(ln) <= 8 or _MONEY_LINE_RE.match(ln):
+                continue          # لم يبدأ الوصف بعد
+            parts.append(ln)
+            continue
+        if _MONEY_LINE_RE.match(ln) or 'اجمالي' in ln:
+            break
+        parts.append(ln)
+    return ' '.join(parts)
 
 
 def parse(path: str) -> dict:

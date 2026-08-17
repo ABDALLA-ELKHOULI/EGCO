@@ -228,6 +228,7 @@ interface BatchResult {
     detected?: string;
     account?: string; supplierName?: string; added?: number; skipped?: number;
     computedBalance?: number; statementBalance?: number; message?: string;
+    statementName?: string | null; isKnownSupplier?: boolean;
     nearDuplicates?: NearDuplicate[];
   }[];
 }
@@ -731,6 +732,8 @@ export function ImportPage() {
             أول ما يراه المستخدم. تبقى على نفس الشاشة (لا صفحة منفصلة) لأنها
             الوسيلة الوحيدة للتحقق أن الرفع نجح، وتُطوى/تُفتح مع تذكّر الحالة. */}
         <UploadedFilesSection reloadToken={historyReload} onPickFiles={pick} />
+
+        <DuplicatesSection reloadToken={historyReload} />
       </div>
 
       {rescueTarget && (
@@ -862,6 +865,18 @@ function QueueCard({ item, aiEnabled, onRescue, onConfirmNewSupplier, onDeclineN
 
         {!isDebts && (status === 'reconciled' || status === 'unreconciled') && preview && (
           <div className="muted" style={{ fontSize: 12 }}>
+            {/* اسم الشركة أولاً: كانت المعاينة تعرض رقم الحساب وأرقاماً فقط، فيرى
+                المستخدم «2110122» ويظنّ أن التطبيق لا يعرف الشركة وهو يعرفها.
+                الاسم من قاعدتنا حين يكون معروفاً، ومن ترويسة الكشف حين لا يكون —
+                مع تمييز الحالتين، فالثانية تعني أن حساباً جديداً سيُنشأ. */}
+            {(preview.supplierName || preview.statementName) && (
+              <div style={{ marginBottom: 4 }}>
+                <b style={{ color: 'var(--ink)' }}>{preview.supplierName || preview.statementName}</b>
+                {!preview.isKnownSupplier && (
+                  <span className="pill warn" style={{ marginInlineStart: 6 }}>حساب جديد</span>
+                )}
+              </div>
+            )}
             رقم الحساب: {preview.account ?? '—'} · فواتير: {ar(preview.invoiceCount)} · دفعات: {ar(preview.paymentCount)}
             {' '}· رصيد الكشف: {sar(preview.statementBalance ?? 0)} ر.س · المحسوب: {sar(preview.computedBalance)} ر.س
             {status === 'reconciled'
@@ -1452,5 +1467,98 @@ function UploadedFilesSection({ reloadToken, onPickFiles }: {
         </Modal>
       )}
     </>
+  );
+}
+
+/**
+ * الحركات المكرّرة القائمة — لا ما يأتي مع ملفٍ يُرفع الآن، بل ما استقر في
+ * البيانات من قبل.
+ *
+ * لماذا شاشة مستقلة: إصلاح القارئ يمنع تكراراً جديداً ولا يمسّ ما دخل قبله.
+ * والمستخدم لا يعرف أي حساب يفحص — رأى صفّاً مكرّراً صدفةً في شاشة مورد واحد
+ * بينما كان في بياناته ثلاث عشرة مجموعة بأربعمئة ألف ريال.
+ *
+ * لا يُحذف شيء تلقائياً: يُعرض الصفّان جنباً إلى جنب ويقرّر المستخدم — وقد ثبت
+ * وجود أزواج مشروعة (فاتورتان متتاليتان بنفس المبلغ والسند)، فالحكم الآلي هنا
+ * كان سيمحو مالاً حقيقياً.
+ */
+function DuplicatesSection({ reloadToken }: { reloadToken: number }) {
+  const [data, setData] = useState<any>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = () => {
+    fetch(apiBase() + '/api/v1/import/duplicates')
+      .then((r) => { if (!r.ok) throw new Error('تعذّر فحص التكرارات'); return r.json(); })
+      .then(setData)
+      .catch((e) => setErr(e.message));
+  };
+  useEffect(load, [reloadToken]);
+
+  async function removeRow(kind: string, id: string) {
+    setBusy(id); setErr(null);
+    try {
+      const r = await fetch(apiBase() + '/api/v1/import/duplicates/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind, id }),
+      });
+      if (!r.ok) throw new Error('تعذّر الحذف');
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally { setBusy(null); }
+  }
+
+  if (!data || data.count === 0) return null;
+
+  return (
+    <Card>
+      <div className="card-body">
+        <button className="btn sm" onClick={() => setOpen((v) => !v)}
+                style={{ width: '100%', textAlign: 'right' }}>
+          <b style={{ color: 'var(--red)' }}>
+            {ar(data.count)} حركة مكرّرة محتملة · {sar(data.totalAmount)} ر.س
+          </b>
+          <span className="muted" style={{ marginInlineStart: 8 }}>
+            {open ? '▼ اضغط للإخفاء' : '◀ اضغط للمراجعة'}
+          </span>
+        </button>
+
+        {open && (
+          <>
+            <p className="muted" style={{ fontSize: 12, margin: '10px 0', lineHeight: 1.8 }}>
+              نفس الطرف والتاريخ والمبلغ والسند. راجع الوصفين واحذف الصفّ الزائد —
+              لا يُحذف شيء تلقائياً، وبعض الأزواج قد تكون حركتين مشروعتين فعلاً.
+              الحذف ناعم ويمكن التراجع عنه من قاعدة البيانات.
+            </p>
+            {err && <div className="callout bad" style={{ marginBottom: 10 }}>{err}</div>}
+            {data.groups.map((g: any, gi: number) => (
+              <div key={gi} style={{ border: '1px solid var(--hair)', borderRadius: 6,
+                                     padding: 10, marginBottom: 8 }}>
+                <div style={{ fontSize: 12, marginBottom: 6 }}>
+                  <b>{g.party}</b> <span className="muted">({g.account})</span>
+                  {' · '}{arDate(g.date)}{' · '}<b className="red">{sar(g.amount)} ر.س</b>
+                  {g.doc && <span className="muted">{' · سند '}{g.doc}</span>}
+                </div>
+                {g.rows.map((r: any) => (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8,
+                                           fontSize: 12, padding: '4px 0' }}>
+                    <span className="grow">
+                      {r.number && <span className="muted">رقم {r.number} · </span>}
+                      {r.description || '—'}
+                    </span>
+                    <button className="btn sm" disabled={busy === r.id}
+                            onClick={() => removeRow(g.kind, r.id)}>
+                      {busy === r.id ? '…' : 'حذف هذا الصف'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </Card>
   );
 }

@@ -27,6 +27,7 @@ from typing import List, Optional
 from app.domain.payables import D
 
 from app.ingest.pdf_statement import (BLOCK_MARKER, StatementParseError, _date,
+                                      _clean_desc as _strip_branch_prefix,
                                       _read_block,
                                       _money, _norm, extract_text)
 
@@ -48,8 +49,18 @@ _HEADER_WORDS = {'الحساب', 'التاريخ', 'الوصف', 'مدين', 'د
 
 
 def _clean_desc(s: str) -> str:
-    """Row descriptions carry a leading 4-digit branch code (0001...) — strip it."""
-    return re.sub(r'^\d{4}', '', s).strip()
+    """يزيل رمز الفرع من بداية الوصف — بنفس قاعدة مسار الموردين حرفياً.
+
+    كانت هنا نسخة ثانية من القاعدة تحذف أربعة محارف بالضبط (`^\\d{4}`)، فتختلف
+    عن نظيرتها في pdf_statement في ثلاث حالات على الأقل:
+        «00012دفعة» ← «2دفعة»   (رقم شارد يبقى، فيُفسد الوصف)
+        «001دفعة»   ← بلا تنظيف (رمز من ثلاثة أرقام لا يُمسّ)
+        «0001»      ← نص فارغ   (بينما الآخر يُبقيه)
+    والوصف جزءٌ من هوية الحركة، فاختلاف التنظيف بين مسارين يعني أن نفس السطر
+    قد يُقرأ بهويتين — وهو بالضبط ما ضاعف ١٤ دفعة في حساب بيت الاباء. قاعدتان
+    لنفس الشيء تتباعدان دائماً؛ الاستيراد من مصدر واحد يجعل ذلك مستحيلاً.
+    """
+    return _strip_branch_prefix(s)
 
 
 _MONEY_ONLY_RE = re.compile(r'^[\d,.()\-\s]+$')
