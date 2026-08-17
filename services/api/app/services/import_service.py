@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db import models
 from app.domain import payables as P
-from app.domain.payables import D, money, parse_term
+from app.domain.payables import UNSET_TERM, D, money, parse_term
 from decimal import Decimal
 from app.ingest import (contractor_statement, csv_statement, debts_report_xls,
                         pdf_statement, receivables_excel, receivables_legacy,
@@ -898,6 +898,12 @@ def preview_statement(path: str, source: str = 'pdf_statement',
     )
 
 
+#: ٢١١ مورد، ٢١٢ مقاول — قاعدة قاطعة في هذا النظام المحاسبي. أي بادئة أخرى
+#: تُسأل ولا تُخمَّن: وضع مبلغ في جهة الطرف الخطأ يفسد رصيدين لا رصيداً واحداً.
+def _account_prefix_is_unambiguous(account) -> bool:
+    return bool(account) and str(account).startswith(('211', '212'))
+
+
 def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
                      source: str = 'pdf_statement', backup: bool = True,
                      create_supplier: Optional[dict] = None) -> dict:
@@ -935,6 +941,7 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
     account = parsed['account']
     if not account:
         return dict(saved=False, reason='no_account', **pre)
+    auto_created = False
     supplier = db.query(models.Supplier).filter_by(account=account).one_or_none()
     if supplier is None:
         # كشف مطابق تماماً لحساب لم نره من قبل. رفضه صمتاً هو ما جعل ملفاً سليماً
@@ -942,9 +949,19 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
         # نعيد اسم الطرف من الترويسة كي يعرضه المستخدم ويقرّر: أضِفه أم لا.
         # ولا نُنشئه تلقائياً: مدة السداد غير معروفة، وهي التي تحدّد تواريخ
         # الاستحقاق ومنها التأخر كله — تخمينها يلوّن الشاشة بمتأخرات وهمية.
+        # رمز الحساب يحدّد نوع الطرف قطعاً: ٢١١ مورد، ٢١٢ مقاول. حين يكون
+        # واضحاً هكذا لا يبقى ما يُسأل عنه إلا مدة السداد — ووقف الاستيراد كله
+        # من أجلها كان يجعل كشفاً سليماً مطابقاً تماماً يبدو مرفوضاً. تُنشأ
+        # الجهة بمدة معلَّمة «غير محدّدة» فتُستثنى فواتيرها من حساب التأخر حتى
+        # يحدّدها المستخدم، ويُستورد الكشف فوراً. المدة المخترَعة هي الخطر، لا
+        # الإنشاء نفسه.
         if not create_supplier:
-            return dict(saved=False, reason='unknown_supplier',
-                        suggestedName=parsed.get('name') or '', **pre)
+            if not _account_prefix_is_unambiguous(account):
+                return dict(saved=False, reason='unknown_supplier',
+                            suggestedName=parsed.get('name') or '', **pre)
+            auto_created = True
+            create_supplier = dict(name=parsed.get('name') or account,
+                                   project='', term=UNSET_TERM)
         supplier = models.Supplier(
             account=account,
             name=(create_supplier.get('name') or parsed.get('name') or account),
@@ -1045,6 +1062,12 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
     out = dict(pre)
     out.update(saved=True, added=added, skipped=skipped,
                supplier=dict(account=supplier.account, name=supplier.name))
+    if auto_created:
+        # الكشف حُفظ كاملاً، لكن مدة السداد ما زالت غير محدّدة فلا تأخّر يُحسب
+        # لهذه الجهة. تُرفع العلامة كي تقولها الواجهة صراحةً — حفظٌ صامت مع
+        # رقم تأخّر صفر يبدو صحيحاً وهو ناقص.
+        out.update(autoCreatedParty=True, needsTerm=True,
+                   partyName=supplier.name, partyAccount=supplier.account)
     return out
 
 
@@ -1078,6 +1101,15 @@ def _commit_contractor(db: Session, parsed: dict, path: str,
     out = dict(pre)
     out.update(saved=True, added=res['added'], skipped=res['skipped'],
                contractor=res['contractor'])
+    if res.get('created'):
+        # نفس الإشارة التي يستعملها المسار الموردون (autoCreatedParty/partyName/
+        # partyAccount) — لكن بلا needsTerm: نموذج Contractor لا يحمل مدة سداد
+        # أصلاً (لا term_raw/term_kind/term_days)، فحسابه لا يدخل في تأخّر السداد
+        # الذي يُبنى فوق Term. الإنشاء التلقائي هنا آمن للسبب نفسه دائماً: بادئة
+        # ٢١٢ تحسم هوية الطرف قطعاً، ولا رقم مخترَع يتبعها.
+        out.update(autoCreatedParty=True,
+                   partyName=res['contractor']['name'],
+                   partyAccount=res['contractor']['code'])
     return out
 
 

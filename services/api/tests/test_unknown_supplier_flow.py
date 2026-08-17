@@ -2,9 +2,13 @@
 """اختبارات «حساب جديد لم نره من قبل» — الخلل الذي أبلغ عنه المستخدم فعلياً:
 كشف «شركة تداين للخرسانة اليرموك.pdf» يقرأ ويطابق رصيده تماماً (٧ فواتير،
 دفعة واحدة، ٥١٬٥٠٧٫٠٠ ر.س) لكن حسابه 2110124 غير موجود في ملف مدة مديونية
-الموردين، فكان يُرفض صمتاً — الشاشة تقول «تم» ولا رقم يتغيّر. هذه الاختبارات
-تثبّت أن commit_statement() يرفض بوضوح بلا create_supplier، ويحفظ بنجاح معه،
-تماماً كما تعرضه شاشة الرفع الآن (Import.tsx / NewSupplierPanel)."""
+الموردين، فكان يُرفض صمتاً — الشاشة تقول «تم» ولا رقم يتغيّر.
+
+تحديث لاحق (auto-create by prefix): بادئة ٢١١ تحسم أن هذا الحساب مورد قطعاً،
+فلم يعد commit_statement() يرفض الحساب المجهول بلا create_supplier — بل ينشئه
+تلقائياً بمدة سداد معلَّمة «غير محدّدة» (UNSET_TERM) ويحفظ الكشف كاملاً فوراً،
+تماماً كما تعرضه شاشة الرفع الآن (Import.tsx). create_supplier الصريح يبقى
+مساراً بديلاً حين يملأ المستخدم الاسم/المشروع/المدة يدوياً (النافذة القديمة)."""
 import importlib
 import os
 
@@ -58,23 +62,27 @@ def db(env):
         session.close()
 
 
-def test_unknown_account_is_refused_not_silently_dropped(db, env):
-    """بلا create_supplier: يُرفض بوضوح، ولا يُكتب شيء في القاعدة."""
+def test_unknown_account_auto_creates_supplier_with_unset_term(db, env):
+    """بلا create_supplier: بادئة ٢١١ تحسم النوع، فيُنشأ المورد تلقائياً بمدة
+    «غير محدّدة» ويُحفظ الكشف كاملاً — لا رفض صامت ولا مدة مخترَعة."""
     res = env.import_service.commit_statement(db, REAL_STATEMENT, source='pdf_statement')
 
-    assert res['saved'] is False
-    assert res['reason'] == 'unknown_supplier'
-    # الاسم المقترح يأتي من ترويسة الكشف — خام وقابل للتعديل في الشاشة، وليس فارغاً
-    assert res['suggestedName']
-    # أرقام الملف نفسها ظاهرة في رد الرفض كي تُعرض للمستخدم قبل أن يقرر
-    assert res['account'] == '2110124'
+    assert res['saved'] is True
+    assert res['autoCreatedParty'] is True
+    assert res['needsTerm'] is True
+    assert res['partyAccount'] == '2110124'
+    # الاسم المقترح يأتي من ترويسة الكشف — خام وقابل للتعديل لاحقاً، وليس فارغاً
+    assert res['partyName']
     assert res['invoiceCount'] == 7
     assert res['paymentCount'] == 1
     assert res['reconciled'] is True
+    assert res['added'] == 8  # 7 فواتير + دفعة واحدة
 
-    assert db.query(env.models.Supplier).filter_by(account='2110124').one_or_none() is None
-    assert db.query(env.models.Invoice).count() == 0
-    assert db.query(env.models.Payment).count() == 0
+    supplier = db.query(env.models.Supplier).filter_by(account='2110124').one()
+    assert supplier.term_kind == 'unset'
+    assert supplier.term_days is None
+    assert db.query(env.models.Invoice).filter_by(supplier_id=supplier.id).count() == 7
+    assert db.query(env.models.Payment).filter_by(supplier_id=supplier.id).count() == 1
 
 
 def test_confirming_create_supplier_saves_the_statement(db, env):

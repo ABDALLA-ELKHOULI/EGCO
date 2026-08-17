@@ -305,6 +305,11 @@ export function Suppliers() {
                           المال خارج الشاشة، وهي أول ما تُقرأ. */}
                       <div style={{ fontSize: 11, marginTop: 2 }}>
                         {r.termKind === 'days' ? `${ar(r.termDays)} يوم` : r.term}
+                        {/* مورد أُنشئ تلقائياً من كشف — مدة سداده لم تُحدَّد بعد، فلا
+                            تأخّر يُحسب له حتى يُملأ هذا الحقل صراحةً. */}
+                        {r.termKind === 'unset' && (
+                          <div><Pill kind="warn">مدة السداد غير محدّدة</Pill></div>
+                        )}
                       </div>
                     </td>
                     <td className="muted">

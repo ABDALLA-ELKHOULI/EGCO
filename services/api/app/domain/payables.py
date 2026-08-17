@@ -46,6 +46,8 @@ CASH_WORDS = ('كاش', 'بعد التوريد', 'نقدا', 'نقداً')
 #: Terms tied to a project progress claim (مستخلص). The due date cannot be derived from
 #: the invoice date — it depends on when the claim is certified — so it is entered by hand.
 CLAIM_WORDS = ('مستخلص', 'مستخلصات')
+#: علامة صريحة لمدة لم تُحدَّد بعد — تُميَّز عن الفراغ الذي يعني نقداً.
+UNSET_TERM = 'غير محدّدة'
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,11 @@ class Term:
     def is_claim(self) -> bool:
         return self.kind == 'claim'
 
+    @property
+    def is_unset(self) -> bool:
+        """مدة لم يحدّدها المستخدم — لا يُحسب لها تأخر، ويُطلب منه تحديدها."""
+        return self.kind == 'unset'
+
 
 def parse_term(raw: Optional[str]) -> Term:
     """Normalise the free-text term column.
@@ -70,6 +77,15 @@ def parse_term(raw: Optional[str]) -> Term:
     text = (raw or '').strip()
     if not text:
         return Term(days=CASH, kind='cash', raw='')          # blank == cash
+
+    # مدة لم يحدّدها المستخدم بعد — ليست فارغة (الفارغ نقد بقرار قديم مقصود)
+    # بل معلَّمة صراحةً. تُنشأ حين يُستورد كشف حسابٍ جديد تلقائياً: رمز الحساب
+    # يحدّد نوع الطرف قطعاً (٢١١ مورد، ٢١٢ مقاول) لكن لا شيء في الكشف يذكر مدة
+    # السداد. اعتبارها نقداً يجعل كل فاتورة مستحقّة يوم صدورها فيظهر المورد
+    # متأخراً بالكامل — رقمٌ مخترَع يلوّن الشاشة بمتأخرات وهمية. وdays=None
+    # يمنع اشتقاق تاريخ استحقاق، فتُستثنى فواتيره من التأخر حتى يحدّدها.
+    if text == UNSET_TERM:
+        return Term(days=None, kind='unset', raw=text)
 
     if any(w in text for w in CLAIM_WORDS):
         return Term(days=None, kind='claim', raw=text)
@@ -462,7 +478,7 @@ def position(supplier: Supplier,
         total_paid=sum((D(x.amount) for x in payments), Decimal('0')),
         ageing=compute_ageing(invoices, today),
         delay=compute_delay(invoices, today),
-        needs_manual_due_date=supplier.term.is_claim and
+        needs_manual_due_date=(supplier.term.is_claim or supplier.term.is_unset) and
             any(i.remaining > 0 and i.due_date is None for i in invoices),
         unallocated_payments=unallocated,
     )

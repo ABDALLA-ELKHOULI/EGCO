@@ -934,10 +934,21 @@ function QueueCard({ item, aiEnabled, onRescue, onConfirmNewSupplier, onDeclineN
         )}
 
         {status === 'saved' && saveResult && !isDebts && (
-          <div className="muted" style={{ fontSize: 12 }}>
-            {isStatementSource(file.source)
-              ? `تم الحفظ — أُضيف ${ar(saveResult.added ?? 0)}، تُجوهل ${ar(saveResult.skipped ?? 0)} مكرراً`
-              : `تم الحفظ — ${ar(saveResult.imported ?? 0)} مورداً (${ar(saveResult.created ?? 0)} جديد، ${ar(saveResult.updated ?? 0)} محدَّث)`}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div className="muted" style={{ fontSize: 12 }}>
+              {isStatementSource(file.source)
+                ? `تم الحفظ — أُضيف ${ar(saveResult.added ?? 0)}، تُجوهل ${ar(saveResult.skipped ?? 0)} مكرراً`
+                : `تم الحفظ — ${ar(saveResult.imported ?? 0)} مورداً (${ar(saveResult.created ?? 0)} جديد، ${ar(saveResult.updated ?? 0)} محدَّث)`}
+            </div>
+            {/* الحساب أُنشئ تلقائياً من الكشف نفسه (بادئة ٢١١/٢١٢ تحسم نوع الطرف قطعاً) —
+                لكن مدة السداد تبقى غير محدّدة حتى يضبطها المستخدم، فلا تأخّر يُحسب
+                لهذا الطرف إلى أن يحدث ذلك. */}
+            {saveResult.autoCreatedParty && (
+              <div className="callout warn" style={{ margin: 0, fontSize: 12 }}>
+                أُنشئ حساب «{saveResult.partyName ?? '—'}» ({saveResult.partyAccount ?? '—'}) تلقائياً من هذا الكشف.
+                {saveResult.needsTerm ? ' مدة سداده غير محدّدة — يُنصح بتحديدها من شاشة الموردين.' : ''}
+              </div>
+            )}
           </div>
         )}
       </div>

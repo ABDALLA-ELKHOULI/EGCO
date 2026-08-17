@@ -12,7 +12,7 @@ interface NavItem {
   icon: IconName;
   label: string;
   /** مفتاح التنبيه — نقطة حمراء تظهر عند وجود بند يحتاج إجراءً */
-  alert?: 'overdue' | 'dueSoon' | 'coverage';
+  alert?: 'overdue' | 'dueSoon' | 'coverage' | 'needsTerm';
   /** الشاشة موجودة كإطار ولم تكتمل بعد — يُقال صراحةً بدل أن يظنّها المستخدم معطلة */
   soon?: boolean;
 }
@@ -39,7 +39,7 @@ const GROUPS: { section: string; items: NavItem[] }[] = [
       // «المستحقات القادمة» بدل «مديونية الموردين» — الاسم القديم كان يُخلط
       // مع صفحة «الموردون» وهما شاشتان مختلفتان تماماً.
       { to: '/payables', icon: 'payables', label: 'المستحقات القادمة', alert: 'overdue' },
-      { to: '/suppliers', icon: 'suppliers', label: 'الموردون' },
+      { to: '/suppliers', icon: 'suppliers', label: 'الموردون', alert: 'needsTerm' },
       { to: '/contractors', icon: 'contractors', label: 'المقاولون' },
       { to: '/guarantees', icon: 'guarantee', label: 'الضمانات' },
     ],
@@ -106,6 +106,9 @@ export function Sidebar() {
           overdue: (d?.payables?.overdue ?? 0) > 0,
           dueSoon: Boolean(d?.cash?.nextDeficit),
           coverage: (d?.coverage?.withoutData ?? 0) > 0,
+          // جهة أُنشئت تلقائياً من كشف حساب ولم تُحدَّد مدة سدادها بعد: مديونيتها
+          // صحيحة لكن تأخّرها لا يُحسب. بلا نقطة هنا يبقى النقص غير مرئي تماماً.
+          needsTerm: (d?.needsTerm ?? 0) > 0,
         });
       })
       .catch(() => { /* الشريط يعمل بلا تنبيهات إن تعذّر الجلب */ });

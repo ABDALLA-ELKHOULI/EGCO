@@ -191,7 +191,18 @@ def overview(db: Session, today: Optional[dt.date] = None) -> dict:
     projects = [dict(project=r['project'], outstanding=r['outstanding'], overdue=r['overdue'])
                 for r in proj_rows[:5]]
 
+    # جهات أُنشئت تلقائياً عند استيراد كشف حساب جديد ولم تُحدَّد مدة سدادها
+    # بعد. مديونيتها صحيحة وظاهرة، لكن تأخّرها لا يُحسب — ورقم تأخّر صفر يبدو
+    # مطمئناً وهو ناقص. التنبيه هو ما يجعل النقص مرئياً بدل أن يمرّ صامتاً.
+    needs_term = db.query(models.Supplier).filter(
+        models.Supplier.term_kind == 'unset',
+        models.Supplier.deleted_at.is_(None)).count()
+
     alerts = []
+    if needs_term > 0:
+        alerts.append(dict(level='warning', kind='needs_term',
+                           text=f"{_suppliers(needs_term)} بلا مدة سداد — "
+                                f"لا يُحسب لها تأخّر حتى تُحدَّد"))
     if payables['overdue'] > 0:
         alerts.append(dict(level='danger',
                            text=f"متأخرات مستحقة الآن: {payables['overdue']:,.2f} ر.س"))
@@ -219,6 +230,7 @@ def overview(db: Session, today: Optional[dt.date] = None) -> dict:
     guarantees = _guarantees_block(db, today)
 
     return dict(asOf=today.isoformat(), payables=payables, coverage=coverage,
+               needsTerm=needs_term,
                cash=cash, projects=projects, alerts=alerts,
                contractors=contractors, lastPayments=last_payments, lastPayment=last_payment,
                revenues=revenues, guarantees=guarantees)

@@ -52,6 +52,7 @@ def upsert_from_statement(db: Session, parsed: dict, path: str,
     """
     code = parsed['account']
     row = db.query(models.Contractor).filter_by(code=code).one_or_none()
+    created = row is None
     if row is None:
         row = models.Contractor(code=code, name=parsed.get('name') or code)
         db.add(row)
@@ -92,7 +93,7 @@ def upsert_from_statement(db: Session, parsed: dict, path: str,
 
     db.commit()
     return dict(contractor=dict(code=row.code, name=row.name),
-                added=added, skipped=skipped)
+                added=added, skipped=skipped, created=created)
 
 
 # ---------------------------------------------------------------- guarantees
