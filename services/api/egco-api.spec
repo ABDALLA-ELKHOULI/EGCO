@@ -13,13 +13,22 @@ hidden = (
     + collect_submodules('fastapi')
     + collect_submodules('pydantic')
     + collect_submodules('sqlalchemy.dialects.sqlite')
-    # xlrd يقرأ .xls القديم (تقرير المديونيات المجمّع) و PIL يُدرج الشعار في
-    # تصدير Excel. الاثنان يُستوردان ديناميكياً داخل openpyxl/الكود، فلا يراهما
-    # PyInstaller تلقائياً: البناء ينجح ثم يفشل الرفع على جهاز المستخدم وحده —
-    # وهو الفخّ نفسه الذي أوقع Pillow في فشل نشر سابق.
-    + ['anyio', 'openpyxl', 'xlrd', 'PIL', 'PIL.Image', 'fitz',
+    # xlrd يقرأ .xls القديم (تقرير المديونيات المجمّع)؛ يُستورد داخل الكود لا في
+    # أعلى الملف فلا يراه PyInstaller تلقائياً — البناء ينجح ثم يفشل الرفع على
+    # جهاز المستخدم وحده، وهو الفخّ نفسه الذي أوقع Pillow في فشل نشر سابق.
+    + ['anyio', 'openpyxl', 'xlrd', 'fitz',
        'email.mime.multipart', 'email.mime.text']
 )
+
+# Pillow يُدرَج فقط إن كان مثبَّتاً فعلاً. اسمه في hiddenimports بلا وجوده يُفشل
+# البناء بأكمله على بعض المنصات — وهو ما يُرجَّح أنه أسقط بناء ويندوز في v0.9.0
+# بينما نجح على macOS. الشعار في تصدير Excel ميزة تجميلية: فقدانها أهون بكثير
+# من إصدار لا يُبنى أصلاً، والاستيراد المشروط يجعل الفشل مستحيلاً لا محتملاً.
+try:
+    import PIL  # noqa: F401
+    hidden += ['PIL', 'PIL.Image', 'PIL._imaging']
+except ImportError:
+    pass
 
 a = Analysis(
     ['run_api.py'],

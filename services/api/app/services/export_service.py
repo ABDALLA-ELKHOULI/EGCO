@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import base64
 import io
+import logging
 from typing import Optional
 
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
+
+logger = logging.getLogger(__name__)
 
 NUM_FMT = '#,##0.00'
 
@@ -27,13 +30,29 @@ _LOGO_PNG_B64 = (
 )
 
 
-def _logo_image() -> XLImage:
+def _logo_image() -> Optional[XLImage]:
     """كل ورقة تحتاج نسخة Image مستقلة — openpyxl لا يسمح بإضافة نفس الكائن
-    لأكثر من ورقة."""
-    img = XLImage(io.BytesIO(base64.b64decode(_LOGO_PNG_B64)))
+    لأكثر من ورقة.
+
+    تُعيد None إن تعذّر إنشاء الصورة (Pillow غائبة عن الحزمة مثلاً). الشعار
+    زينة، والتصدير وثيقة يحتاجها المستخدم: انهيار التصدير كله لأن صورة لم
+    تُحمّل مقايضة خاسرة. الفشل يُسجَّل ولا يُبتلع.
+    """
+    try:
+        img = XLImage(io.BytesIO(base64.b64decode(_LOGO_PNG_B64)))
+    except Exception as e:                      # pragma: no cover - يعتمد على البيئة
+        logger.warning('تعذّر إدراج الشعار في ملف Excel: %s', e)
+        return None
     img.width = 88
     img.height = 50
     return img
+
+
+def _add_logo(ws, anchor: str) -> None:
+    """يضيف الشعار إن أمكن — وإلا يمضي التصدير بلا شعار."""
+    img = _logo_image()
+    if img is not None:
+        ws.add_image(img, anchor)
 
 
 def _style_header(ws, row=1):
@@ -137,7 +156,7 @@ def build_project_summary_workbook(payload: dict) -> bytes:
             if isinstance(cell.value, (int, float)):
                 cell.number_format = NUM_FMT
     _autosize(ws)
-    ws.add_image(_logo_image(), f'{get_column_letter(ws.max_column + 2)}1')
+    _add_logo(ws, f'{get_column_letter(ws.max_column + 2)}1')
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -153,7 +172,7 @@ def build_workbook(analysis: dict, periodic: Optional[dict] = None,
         # تقرير مقاول واحد — his sheet and nothing else; the supplier sheets would be
         # empty and would read as "no debts" rather than "not in scope".
         ws0 = _contractors_sheet(wb, analysis.get('contractors') or {}, first=True)
-        ws0.add_image(_logo_image(), f'{get_column_letter(ws0.max_column + 2)}1')
+        _add_logo(ws0, f'{get_column_letter(ws0.max_column + 2)}1')
         if priorities is not None:
             _priorities_sheet(wb, priorities)
         buf = io.BytesIO()
@@ -191,7 +210,7 @@ def build_workbook(analysis: dict, periodic: Optional[dict] = None,
         if isinstance(cell.value, (int, float)):
             cell.number_format = NUM_FMT
     _autosize(ws1)
-    ws1.add_image(_logo_image(), 'D1')
+    _add_logo(ws1, 'D1')
 
     # ---- الفترات
     ws2 = wb.create_sheet('الفترات')
