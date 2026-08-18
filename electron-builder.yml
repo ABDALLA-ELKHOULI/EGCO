@@ -29,7 +29,12 @@ extraResources:
 
 mac:
   target:
+    # ‏electron-updater على ماك (Squirrel.Mac) يحتاج zip صراحةً — الـdmg وحده
+    # للتثبيت اليدوي الأول فقط ولا يصلح كمصدر للتحديث التلقائي. غيابه هو سبب
+    # «ZIP file not provided» و«تعذّر التحقق من التحديثات» رغم وجود الإصدار.
     - target: dmg
+      arch: [arm64]
+    - target: zip
       arch: [arm64]
   category: public.app-category.finance
   artifactName: EGCO-Dashboard-${version}-${arch}.${ext}
