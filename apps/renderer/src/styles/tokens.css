@@ -709,6 +709,16 @@ hr { border: 0; border-top: 1px solid var(--hair); margin: 16px 0; }
   .sheet:not(.print-landscape) .rpt-table td {
     padding: 5px 4px; overflow-wrap: break-word;
   }
+  /* بلا هذا كان Chromium يقطع صفّاً في منتصفه عند حدّ الصفحة — نصف اسم مورد في
+     أسفل صفحة ونصفه الثاني أعلى التالية، أو رقم مديونية يُقصّ عمودياً فيبدو
+     غير مكتمل رغم أن البيانات كاملة في الـDOM (تأكَّد بمقارنة عدد صفوف Excel
+     المصدَّر — ١٠٣ صفاً كاملة — بنفس القائمة). كل صفّ يبقى وحدة واحدة تُدفع
+     كاملة إلى الصفحة التالية بدل أن تُشطر. */
+  .rpt-table tr { break-inside: avoid; page-break-inside: avoid; }
+  /* الرأس يتكرر أعلى كل صفحة تلقائياً — thead هو ما يتيح لـChromium ذلك؛
+     دفعه صراحةً يمنع أي قاعدة أخرى من كسر هذا السلوك الافتراضي. */
+  .rpt-table thead { display: table-header-group; }
+  .rpt-table tfoot { display: table-row-group; }
 }
 /* حجم الصفحة يُحدَّد بالعنصر لا بترتيب القواعد. Chromium (الذي يعتمد عليه
    printToPDF) يجمع كل قواعد @page عالمياً بصرف النظر عن الفئة المحيطة بها —
