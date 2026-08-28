@@ -45,13 +45,17 @@ jobs:
       # ‏(كشوف حسابات حقيقية لا تُرفع إلى مستودع عام). ما لا يُختبَر هنا يُعلَن
       # ‏صراحةً في ملخّص التشغيل بدل أن يمرّ «أخضر» فيُقرأ كأن كل شيء اختُبر.
       - name: Backend tests
-        run: npm run test:api 2>&1 | tee /tmp/pytest.out
+        # ‏shell: bash إلزامي — المصفوفة تشمل windows-latest وصدفتها الافتراضية
+        # ‏PowerShell، ولا تفهم tee ولا grep -oE ولا || echo. أول محاولة فشلت هنا.
+        shell: bash
+        run: npm run test:api 2>&1 | tee pytest.out
 
       - name: أعلِن ما لم يُختبَر
         if: always()
+        shell: bash
         run: |
-          SKIPPED=$(grep -oE '[0-9]+ skipped' /tmp/pytest.out | head -1 | grep -oE '[0-9]+' || echo 0)
-          PASSED=$(grep -oE '[0-9]+ passed' /tmp/pytest.out | head -1 | grep -oE '[0-9]+' || echo 0)
+          SKIPPED=$(grep -oE '[0-9]+ skipped' pytest.out 2>/dev/null | head -1 | grep -oE '[0-9]+' || echo 0)
+          PASSED=$(grep -oE '[0-9]+ passed' pytest.out 2>/dev/null | head -1 | grep -oE '[0-9]+' || echo 0)
           echo "### نتيجة اختبارات الخادم" >> $GITHUB_STEP_SUMMARY
           echo "- ناجح: **$PASSED**" >> $GITHUB_STEP_SUMMARY
           echo "- **متخطّى: $SKIPPED**" >> $GITHUB_STEP_SUMMARY
