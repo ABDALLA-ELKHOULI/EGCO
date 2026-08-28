@@ -6,7 +6,10 @@ import { contextBridge, ipcRenderer } from 'electron';
 export interface PickedFile {
   path: string;
   name: string;
-  source: 'pdf_statement' | 'suppliers_excel' | 'csv_statement' | 'debts_report_xls';
+  source: 'pdf_statement' | 'suppliers_excel' | 'csv_statement' | 'debts_report_xls'
+    | 'contractors_balance_xls' | 'budget_deviation'
+    // م-٢١ — لا يُخفى ملف بصمت لمجرد أن نوعه غير معروف؛ يظهر بحالة «غير مدعوم».
+    | 'unsupported';
 }
 
 /** ما يصل بعد أن ماتت الخدمة الخلفية وأُعيد تشغيلها — العنوان الفعلي دائماً،

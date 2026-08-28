@@ -6,11 +6,13 @@ import os
 
 import pytest
 
+from conftest import sample_missing
+
 SAMPLES = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'design', 'samples')
 GUARANTEE_ALQUDS = os.path.join(SAMPLES, 'guarantee-alquds.pdf')
 
 pytestmark = pytest.mark.skipif(
-    not os.path.exists(GUARANTEE_ALQUDS),
+    sample_missing(GUARANTEE_ALQUDS),
     reason='design/samples/guarantee-alquds.pdf not present in this checkout')
 
 

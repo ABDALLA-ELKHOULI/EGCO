@@ -16,6 +16,15 @@ class ClassifySuggestRequest(BaseModel):
     path: str
 
 
+class ClassifyFileRequest(BaseModel):
+    """م-٣ — يستدعيه منتقي الملف المفرد/المتعدد في تطبيق سطح المكتب: الامتداد وحده
+    لا يميّز موازنة عن موردين (كلاهما .xlsx)، ولا مديونيات عن رصيد مقاولين
+    (كلاهما .xls)، فيسأل الخادم بدل التخمين — نفس المنطق الذي يستعمله مسح المجلد
+    والرفع الجماعي (`import_service.classify_xlsx_source`/`classify_xls_source`)،
+    نقطة حقيقة واحدة لا ثلاث نسخ متفرقة."""
+    path: str
+
+
 class NewSupplierIn(BaseModel):
     """إنشاء مورد أثناء الرفع — لحساب ظهر في كشف ولم يكن في ملف المدد."""
     name: Optional[str] = None
@@ -27,7 +36,8 @@ class NewSupplierIn(BaseModel):
 class ImportRequest(BaseModel):
     path: str
     source: Literal['pdf_statement', 'suppliers_excel', 'csv_statement', 'receivables_legacy_html',
-                    'receivables_excel', 'debts_report_xls']
+                    'receivables_excel', 'debts_report_xls', 'contractors_balance_xls',
+                    'budget_deviation']
     allow_unreconciled: bool = False
     #: يُملأ فقط بعد أن يؤكّد المستخدم إنشاء الحساب الجديد
     create_supplier: Optional[NewSupplierIn] = None
@@ -36,7 +46,8 @@ class ImportRequest(BaseModel):
 class PreviewRequest(BaseModel):
     path: str
     source: Literal['pdf_statement', 'suppliers_excel', 'csv_statement', 'receivables_legacy_html',
-                    'receivables_excel', 'debts_report_xls'] = 'pdf_statement'
+                    'receivables_excel', 'debts_report_xls',
+                    'contractors_balance_xls'] = 'pdf_statement'
 
 
 class ScanDirRequest(BaseModel):

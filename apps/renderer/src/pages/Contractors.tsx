@@ -58,6 +58,20 @@ export function Contractors() {
   const [code, setCode] = useState('');
   const [sort, setSort] = useState<SortState | null>(null);
 
+  // ترقيم الصفحات — على الصفوف بعد أن يُطبِّق الخادم التصفية/الترتيب على المجموعة
+  // كاملةً (endpoint /api/v1/contractors لا يدعم page/pageSize بعد، فالخادم يرسل
+  // كل الصفوف المطابقة دفعة واحدة والترقيم هنا محلي على تلك القائمة الكاملة).
+  // الإجماليات (d.totals) والقائمة الكاملة (d.rows) من الخادم لا تتأثران بهذا
+  // الترقيم — فيبقى سطر الإجماليات وشريط «تصفية نشطة» واصفَين للمجموعة المصفّاة
+  // كاملةً كما ينص CLAUDE.md، لا للصفحة المعروضة فقط.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+
+  // عرض بديل: تجميع بالمشروع بدل القائمة المسطّحة — يجيب السؤال الحقيقي «أي
+  // مشروع أسدّد مستحقاته أولاً؟» الذي لا تجيبه القائمة المسطّحة ولا بطاقة
+  // الكاروسيل الجانبية (تلك بلا تفاعل ولا ترتيب بحجم الالتزام).
+  const [groupByProject, setGroupByProject] = useState(false);
+
   const query = useMemo<ContractorQuery>(() => ({
     q: q || code || undefined,
     project: project || undefined,
@@ -70,6 +84,10 @@ export function Contractors() {
   const clearAll = () => {
     setQ(''); setCode(''); setProject(''); setDirection(''); setStatus('');
   };
+
+  // أي تغيير في التصفية/الترتيب يُعيد الصفحة إلى الأولى — وإلا بقي المستخدم على
+  // صفحة رقم ٨ فارغة بعد تصفية تُنقص النتائج إلى صفحتين.
+  useEffect(() => { setPage(1); }, [query]);
 
   // رابط تصدير Excel — نفس فكرة Suppliers.tsx: بمعايير query الحالية بالضبط.
   const exportUrl = useMemo(() => {
@@ -156,6 +174,32 @@ export function Contractors() {
   }, [d]);
 
   const filtering = chips.length > 0;
+
+  // صفحة العرض من المجموعة المصفّاة كاملةً — d.rows نفسها لا تتغيّر، فأي حساب
+  // لاحق (تجميع بالمشروع، تصدير) يستعمل d.rows كاملة لا pageRows.
+  const allRows: ContractorRow[] = d?.rows ?? [];
+  const pageCount = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE));
+  const pageRows = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // تجميع بالمشروع — على المجموعة المصفّاة كاملةً (allRows) لا على صفحة واحدة،
+  // وإلا اختفى مشروع بأكمله لمجرد وقوع مقاوليه في صفحة أخرى. مقاول على أكثر من
+  // مشروع يُحتسب تحت كل مشروع بكامل رصيده (لا تجزئة — الخادم لا يعطي حصة كل
+  // مشروع من رصيد المقاول، فتجزئة محلية هنا كانت ستخترع رقماً لا تدعمه البيانات).
+  // الترتيب: الأكبر التزاماً (له) أولاً — هذا هو ترتيب قرار السداد نفسه.
+  const projectGroups = useMemo(() => {
+    const map = new Map<string, { project: string; rows: ContractorRow[]; owed: number; owedToUs: number }>();
+    for (const r of allRows) {
+      const projs = r.projects && r.projects.length > 0 ? r.projects : ['— بلا مشروع —'];
+      for (const p of projs) {
+        if (!map.has(p)) map.set(p, { project: p, rows: [], owed: 0, owedToUs: 0 });
+        const g = map.get(p)!;
+        g.rows.push(r);
+        if (r.balance < 0) g.owed += -r.balance;
+        else if (r.balance > 0) g.owedToUs += r.balance;
+      }
+    }
+    return [...map.values()].sort((a, b) => b.owed - a.owed);
+  }, [allRows]);
 
   if (err) return <ErrorState message={`تعذّر التحميل: ${err}`} onRetry={reload} />;
 
@@ -247,6 +291,18 @@ export function Contractors() {
                onChange={(e) => setQ(e.target.value)} style={{ minWidth: 300 }} />
         {/* المشروع والاتجاه انتقلا إلى قائمتي عمودَيهما — نفس منطق Suppliers.tsx. */}
         {d && <span className="count">{ar(d.count)} مقاولاً</span>}
+        {/* تبديل العرض: قائمة مسطّحة أو تجميع بالمشروع بمجموع فرعي لكل مشروع —
+            كلاهما على نفس d.rows المصفّاة كاملةً، فلا يفقد أحدهما تصفية الآخر. */}
+        <div className="seg" role="tablist" aria-label="طريقة العرض">
+          <button className={'btn sm' + (!groupByProject ? ' active' : '')}
+                  aria-pressed={!groupByProject} onClick={() => setGroupByProject(false)}>
+            قائمة
+          </button>
+          <button className={'btn sm' + (groupByProject ? ' active' : '')}
+                  aria-pressed={groupByProject} onClick={() => setGroupByProject(true)}>
+            تجميع بالمشروع
+          </button>
+        </div>
         <a className="btn sm" href={exportUrl} download>تصدير Excel</a>
         <button className="btn sm" disabled={!d} onClick={() => setShowPrint(true)}>PDF</button>
       </div>
@@ -276,6 +332,8 @@ export function Contractors() {
                 body="ارفع كشوف حسابات المقاولين لتظهر أرصدتهم ومستخلصاتهم هنا."
                 ctaLabel="رفع الملفات" onCta={() => nav('/import')} />
             )
+          ) : groupByProject ? (
+            <ProjectGroupsView groups={projectGroups} />
           ) : (
           <div className="table-scroll wide">
           <table>
@@ -316,14 +374,24 @@ export function Contractors() {
               </tr>
             </thead>
             <tbody>
-              {d.rows.map((r: ContractorRow) => {
+              {pageRows.map((r: ContractorRow) => {
                 const v = balanceView(r.balance);
+                // ٥٩٢ من ٥٩٩ مقاولاً مستوردون بأرصدة ملف فقط بلا قيد دفتري واحد
+                // (entryCount=0) — الفراغ في عمود الضمان لهم يعني «لم يُرفع كشفه»
+                // لا «لا ضمان»، والفرق هنا مالي: إفراج عن ضمان غير معروف للنظام.
+                const hasStatement = r.entryCount > 0;
                 return (
                   <tr key={r.code} className={r.balance < 0 ? 'row-overdue' : ''}>
                     <td className="party">
                       <Link to={`/contractors/${r.code}`}>{r.name}</Link>
                       {r.releaseAlerts > 0 && (
                         <span className="release-dot" title={`ضمانات مستحقة الصرف: ${ar(r.releaseAlerts)}`} />
+                      )}
+                      {!hasStatement && (
+                        <span className="pill" title="لا قيود دفترية لهذا المقاول — الرصيد من ملف مستورد فقط. أعمدة الضمان والمستخلصات هنا «غير معروفة» لا «لا يوجد»."
+                              style={{ marginInlineStart: 6, fontSize: 10 }}>
+                          بلا كشف مرفوع
+                        </span>
                       )}
                       {r.phone && (
                         <div className="muted num" style={{ fontSize: 11, marginTop: 2 }}>{r.phone}</div>
@@ -365,7 +433,9 @@ export function Contractors() {
                       )}
                     </td>
                     <td className="ltr">
-                      {r.retentionHeld > 0 ? <Money v={r.retentionHeld} /> : <span className="muted">—</span>}
+                      {!hasStatement ? (
+                        <span className="muted" title="لا كشف حساب مرفوع — لا نعلم إن كان محتجزاً ضمان أم لا">غير معروف</span>
+                      ) : r.retentionHeld > 0 ? <Money v={r.retentionHeld} /> : <span className="muted">لا يوجد</span>}
                     </td>
                     <td className="ltr">
                       {r.lastPayment ? (
@@ -391,6 +461,25 @@ export function Contractors() {
               })}
             </tbody>
           </table>
+          </div>
+        )}
+        {/* الترقيم يصف الصفحة المعروضة فقط — العدّاد أعلى الجدول وسطر الإجماليات
+            في بطاقات KPI يبقيان يصفان d.totals/d.count الكاملين، لا هذه الصفحة. */}
+        {d && !groupByProject && allRows.length > PAGE_SIZE && (
+          <div className="pager" style={{ display: 'flex', alignItems: 'center',
+                                          justifyContent: 'space-between', gap: 8, padding: '10px 4px 0' }}>
+            <span className="muted" style={{ fontSize: 12 }}>
+              عرض {ar((page - 1) * PAGE_SIZE + 1)}–{ar(Math.min(page * PAGE_SIZE, allRows.length))} من {ar(allRows.length)}
+            </span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button className="btn sm" disabled={page <= 1} onClick={() => setPage(1)}>الأولى</button>
+              <button className="btn sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>السابقة</button>
+              <span className="muted" style={{ fontSize: 12, alignSelf: 'center', padding: '0 6px' }}>
+                {ar(page)} / {ar(pageCount)}
+              </span>
+              <button className="btn sm" disabled={page >= pageCount} onClick={() => setPage((p) => p + 1)}>التالية</button>
+              <button className="btn sm" disabled={page >= pageCount} onClick={() => setPage(pageCount)}>الأخيرة</button>
+            </div>
           </div>
         )}
       </Card>
@@ -423,6 +512,72 @@ export function Contractors() {
         />
       )}
     </>
+  );
+}
+
+/** عرض «تجميع بالمشروع» في الجدول الرئيسي — الفجوة الأهم مالياً: أمام ٣٩٢ داعناً
+ * و١٢ مشروعاً، هذا هو المكان الوحيد الذي يجيب «أي مشروع أسدّد مستحقاته أولاً؟»
+ * بالنزول مباشرة من المشروع إلى مقاوليه، مرتّباً بحجم الالتزام (له) الأكبر أولاً —
+ * خلاف بطاقة الكاروسيل الجانبية أعلى الصفحة التي لا تتيح النزول لمقاولي مشروع بعينه. */
+function ProjectGroupsView({ groups }: {
+  groups: { project: string; rows: ContractorRow[]; owed: number; owedToUs: number }[];
+}) {
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  if (groups.length === 0) return <State>لا بيانات لتجميعها.</State>;
+  const toggle = (p: string) => setOpen((s) => {
+    const n = new Set(s);
+    if (n.has(p)) n.delete(p); else n.add(p);
+    return n;
+  });
+  return (
+    <div className="table-scroll wide">
+      <table>
+        <thead>
+          <tr>
+            <th>المشروع</th>
+            <th>عدد المقاولين</th>
+            <th className="ltr">مستحق للمقاولين (له)</th>
+            <th className="ltr">مستحق لنا</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((g) => (
+            <>
+              <tr key={g.project} className="group-row"
+                  onClick={() => toggle(g.project)} style={{ cursor: 'pointer' }}>
+                <td><b>{open.has(g.project) ? '▾' : '◂'} {g.project}</b></td>
+                <td>{ar(g.rows.length)}</td>
+                <td className="ltr">{g.owed > 0 ? <Money v={g.owed} cls="red" /> : <span className="muted">—</span>}</td>
+                <td className="ltr">{g.owedToUs > 0 ? <Money v={g.owedToUs} cls="ok" /> : <span className="muted">—</span>}</td>
+              </tr>
+              {open.has(g.project) && g.rows
+                .slice()
+                .sort((a, b) => a.balance - b.balance)
+                .map((r) => {
+                  const v = balanceView(r.balance);
+                  return (
+                    <tr key={g.project + '/' + r.code} className="group-child">
+                      <td style={{ paddingInlineStart: 28 }}>
+                        <Link to={`/contractors/${r.code}`}>{r.name}</Link>
+                      </td>
+                      <td className="num muted">{r.code}</td>
+                      <td className="ltr" colSpan={2}>
+                        <Money v={r.balance} cls={v.cls} />{' '}
+                        <span className={'balance-tag ' + v.cls}>{v.label}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+            </>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted text-caption-micro" style={{ margin: '8px 0 0' }}>
+        النطاق: كل المشاريع من المجموعة المصفّاة كاملةً (بلا ترقيم صفحات) — مرتّبة
+        بأكبر مستحق للمقاولين أولاً. مقاول على أكثر من مشروع يظهر تحت كل مشروع
+        بكامل رصيده (الخادم لا يعطي حصة كل مشروع من رصيده الكلي).
+      </p>
+    </div>
   );
 }
 

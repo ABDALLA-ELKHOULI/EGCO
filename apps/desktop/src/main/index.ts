@@ -76,7 +76,16 @@ async function getAutoUpdater() {
     updaterPromise = (async () => {
       const { autoUpdater } = await import('electron-updater');
       autoUpdater.autoDownload = true;
-      autoUpdater.autoInstallOnAppQuit = true;   // even «لاحقاً» installs on next quit
+      // م-١٢ — كانت `true` هنا، فـ«لاحقاً» في حوار التحديث لا تمنع شيئاً فعلياً:
+      // أول إغلاق عادي للتطبيق (لا `quitAndInstall` الصريح) يُثبّت التحديث صامتاً،
+      // وغالباً هذا يحدث آخر الدوام والمستخدم غائب. الزر وعد بشيء ولم يفِ به.
+      // `false` تجعل الإغلاق العادي لا يُثبّت شيئاً أبداً — التثبيت يحدث فقط حين
+      // يضغط المستخدم صراحة («تحديث الآن» هنا أو «إعادة التشغيل» من الإعدادات)،
+      // وكلاهما يستدعي `quitAndInstall()` مباشرة بلا حاجة لهذا العلم إطلاقاً.
+      // لا يُلغي هذا النشر التلقائي نفسه: `autoDownload` يبقى `true`، والفحص
+      // التلقائي (`setupAutoUpdate`) يعيد السؤال في كل إقلاع تالٍ — فالتحديث
+      // المؤجَّل يُعرض على المستخدم من جديد بدل أن يُثبَّت بلا علمه أو يُنسى.
+      autoUpdater.autoInstallOnAppQuit = false;
 
       autoUpdater.on('update-available', (info) => sendUpdateStatus({ state: 'available', version: info.version }));
       autoUpdater.on('update-not-available', (info) => sendUpdateStatus({ state: 'up-to-date', version: info.version }));
@@ -280,14 +289,68 @@ const PICK_FILTERS = [
   { name: 'كل الملفات', extensions: ['*'] },
 ];
 
-function detectSource(filePath: string):
-    'pdf_statement' | 'csv_statement' | 'suppliers_excel' | 'debts_report_xls' {
+/**
+ * يميّز صيغتَي xls القديمتين بلا مكتبة قراءة BIFF (لا توجد واحدة في هذا التطبيق):
+ * اسم الورقة الأولى، أو أي نص فيها، يبحث عنه كنص UTF-16LE خام في بايتات الملف —
+ * صيغة BIFF تخزّن النصوص العربية عادة بهذا الترميز، وBuffer.includes يبحث في
+ * البايتات بلا اعتبار لمحاذاة الإزاحة، فلا حاجة لفكّ تركيب CFB/BIFF كاملاً.
+ *
+ * «كشف المقاولين» = لقطة الرصيد الجديدة (ورقتها الأولى تبدأ بهذا الاسم).
+ * أي شيء آخر (وعلى رأسه «مديونية») هو تقرير المديونيات المجمّع القديم — نفس
+ * التصنيف الذي يطبّقه الخادم في `_classify_xls()` عند مسح مجلد، فلا يختلف
+ * المساران. عدم القدرة على القراءة (ملف تالف مثلاً) يبقى على التصنيف القديم
+ * الافتراضي — الخادم سيرفض الملف برسالته العربية الواضحة لاحقاً على أي حال.
+ */
+function sniffXlsIsContractorsBalance(filePath: string): boolean {
+  try {
+    const buf = fs.readFileSync(filePath);
+    const marker = Buffer.from('كشف المقاولين', 'utf16le');
+    return buf.includes(marker);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * م-٣ — الامتداد وحده لا يميّز موازنة عن موردين (كلاهما .xlsx). قبل هذا الإصلاح
+ * كل .xlsx كان يُصنَّف 'suppliers_excel' هنا بلا فحص، بينما الخادم (`classify_xlsx_source`
+ * وقت الرفع الجماعي/مسح المجلد) يفتح الملف ويقرأ أسماء أوراقه — فمنتقي الملف
+ * المفرد وحده كان يخمّن، فرفع ملف موازنة منفرداً لا يُحفظ (يُرسل بمصدر خاطئ).
+ * لا مكتبة قراءة xlsx في عملية main، فيُسأل الخادم نفسه عبر `/import/classify` —
+ * نقطة الحقيقة الوحيدة (`import_service.classify_path`) بدل نسخة موازية من
+ * المنطق قد تنحرف عن الخادم بصمت. فشل الاتصال (خدمة لم تُقلع بعد) يبقى على
+ * التصنيف الافتراضي القديم — الخادم سيرفض الملف برسالته العربية لاحقاً على أي حال.
+ */
+async function classifyXlsxViaBackend(filePath: string): Promise<'suppliers_excel' | 'budget_deviation'> {
+  try {
+    const res = await fetch(`${backendUrl()}/api/v1/import/classify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: filePath }),
+    });
+    if (!res.ok) return 'suppliers_excel';
+    const data = (await res.json()) as { source?: string };
+    return data.source === 'budget_deviation' ? 'budget_deviation' : 'suppliers_excel';
+  } catch {
+    return 'suppliers_excel';
+  }
+}
+
+async function detectSource(filePath: string):
+    Promise<'pdf_statement' | 'csv_statement' | 'suppliers_excel' | 'debts_report_xls'
+    | 'contractors_balance_xls' | 'budget_deviation'> {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === '.pdf') return 'pdf_statement';
   if (ext === '.csv') return 'csv_statement';
-  // ‏.xls القديم هو تقرير المديونيات المجمّع؛ يقرأه xlrd لا openpyxl. نفس التصنيف
-  // الذي يطبّقه الخادم في _classify() عند مسح مجلد، فلا يختلف المساران.
-  if (ext === '.xls') return 'debts_report_xls';
+  // ‏.xls القديم صار يحمل صيغتين: تقرير المديونيات المجمّع (BIFF قديم، يقرأه
+  // xlrd لا openpyxl) ولقطة رصيد المقاولين الجديدة — الامتداد وحده لا يكفي
+  // للتمييز بينهما، فتُسبَر أسماء الأوراق (انظر sniffXlsIsContractorsBalance).
+  if (ext === '.xls') {
+    return sniffXlsIsContractorsBalance(filePath) ? 'contractors_balance_xls' : 'debts_report_xls';
+  }
+  if (ext === '.xlsx' || ext === '.xlsm') {
+    return classifyXlsxViaBackend(filePath);
+  }
   return 'suppliers_excel';
 }
 
@@ -301,7 +364,7 @@ ipcMain.handle('dialog:pickFile', async () => {
   return {
     path: filePath,
     name: path.basename(filePath),
-    source: detectSource(filePath),
+    source: await detectSource(filePath),
   };
 });
 
@@ -314,11 +377,11 @@ ipcMain.handle('dialog:pickFiles', async () => {
     filters: PICK_FILTERS,
   });
   if (r.canceled || !r.filePaths.length) return [];
-  return r.filePaths.map((filePath) => ({
+  return Promise.all(r.filePaths.map(async (filePath) => ({
     path: filePath,
     name: path.basename(filePath),
-    source: detectSource(filePath),
-  }));
+    source: await detectSource(filePath),
+  })));
 });
 
 /**

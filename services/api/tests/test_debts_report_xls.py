@@ -12,6 +12,7 @@ import os
 
 import pytest
 
+from conftest import sample_missing
 from app.ingest import debts_report_xls as D
 
 REAL_FILE = os.path.expanduser(
@@ -75,7 +76,7 @@ def test_row_project_falls_back_to_sheet_hint_when_column_is_zero():
 # ---------------------------------------------------------------- الملف الحقيقي (اختياري)
 
 pytestmark_real = pytest.mark.skipif(
-    not os.path.exists(REAL_FILE), reason='real downloaded .xls not present in this checkout')
+    sample_missing(REAL_FILE), reason='real downloaded .xls not present in this checkout')
 
 
 @pytestmark_real

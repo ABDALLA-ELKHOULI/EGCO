@@ -8,6 +8,7 @@ import os
 
 import pytest
 
+from conftest import require_sample
 from app.ingest.pdf_statement import ACCOUNT_RE, parse
 
 SAMPLES = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'design', 'samples')
@@ -84,8 +85,7 @@ def test_real_statements_parse_expected_account_across_lengths(fname, expected_a
                                                                 expected_prefix_kind,
                                                                 db, env):
     path = os.path.join(SAMPLES, fname)
-    if not os.path.exists(path):
-        pytest.skip('design/samples/%s not present in this checkout' % fname)
+    require_sample(path)
     result = parse(path)
     assert result['account'] == expected_account
     # dispatch_kind is prefix-only and must stay length-agnostic: a 5-, 7-, or 8-digit

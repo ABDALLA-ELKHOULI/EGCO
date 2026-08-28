@@ -17,6 +17,8 @@ from decimal import Decimal
 
 import pytest
 
+from conftest import sample_missing
+
 SAMPLES = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'design', 'samples')
 DIYAR_PDF = os.path.join(SAMPLES, 'contractor-diyar-alwadi.pdf')
 
@@ -133,7 +135,7 @@ def test_non_211_212_prefix_still_refuses_without_auto_create(tmp_path, db, env)
     assert db.query(env.models.Invoice).count() == 0
 
 
-@pytest.mark.skipif(not os.path.exists(DIYAR_PDF),
+@pytest.mark.skipif(sample_missing(DIYAR_PDF),
                     reason='design/samples/contractor-diyar-alwadi.pdf not present')
 def test_unknown_212_account_auto_creates_contractor(db, env):
     """(d) حساب مقاول ٢١٢ غير معروف — نفس معاملة الموردين تماماً: يُنشأ

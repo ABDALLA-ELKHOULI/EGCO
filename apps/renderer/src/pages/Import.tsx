@@ -69,6 +69,9 @@ const LABEL: Record<string, string> = {
   csv_statement: 'كشف حساب مورد (CSV)',
   suppliers_excel: 'ملف مدد الموردين (Excel)',
   debts_report_xls: 'تقرير مديونيات مجمّع (Excel قديم .xls)',
+  contractors_balance_xls: 'كشف رصيد المقاولين (Excel قديم .xls)',
+  budget_deviation: 'تقرير انحراف الموازنة (Excel)',
+  unsupported: 'صيغة غير مدعومة',
 };
 
 type QueueStatus =
@@ -83,7 +86,10 @@ type QueueStatus =
   | 'saved'
   | 'save_error'
   | 'unknown_supplier' // الحساب مطابق لكنه غير موجود في ملف مدد الموردين — يحتاج قراراً
-  | 'excluded';     // مُستبعد
+  | 'excluded'      // مُستبعد
+  // م-٢١ — مصدر لا يعرفه هذا الإصدار من الواجهة (اختيار امتداد لم يعد `ordered`
+  // يُسقطه بصمت الآن). يظهر صراحة بدل أن يختفي الملف من الطابور بلا أثر.
+  | 'unsupported';
 
 interface QueueItem {
   file: PickedFile;
@@ -94,7 +100,19 @@ interface QueueItem {
 }
 
 const isStatementSource = (s: string) => s === 'pdf_statement' || s === 'csv_statement';
-const isDebtsReportSource = (s: string) => s === 'debts_report_xls';
+// كشف رصيد المقاولين يمرّ بنفس مسار تقرير المديونيات المجمّع حرفياً — معاينة بلا
+// بوابة مطابقة، ثم حفظ واحد. لا فرق في تدفق الواجهة، الاختلاف كله خادمي.
+const isDebtsReportSource = (s: string) => s === 'debts_report_xls' || s === 'contractors_balance_xls';
+// ملف موازنة — نفس مسار الموردين حرفياً: بلا معاينة، مباشرة إلى «جاهز للحفظ»
+// (انظر م-٣: /imports يحفظه الآن مباشرة عبر import_service.import_budget_file).
+const isBudgetSource = (s: string) => s === 'budget_deviation';
+//: كل الأنواع التي يعرفها هذا الإصدار من الواجهة فعلياً — أي شيء آخر (م-٢١) يظهر
+//: بحالة «غير مدعوم» صراحة بدل أن يختفي من الطابور بصمت.
+const KNOWN_QUEUE_SOURCES = new Set([
+  'suppliers_excel', 'pdf_statement', 'csv_statement',
+  'debts_report_xls', 'contractors_balance_xls', 'budget_deviation',
+]);
+const isKnownQueueSource = (s: string) => KNOWN_QUEUE_SOURCES.has(s);
 
 const isSavedStatus = (s: string) =>
   s === 'saved' || s === 'contractor_saved' || s === 'duplicate';
@@ -195,6 +213,7 @@ const SOURCE_LABEL: Record<string, string> = {
   csv_statement: 'كشف CSV',
   suppliers_excel: 'ملف موردين',
   debts_report_xls: 'تقرير مديونيات مجمّع (xls)',
+  contractors_balance_xls: 'كشف رصيد المقاولين (xls)',
 };
 
 const BATCH_STATUS: Record<string, { text: string; kind: string }> = {
@@ -441,14 +460,24 @@ export function ImportPage() {
     }
     if (!picked.length) return;              // المستخدم ألغى
 
-    // الموردون أولاً، ثم الكشوفات
+    // الموردون أولاً، ثم الكشوفات، ثم تقارير المديونيات/رصيد المقاولين المجمّعة،
+    // ثم الموازنة. م-٢١: هذا الترتيب كان يُستعمل ليبني القائمة كلها (`filter` بلا
+    // بقية) فأي مصدر غائب عن الأربعة المذكورة صراحة (تقرير مديونيات مجمّع، رصيد
+    // مقاولين، موازنة) كان يختفي من الطابور تماماً — لا رسالة ولا خطأ. الإصلاح:
+    // ابدأ من *كل* الملفات المختارة مرتّبة، لا فلترة تُسقط شيئاً؛ وأي مصدر لا
+    // يعرفه هذا الإصدار من الواجهة يظهر بحالة `unsupported` صريحة بدل أن يُحذف.
     const ordered = [
       ...picked.filter((p) => p.source === 'suppliers_excel'),
       ...picked.filter((p) => isStatementSource(p.source)),
+      ...picked.filter((p) => isDebtsReportSource(p.source)),
+      ...picked.filter((p) => isBudgetSource(p.source)),
+      ...picked.filter((p) => !isKnownQueueSource(p.source)),
     ];
     const items: QueueItem[] = ordered.map((file) => ({
       file,
-      status: (isStatementSource(file.source) || isDebtsReportSource(file.source)) ? 'pending' : 'ready',
+      status: !isKnownQueueSource(file.source)
+        ? 'unsupported'
+        : (isStatementSource(file.source) || isDebtsReportSource(file.source)) ? 'pending' : 'ready',
     }));
     setQueue(items);
 
@@ -891,6 +920,13 @@ function QueueCard({ item, aiEnabled, onRescue, onConfirmNewSupplier, onDeclineN
           items={(saveResult?.nearDuplicates ?? preview?.nearDuplicates ?? []) as NearDuplicate[]}
         />
 
+        {status === 'unsupported' && (
+          <div className="callout bad" style={{ margin: 0 }}>
+            صيغة هذا الملف غير مدعومة في هذا الإصدار من التطبيق — لن يُحفظ. تأكد من
+            نوع الملف، أو حدِّث التطبيق إن كان يُفترض دعمه.
+          </div>
+        )}
+
         {status === 'read_error' && (
           <div className="callout bad" style={{ margin: 0 }}>
             خطأ قراءة: {error}
@@ -969,6 +1005,7 @@ const CHIP: Record<QueueStatus, { text: string; kind: string }> = {
   save_error: { text: 'تعذّر الحفظ', kind: 'red' },
   unknown_supplier: { text: 'حساب جديد — بانتظار قرار', kind: 'warn' },
   excluded: { text: 'مُستبعد', kind: '' },
+  unsupported: { text: 'غير مدعوم', kind: 'red' },
 };
 
 function StatusChip({ status }: { status: QueueStatus }) {
@@ -1196,6 +1233,7 @@ const SOURCE_FILTER_OPTIONS = [
   { value: 'budget_deviation', label: 'تقرير انحراف الموازنة' },
   { value: 'ai_extract', label: 'استخراج بالذكاء الاصطناعي' },
   { value: 'debts_report_xls', label: 'تقرير مديونيات مجمّع (xls)' },
+  { value: 'contractors_balance_xls', label: 'كشف رصيد المقاولين (xls)' },
 ];
 
 const RECONCILED_FILTER_OPTIONS = [

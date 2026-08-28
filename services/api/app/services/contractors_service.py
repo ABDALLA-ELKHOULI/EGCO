@@ -13,7 +13,7 @@ import re
 from decimal import Decimal
 from typing import List, Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db import models
 from app.domain import contractors as C
@@ -271,6 +271,20 @@ CONTRACTOR_SORT_KEYS = {
 }
 
 
+def _all_contractor_projects(db: Session) -> dict:
+    """كل عضويات المشاريع لكل المقاولين بضربة استعلام واحدة — بديل استدعاء
+    PP.projects_of داخل حلقة صفوف (كان يضيف استعلاماً منفصلاً لكل مقاول: ٥٩٩
+    استعلاماً إضافياً بعد استيراد تقرير المديونيات المجمّع). ترتيب position
+    محفوظ داخل كل مجموعة تماماً كما تعيده projects_of."""
+    rows = (db.query(models.PartyProject)
+            .filter_by(party_type=PP.CONTRACTOR)
+            .order_by(models.PartyProject.position).all())
+    out: dict = {}
+    for r in rows:
+        out.setdefault(r.party_id, []).append(r.project)
+    return out
+
+
 def contractors_list_json(db: Session, today: Optional[dt.date] = None,
                           q: Optional[str] = None, project: Optional[str] = None,
                           direction: Optional[str] = None,
@@ -281,14 +295,22 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
     # المشاريع المستنتجة من حركات الدفتر — إسقاط الثاني كان يكسر التصفية لأي مقاول
     # وسمت حركاته مشروعاً دون أن يُعيَّن له صراحةً عبر نموذج التعديل بعد (الحالة
     # الشائعة اليوم، قبل أن يستخدم المستخدم المحرر الجديد).
+    all_assigned = _all_contractor_projects(db)  # استعلام واحد بدل واحد لكل مقاول
+
     def _row(r: models.Contractor) -> dict:
         base = contractor_row_json(r, today)  # مستنتج من الحركات (السلوك القديم)
-        assigned = PP.projects_of(db, PP.CONTRACTOR, r.id)
+        assigned = all_assigned.get(r.id, [])
         base['projects'] = sorted(set(base['projects']) | set(assigned))
         return base
 
+    # selectinload لـ entries/guarantees — بدونه contractor_row_json يُحمّل حركات
+    # وضمانات كل مقاول lazy عند الوصول (row.entries / row.guarantees)، فيضيف
+    # استعلامين لكل مقاول (٥٩٩ × ٢ بعد استيراد تقرير المديونيات المجمّع) بالإضافة
+    # لاستعلام المشاريع الذي كان N+1 مستقلاً (أُصلح أعلاه بـ _all_contractor_projects).
     all_rows = [_row(r) for r in db.query(models.Contractor).filter(
-        models.Contractor.deleted_at.is_(None)).all()]
+        models.Contractor.deleted_at.is_(None)).options(
+        selectinload(models.Contractor.entries),
+        selectinload(models.Contractor.guarantees)).all()]
 
     # التصفية بمشروع تعني «ينتمي إليه ضمن لائحته» لا «يساويه» — مقاول على ثلاثة
     # مشاريع يجب أن يظهر تحت الثلاثة. r['projects'] أعلاه مصدره الآن party_projects
@@ -358,6 +380,13 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
         for s, b in by_status.items()
     }
 
+    # كم مقاولاً من ضمن هذا العدد له فعلاً حركات دفتر مباشرة (entryCount > 0) —
+    # owedToContractors أعلاه مشتقّ من هذه الحركات حصراً، فأي مقاول بلا حركات
+    # (الحالة الشائعة بعد استيراد تقرير المديونيات المجمّع: مئات الأكواد بأرصدة
+    # مُبلَّغة بلا قيود دفترية بعد) لا يُساهم فيه بشيء رغم أن له رصيداً معروفاً.
+    # نرسل العدّاد هنا لا الرقم المدمج — الواجهة هي من تقرّر كيف تسم الرقم البارز
+    # (مثال: «٧٥٠,٠٠٠ ر.س من ٢ مقاول بحركات دفتر من أصل ٥٩٩ مقاولاً مُستورداً»).
+    with_ledger_entries = len([r for r in rows if r['entryCount'] > 0])
     totals = dict(count=len(rows),
                  claimsTotal=money(claims_total),
                  paidTotal=money(paid_total),
@@ -366,7 +395,11 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
                  owedToContractors=money(owed_to_contractors),
                  owedToUs=money(owed_to_us),
                  retentionHeld=money(retention),
-                 byStatus=by_status_json)
+                 byStatus=by_status_json,
+                 #: عدد المقاولين الذين اشتُقّ منهم owedToContractors/owedToUs فعلاً —
+                 #: انظر تعليق reported_balance في models.py: الرقم المشتقّ من الحركات
+                 #: والرقم المُبلَّغ من تقرير المديونيات مصدران مختلفان لا يُجمعان أبداً.
+                 derivedFromEntriesCount=with_ledger_entries)
     filters_applied = dict(q=q, project=project, direction=direction,
                            hasGuarantees=has_guarantees, status=status)
     return dict(count=len(rows), rows=rows, totals=totals, filtersApplied=filters_applied)
@@ -517,18 +550,19 @@ def _reported_debt(db: Session) -> dict:
                     models.Contractor.reported_balance.isnot(None)).all())
     owed = sum((abs(D(r.reported_balance)) for r in rows
                 if D(r.reported_balance) < 0), Decimal('0'))
+    all_assigned = _all_contractor_projects(db)  # استعلام واحد بدل واحد لكل مقاول
     by_project: dict = {}
     for r in rows:
         bal = D(r.reported_balance)
         if bal >= 0:
             continue
-        for proj in PP.projects_of(db, PP.CONTRACTOR, r.id) or ['']:
+        for proj in all_assigned.get(r.id) or ['']:
             b = by_project.setdefault(proj, dict(owed=Decimal('0'), count=0))
             b['owed'] += abs(bal)
             b['count'] += 1
             break            # الرصيد المُبلَّغ صفٌّ واحد لكل مقاول، فلا يُوزَّع
     projects = sorted(
-        (dict(project=k or 'بلا مشروع', owed=money(v['owed']), contractors=v['count'])
+        (dict(project=k or 'بلا مشروع', owed=money(v['owed']), contractorCount=v['count'])
          for k, v in by_project.items()),
         key=lambda x: -x['owed'])
     top = sorted((r for r in rows if D(r.reported_balance) < 0),
@@ -540,6 +574,22 @@ def _reported_debt(db: Session) -> dict:
         topOwed=[dict(code=r.code, name=r.name,
                       balance=money(D(r.reported_balance))) for r in top],
     )
+
+
+def _reported_without_ledger(db: Session) -> dict:
+    """مقاولون لهم رصيد مُبلَّغ من تقرير المديونيات المجمّع لكن بلا أي حركة دفتر —
+    نظير «بلا كشوفات» عند الموردين، بمقياس المقاولين: بعد استيراد تقرير المديونيات
+    قد يصبح في القاعدة مئات الأكواد بأرصدة معروفة (reported_balance) دون أن يُستورد
+    كشف حركاتها التفصيلي بعد. owedToContractors في totals لا يرى هذا المبلغ إطلاقاً
+    لأنه مشتقّ من الحركات حصراً — فبلا هذا العدّاد يبدو النقص كأنه غير موجود، وهو
+    أكبر من صافي المستحق المعروض بأكمله (انظر تعليق reported_balance في models.py)."""
+    rows = (db.query(models.Contractor)
+            .filter(models.Contractor.deleted_at.is_(None),
+                    models.Contractor.reported_balance.isnot(None)).all())
+    missing = [r for r in rows if not _live_entries(r)]
+    owed = sum((abs(D(r.reported_balance)) for r in missing if D(r.reported_balance) < 0),
+               Decimal('0'))
+    return dict(count=len(missing), owed=money(owed))
 
 
 def contractors_overview_json(db: Session, today: Optional[dt.date] = None) -> dict:
@@ -564,6 +614,7 @@ def contractors_overview_json(db: Session, today: Optional[dt.date] = None) -> d
             retentionHeld=listing['totals']['retentionHeld'],
         ),
         reported=_reported_debt(db),
+        withoutLedger=_reported_without_ledger(db),
         byProject=_by_project_debt(db),
         topOwed=[dict(code=r['code'], name=r['name'], balance=r['balance'],
                      projects=r['projects']) for r in top_owed],

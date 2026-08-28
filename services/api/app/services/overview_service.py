@@ -67,14 +67,25 @@ def _coverage(db: Session, today: dt.date, stale_days: int = STALE_DAYS_DEFAULT)
 
 
 def _contractors_block(db: Session, today: dt.date) -> dict:
-    """يطابق /contractors تماماً — نفس دالة الخدمة، فلا يمكن أن يختلف الرقمان."""
+    """يطابق /contractors تماماً — نفس دالة الخدمة، فلا يمكن أن يختلف الرقمان.
+
+    withoutStatementCount/Owed: مقاولون لهم رصيد مُبلَّغ من تقرير المديونيات المجمّع
+    بلا أي حركة دفتر بعد — نفس فكرة needsTerm/coverage عند الموردين أعلاه، لكنها
+    كانت غائبة هنا كلياً قبل هذا التغيير رغم أن حجمها (انظر _reported_without_ledger)
+    يفوق أحياناً صافي المستحق المعروض بأكمله. بلا هذا العدّاد كانت اللوحة تصمت عن
+    أكبر فجوة بيانات لديها بينما تُصدر تحذيراً صريحاً عن أصغرهما (الموردون بلا مدة
+    سداد) — رسالة تفصح عن الفجوة الصغيرة وتُخفي الكبيرة أخطر من الصمت الكامل.
+    """
     cl = CS.contractors_list_json(db, today)
     release_alerts = sum(r['releaseAlerts'] for r in cl['rows'])
+    without_statement = CS._reported_without_ledger(db)
     return dict(count=cl['count'],
                owedToContractors=cl['totals']['owedToContractors'],
                owedToUs=cl['totals']['owedToUs'],
                retentionHeld=cl['totals']['retentionHeld'],
-               releaseAlerts=release_alerts)
+               releaseAlerts=release_alerts,
+               withoutStatementCount=without_statement['count'],
+               withoutStatementOwed=without_statement['owed'])
 
 
 def _last_payments(db: Session, limit: int = 6) -> list:
@@ -224,6 +235,14 @@ def overview(db: Session, today: Optional[dt.date] = None) -> dict:
                            text=f"مستحق خلال ٧ أيام: {payables['dueWithin7']:,.2f} ر.س"))
 
     contractors = _contractors_block(db, today)
+    # فجوة المقاولين — تُذكر حجم ما هو غائب (مبلغاً وعدداً) لا وجوده فقط، مثل تحذير
+    # الموردين بلا مدة سداد أعلاه تماماً. هذه أكبر الفجوتين اليوم لا أصغرهما.
+    if contractors['withoutStatementCount'] > 0:
+        alerts.append(dict(level='danger', kind='contractors_without_statement',
+                           text=f"{_ar_num(contractors['withoutStatementCount'])} مقاولاً "
+                                f"بلا كشف حركات (رصيد مُبلَّغ فقط) بقيمة "
+                                f"{contractors['withoutStatementOwed']:,.2f} ر.س — "
+                                f"غير مُحتسبة ضمن المستحق للمقاولين أعلاه"))
     last_payments = _last_payments(db, limit=6)
     last_payment = last_payments[0] if last_payments else None
     revenues = _revenues_block(db)

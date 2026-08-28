@@ -6,11 +6,13 @@ import os
 
 import pytest
 
+from conftest import sample_missing
+
 SAMPLES = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'design', 'samples')
 BUDGET_XLSX = os.path.join(SAMPLES, 'budget-deviation-2026-07.xlsx')
 
 pytestmark = pytest.mark.skipif(
-    not os.path.exists(BUDGET_XLSX),
+    sample_missing(BUDGET_XLSX),
     reason='design/samples not present in this checkout')
 
 

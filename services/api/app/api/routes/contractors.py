@@ -11,9 +11,6 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from openpyxl import Workbook
-from openpyxl.styles import Font
-from openpyxl.utils import get_column_letter
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -24,6 +21,7 @@ from app.schemas.contractors import (ClaimIn, ClaimUpdate, ContractorIn,
                                      ContractorUpdate, EntryIn, EntryUpdate,
                                      GuaranteeIn, GuaranteeUpdate)
 from app.services import contractors_service as CS
+from app.services import export_service as ES
 from app.services import party_projects as PP
 
 router = APIRouter()
@@ -109,6 +107,27 @@ def contractors_overview(db: Session = Depends(get_session)) -> dict:
     مسار مستقل عن `list_contractors` أعلاه: هذا مُجمَّع على مستوى الشركة كاملة
     ولا يتأثر بأي تصفية شاشة القائمة (بحث/مشروع/اتجاه)."""
     return CS.contractors_overview_json(db)
+
+
+_DIRECTION_LABELS_AR = {'owed_to_them': 'لهم علينا', 'owed_to_us': 'لنا عليهم',
+                        'balanced': 'متساوٍ'}
+
+
+def _filters_label(filters: dict) -> str:
+    """نص عربي واحد يصف كل تصفية مُطبَّقة — يُطبع أعلى ورقة التحليل حتى لا يُقرأ
+    ملف مُصدَّر لاحقاً على أنه يصف كل المقاولين وهو في الحقيقة مصفّى."""
+    parts = []
+    if filters.get('q'):
+        parts.append(f"بحث: {filters['q']}")
+    if filters.get('project'):
+        parts.append(f"مشروع: {filters['project']}")
+    if filters.get('direction'):
+        parts.append(f"الاتجاه: {_DIRECTION_LABELS_AR.get(filters['direction'], filters['direction'])}")
+    if filters.get('hasGuarantees') is not None:
+        parts.append('يملك ضمانات' if filters['hasGuarantees'] else 'بلا ضمانات')
+    if filters.get('status'):
+        parts.append(f"الحالة: {filters['status']}")
+    return '؛ '.join(parts) if parts else 'بلا تصفية — كل المقاولين'
 
 
 @router.get('/export.xlsx')

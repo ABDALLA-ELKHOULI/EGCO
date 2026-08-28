@@ -3,7 +3,11 @@ export {};
 export interface PickedFile {
   path: string;
   name: string;
-  source: 'pdf_statement' | 'suppliers_excel' | 'csv_statement' | 'debts_report_xls';
+  source: 'pdf_statement' | 'suppliers_excel' | 'csv_statement' | 'debts_report_xls'
+    | 'contractors_balance_xls' | 'budget_deviation'
+    // م-٢١ — نوع لا يعرفه الخادم بعد كل هذا التحقّق: تُعرض بحالة «غير مدعوم» بدل
+    // أن تختفي من الطابور بصمت (انظر Import.tsx: isUnsupportedSource).
+    | 'unsupported';
 }
 
 export interface BackendRestartInfo {

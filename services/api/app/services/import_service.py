@@ -23,10 +23,11 @@ from app.db import models
 from app.domain import payables as P
 from app.domain.payables import UNSET_TERM, D, money, parse_term
 from decimal import Decimal
-from app.ingest import (contractor_statement, csv_statement, debts_report_xls,
-                        pdf_statement, receivables_excel, receivables_legacy,
-                        suppliers_excel)
+from app.ingest import (contractor_statement, contractors_balance_xls, csv_statement,
+                        debts_report_xls, pdf_statement, receivables_excel,
+                        receivables_legacy, suppliers_excel)
 from app.ingest.budget_xlsx import BudgetParseError
+from app.ingest.contractors_balance_xls import ContractorsBalanceParseError
 from app.ingest.csv_statement import CsvStatementParseError
 from app.ingest.debts_report_xls import DebtsReportParseError
 from app.ingest.pdf_statement import StatementParseError
@@ -46,12 +47,20 @@ _PARSERS = {
 RECEIVABLE_SOURCES = {'receivables_legacy_html', 'receivables_excel'}
 
 _PARSE_ERRORS = (StatementParseError, CsvStatementParseError, SuppliersParseError,
-                 DebtsReportParseError, BudgetParseError, ReceivablesExcelParseError,
-                 ReceivablesParseError)
+                 DebtsReportParseError, ContractorsBalanceParseError, BudgetParseError,
+                 ReceivablesExcelParseError, ReceivablesParseError)
+
+#: مصدر لقطة رصيد المقاولين — كتلة واحدة، كل مقاولي الشركة، بعكس كشف الحساب
+#: الفردي. حركاتها المصطنعة تُميَّز بـ source='balance_snapshot' (انظر
+#: commit_contractors_balance) كي لا تختلط بحركات كشف حساب حقيقي.
+BALANCE_SNAPSHOT_SOURCE = 'balance_snapshot'
 
 #: extension -> source classification for the folder scanner
-#: .xls (legacy BIFF) is currently only used by the consolidated debts report —
-#: unlike .xlsx there is no second .xls file type to disambiguate via sheet peeking.
+#: .xls (legacy BIFF) is now ambiguous — both the consolidated debts report and the
+#: new contractors-balance snapshot export as .xls, so the extension alone can no
+#: longer decide (see _classify_xls below, sniffed the same way _classify_xlsx
+#: sniffs the two .xlsx formats). The dict entry is left as the safe default for
+#: any caller that still indexes it directly without going through _classify_xls.
 _EXT_SOURCE = {
     '.pdf': 'pdf_statement',
     '.csv': 'csv_statement',
@@ -493,6 +502,18 @@ def backup_db() -> None:
             pass
 
 
+def import_budget_file(db: Session, path: str, backup: bool = True) -> dict:
+    """رفع تقرير انحراف الموازنة منفرداً (م-٣) — نسخة احتياطية ثم استيراد فعلي عبر
+    budget_service، تماماً كما يحدث داخل batch_import. قبل هذا الإصلاح كان مسار
+    /imports (رفع ملف واحد) لا يعرف 'budget_deviation' إطلاقاً فيسقط على
+    commit_statement الخاطئ — الملف كان يُرفض بلا حفظ عند رفعه منفرداً بينما ينجح
+    عبر مسح المجلد فقط."""
+    from app.services import budget_service
+    if backup:
+        backup_db()
+    return budget_service.import_budget(db, path)
+
+
 def import_suppliers(db: Session, path: str, backup: bool = True) -> dict:
     """رفع ملف مدد الموردين — upserts by account number."""
     parsed = suppliers_excel.parse(path)
@@ -662,6 +683,16 @@ def preview_debts_report(path: str, db: Session) -> dict:
     )
 
 
+def preview_contractors_balance(path: str) -> dict:
+    """معاينة بلا حفظ لكشف رصيد المقاولين — أرقام الملف كما هي، لا بوابة مطابقة
+    (لا كشف حساب فردي هنا يُقارَن به، اللقطة نفسها هي المصدر)."""
+    parsed = contractors_balance_xls.parse(path)
+    return dict(kind='contractors_balance', asOfDate=parsed['asOfDate'],
+               fromDate=parsed['fromDate'], sheets=parsed['sheets'],
+               totals=parsed['totals'], rowCount=len(parsed['rows']),
+               parseIssues=parsed['issues'], reconciled=True)
+
+
 def commit_debts_report(db: Session, path: str, backup: bool = True) -> dict:
     """يحفظ التقرير المجمّع: ينشئ سجلات المقاولين/الموردين/الضمان الناقصة (a)
     ويحدّث رصيد الضمان مباشرة (b، مطابق لنمط guarantees_service)، ويُبلّغ عن أي
@@ -761,6 +792,146 @@ def commit_debts_report(db: Session, path: str, backup: bool = True) -> dict:
         reconcileWarnings=reconcile_warnings,
         issues=all_issues,
     )
+
+
+#: هوية حركة اللقطة — (مدين، دائن، وصف، doc) للسطر الافتتاحي وسطر حركة الفترة.
+#: doc مختلف بين الاثنين عمداً — لا لأنه رقم مستند حقيقي (اللقطة لا تحمل مستندات)،
+#: بل لأن scan_all_duplicates يُجمِّع الحركات على (الحساب، التاريخ، المبلغ، doc):
+#: بلا هذا الفارق، حساب بمبلغين متساويين على ساقيه (شائع عند صفر أو تساوي الفترة
+#: بالافتتاحي) يُبلَّغ عنه تكراراً محتملاً زائفاً في كل مرة — قِيس فعلاً على الملف
+#: الحقيقي: ٤٧ مجموعة زائفة بدون هذا الفارق، صفر معه.
+def _snapshot_entry_identity(as_of: str, kind: str, debit: float, credit: float) -> tuple:
+    if kind == 'opening':
+        doc, desc = 'افتتاحي', 'رصيد افتتاحي كما في كشف المقاولين بتاريخ %s' % as_of
+    else:
+        doc, desc = 'حركة الفترة', 'حركة الفترة كما في كشف المقاولين بتاريخ %s' % as_of
+    return (doc, money(debit), money(credit), desc)
+
+
+def _snapshot_date(as_of: str) -> dt.date:
+    try:
+        return dt.date.fromisoformat(as_of)
+    except (ValueError, TypeError):
+        return dt.date.today()
+
+
+def commit_contractors_balance(db: Session, path: str, backup: bool = True) -> dict:
+    """يحفظ «كشف المقاولين» — لقطة رصيد مجمّعة لكل المقاولين دفعة واحدة.
+
+    لكل مقاول يُنشئ سطرين في دفتره (ContractorEntry) بـ source='balance_snapshot'
+    كي يعمل كل ما يعتمد على الحركات الحقيقية (الاتجاه، الإجماليات) دون انتظار كشف
+    حساب فردي. هذا يخلق خطر مضاعفة موثَّق في هذا المشروع (شُحنت ٣ نسخ تصلحه):
+    لو بقيت حركات اللقطة قائمة بعد وصول كشف حساب حقيقي (source='statement') لنفس
+    المقاول، يُحسب المبلغ مرتين. القرار هنا اتجاهان معاً:
+
+      ١. إعادة رفع نفس الملف، أو ملف أحدث بأرقام مختلفة: يُطابق كل سطر جديد هويته
+         (تاريخ اللقطة + مدين + دائن + الوصف) مع ما هو محفوظ فعلاً — مطابق فعّال
+         يُترك كما هو (لا تكرار)، مطابق محذوف منطقياً يُحيا، وغير المطابق (من لقطة
+         أقدم بأرقام مختلفة) يُحذف منطقياً. بهذا لا يتراكم شيء أبداً مهما تكرر الرفع.
+      ٢. كشف حساب حقيقي موجود بالفعل لهذا المقاول: لا تُنشأ له حركات لقطة إطلاقاً
+         (وأي حركة لقطة قائمة له من قبل تُحذف منطقياً هنا) — المصدر الحقيقي دائماً
+         أولى من التقدير المجمّع. الاتجاه المعاكس (استيراد كشف حساب بعد أن سبقته
+         لقطة) يُعالج في _commit_contractor أعلاه بنفس الطريقة عند وصول الكشف،
+         فلا يبقى الاتجاهان أي فجوة زمنية يتكرر فيها المبلغ.
+    """
+    parsed = contractors_balance_xls.parse(path)
+    if backup:
+        backup_db()
+
+    log = models.ImportLog(source='contractors_balance_xls', path=path,
+                           imported=0, skipped=0, reconciled=1,
+                           issues=json.dumps(parsed['issues'], ensure_ascii=False))
+    db.add(log)
+    db.flush()
+
+    now = dt.datetime.now(dt.timezone.utc)
+    as_of = parsed['asOfDate']
+    entry_date = _snapshot_date(as_of)
+    created = updated = 0
+    superseded_by_statement = 0
+
+    for r in parsed['rows']:
+        contractor = db.query(models.Contractor).filter_by(code=r['account']).one_or_none()
+        if contractor is None:
+            contractor = models.Contractor(code=r['account'], name=r['name'], status='active')
+            db.add(contractor)
+            db.flush()
+            if r['project']:
+                PP.set_projects(db, PP.CONTRACTOR, contractor.id, [r['project']])
+            created += 1
+        else:
+            if contractor.deleted_at is not None:
+                contractor.deleted_at = None
+            updated += 1
+
+        contractor.reported_balance = money(D(r['balance']))
+        contractor.reported_balance_at = now
+
+        has_statement = db.query(models.ContractorEntry).filter_by(
+            contractor_id=contractor.id, source='statement').filter(
+            models.ContractorEntry.deleted_at.is_(None)).first() is not None
+
+        existing_snapshot = db.query(models.ContractorEntry).filter_by(
+            contractor_id=contractor.id, source=BALANCE_SNAPSHOT_SOURCE).filter(
+            models.ContractorEntry.deleted_at.is_(None)).all()
+
+        if has_statement:
+            # كشف حقيقي موجود — لا لقطة تُنشأ، وأي لقطة قائمة من قبل تُصفّى الآن.
+            for e in existing_snapshot:
+                e.deleted_at = now
+            if existing_snapshot:
+                superseded_by_statement += 1
+            continue
+
+        wanted = [
+            ('opening', r['openingDebit'], r['openingCredit']),
+            ('other', r['movementDebit'], r['movementCredit']),
+        ]
+        matched_ids = set()
+        for kind, debit, credit in wanted:
+            doc, debit, credit, desc = _snapshot_entry_identity(as_of, kind, debit, credit)
+            # مطابقة الهوية أولاً بين الحيّ فعلاً (لا تكرار عند إعادة رفع نفس الملف)
+            hit = None
+            for e in existing_snapshot:
+                if e.id in matched_ids:
+                    continue
+                if (e.doc, money(e.debit), money(e.credit), e.description) == (
+                        doc, debit, credit, desc):
+                    hit = e
+                    break
+            if hit is not None:
+                matched_ids.add(hit.id)
+                hit.import_log_id = log.id
+                continue
+            # لا مطابق حيّ — هل يوجد مطابق محذوف منطقياً يُحيا بدل صف جديد يصطدم
+            # بالقيد الفريد (نفس الهوية موجودة فعلياً في الجدول، محذوفة فقط)؟
+            dead_hit = db.query(models.ContractorEntry).filter_by(
+                contractor_id=contractor.id, doc=doc, date=entry_date,
+                debit=debit, credit=credit, description=desc).filter(
+                models.ContractorEntry.deleted_at.isnot(None)).first()
+            if dead_hit is not None:
+                dead_hit.deleted_at = None
+                dead_hit.import_log_id = log.id
+                matched_ids.add(dead_hit.id)
+                continue
+            db.add(models.ContractorEntry(
+                contractor_id=contractor.id, date=entry_date, debit=debit, credit=credit,
+                doc=doc, description=desc, kind=kind, project=r['project'],
+                source=BALANCE_SNAPSHOT_SOURCE, import_log_id=log.id))
+
+        # أي سطر لقطة قديم لم يُطابَق (لقطة سابقة بأرقام مختلفة) — يُصفّى، لا يبقى
+        # موازياً للجديد.
+        for e in existing_snapshot:
+            if e.id not in matched_ids:
+                e.deleted_at = now
+
+    log.imported = created + updated
+    db.commit()
+
+    return dict(created=created, updated=updated, imported=created + updated,
+               skipped=0, asOfDate=as_of, fromDate=parsed['fromDate'],
+               totals=parsed['totals'], issues=parsed['issues'],
+               supersededByStatement=superseded_by_statement)
 
 
 def _contractor_parsed_if_any(path: str, source: str,
@@ -1095,6 +1266,18 @@ def _commit_contractor(db: Session, parsed: dict, path: str,
     from app.services import contractors_service
     res = contractors_service.upsert_from_statement(db, parsed, path, import_log_id=log.id)
 
+    # كشف حساب حقيقي وصل الآن لهذا المقاول — أي حركات «لقطة» (balance_snapshot،
+    # انظر commit_contractors_balance) قائمة له تُصفّى فوراً، وإلا ضُوعف رصيده:
+    # اللقطة قدّرته تقديراً مجمّعاً، والكشف الحقيقي الآن يحمل حركاته الفعلية.
+    contractor_row = db.query(models.Contractor).filter_by(code=parsed['account']).one_or_none()
+    if contractor_row is not None:
+        stale_snapshot = db.query(models.ContractorEntry).filter_by(
+            contractor_id=contractor_row.id, source=BALANCE_SNAPSHOT_SOURCE).filter(
+            models.ContractorEntry.deleted_at.is_(None)).all()
+        now_utc = dt.datetime.now(dt.timezone.utc)
+        for e in stale_snapshot:
+            e.deleted_at = now_utc
+
     log.imported = res['added']
     log.skipped = res['skipped']
     db.commit()
@@ -1170,7 +1353,7 @@ def scan_dir(dir_path: str) -> dict:
             continue
         name = entry.name
         ext = os.path.splitext(name)[1].lower()
-        source = _EXT_SOURCE.get(ext)
+        source = _classify(entry.path)
         if source is None:
             skipped.append(dict(name=name, reason='صيغة غير مدعومة'))
             continue
@@ -1187,15 +1370,64 @@ def scan_dir(dir_path: str) -> dict:
 
 def _classify(path: str) -> Optional[str]:
     ext = os.path.splitext(path)[1].lower()
+    if ext == '.xls':
+        return classify_xls_source(path)
+    if ext in ('.xlsx', '.xlsm'):
+        return classify_xlsx_source(path)
     return _EXT_SOURCE.get(ext)
 
 
-def _classify_xlsx(path: str) -> str:
+#: اسم عام لـ `_classify` — يستدعيه راوت `/import/classify` (م-٣). يبقى `_classify`
+#: نفسه خاصاً لأن بقية الاستدعاءات الداخلية (مسح المجلد، ترتيب الرفع الجماعي)
+#: لا تحتاج طبقة إضافية.
+def classify_path(path: str) -> Optional[str]:
+    return _classify(path)
+
+
+#: م-٣ — نقطة حقيقة واحدة للتصنيف يستدعيها كل من: مسح المجلد (`_classify` أعلاه)،
+#: الرفع الجماعي (`batch_import`)، ونقطة `/import/classify` التي يستدعيها منتقي
+#: الملف المفرد/المتعدد في تطبيق سطح المكتب (main/index.ts لا يملك مفسّر بايثون
+#: ولا يستطيع تكرار هذا المنطق، فيسأل الخادم بدل التخمين بالامتداد وحده).
+def classify_xls_source(path: str) -> str:
+    """يميّز ملف xls القديم: تقرير المديونيات المجمّع أم لقطة رصيد المقاولين.
+
+    كلاهما BIFF بنفس الامتداد، فالفرق الوحيد الموثوق هو اسم الورقة الأولى — تقرير
+    المديونيات يبدأ اسم أوراقه بـ«مديونية»، بينما لقطة الرصيد الجديدة تبدأ بـ«كشف
+    المقاولين».
+
+    # م-١٥ — هذه الدالة تصنّف فقط، لا تقرأ محتوى الملف فعلياً؛ فهي تُستدعى أحياناً
+    # (`classify_path`) خارج أي `try` تحمي المسار الأعلى من كسر الدفعة كلها لملف
+    # واحد، فيجب ألا ترفع استثناءً أبداً — الافتراضي عند أي فشل هنا (بما فيه ملف
+    # تالف فعلاً لا مجرد تخطيط مختلف) هو التصنيف الأشيع تاريخياً. هذا لا يُخفي
+    # الفشل الحقيقي: القارئ الفعلي (`debts_report_xls.parse`/`contractors_balance_xls.parse`)
+    # سيفتح نفس الملف من جديد ويرفع `describe_excel_open_error` بنصّه العربي
+    # الواضح — «تعذّرت قراءته» يصل المستخدم من هناك، لا يُبتلع بصمت أبداً؛ فقط
+    # اختيار *أي القارئين* يُحاول أولاً هو ما يُخمَّن هنا عند تعذّر السبر.
+    """
+    try:
+        import xlrd
+        wb = xlrd.open_workbook(path, on_demand=True)
+        names = wb.sheet_names()
+        wb.release_resources()
+        if names and names[0].strip().startswith('كشف المقاولين'):
+            return 'contractors_balance_xls'
+    except Exception:
+        pass
+    return 'debts_report_xls'
+
+
+def classify_xlsx_source(path: str) -> str:
     """يميّز ملف Excel: تقرير انحراف موازنة أم ملف موردين.
 
     Extension alone cannot tell them apart, and feeding a budget workbook to the
     suppliers parser produced a confusing read_error — the user's actual complaint
     was that the app never says WHAT it detected. Peeking sheet names is cheap.
+
+    # م-١٥ — نفس ملاحظة classify_xls_source: هذه دالة تخمين رخيصة تُستدعى أحياناً
+    # خارج حماية try/except المستوى الأعلى، فلا ترفع أبداً. الافتراضي عند الفشل هو
+    # 'suppliers_excel' لأنه الأشيع تاريخياً — ولأن قارئه الآن (م-٢٠) يتحقق من
+    # الترويسة وبادئة الحساب، فملف تالف أو من نوع آخر لن «ينجح خطأً» بعد هذا
+    # الافتراض؛ سيُرفض هناك برسالة عربية واضحة تشرح لماذا، لا يُقبل بصمت.
     """
     try:
         import openpyxl
@@ -1220,6 +1452,7 @@ DETECTED_LABELS = {
     'guarantee': 'كشف حساب ضمان (216)',
     'ai_extract': 'استخراج بالذكاء الاصطناعي',
     'debts_report_xls': 'تقرير مديونيات مجمّع (مقاولين وموردين)',
+    'contractors_balance_xls': 'كشف رصيد المقاولين',
     None: 'صيغة غير معروفة',
 }
 
@@ -1286,8 +1519,29 @@ def batch_import(db: Session, paths: List[str], allow_unreconciled: bool = False
                 results.append(row)
                 continue
 
+            if source == 'contractors_balance_xls':
+                res = commit_contractors_balance(db, path, backup=False)
+                row['added'] = res['created']
+                row['skipped'] = 0
+                if res['created'] == 0 and res['updated'] == 0:
+                    row['status'] = 'duplicate'
+                    row['message'] = 'لا سجلات جديدة أو محدَّثة — الملف مرفوع سابقاً'
+                    duplicates += 1
+                else:
+                    row['status'] = 'saved'
+                    parts = ['%d جديد' % res['created']]
+                    if res['updated']:
+                        parts.append('%d محدَّث' % res['updated'])
+                    if res.get('supersededByStatement'):
+                        parts.append('%d له كشف حساب حقيقي فلم تُنشأ له حركات لقطة'
+                                     % res['supersededByStatement'])
+                    row['message'] = 'كشف رصيد المقاولين: ' + '، '.join(parts)
+                    saved += 1
+                results.append(row)
+                continue
+
             if source == 'suppliers_excel':
-                kind = _classify_xlsx(path)
+                kind = classify_xlsx_source(path)
                 row['detected'] = DETECTED_LABELS[kind]
                 if kind == 'budget_deviation':
                     from app.services import budget_service

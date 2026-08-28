@@ -321,11 +321,19 @@ td.num, th.num, td.ltr, th.ltr { display: table-cell; }
 .card > .cap h2 { font-size: var(--text-heading-section); margin: 0; }
 .card > .cap p { margin: 2px 0 0; font-size: var(--text-caption-micro); color: var(--muted); }
 
-.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+/* م-١٧: رقم "متأخر" (الأقصى يساراً في RTL) كان يخرج فعلياً عن حاوية الشاشة —
+   .kpi-row بعرض ٩٦٠px قصّاً صامتاً داخل حاوية ٧٨٨px، بلا شريط تمرير ظاهر ولا
+   أي إشارة أن هناك بطاقة رابعة. السبب: أعمدة grid بـ1fr لا تنكمش تحت
+   min-content للنص (رقم طويل بلا مسافات)، فيفرض العرض الكلي تجاوز الحاوية.
+   auto-fit + minmax يسمح للصف بالالتفاف إلى سطر ثانٍ بدل القصّ — لا بطاقة
+   تخرج عن الإطار عند أي عرض شاشة. */
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 18px; }
 .kpi {
   background: var(--card); border: 1px solid var(--hair);
   border-radius: var(--r-card); padding: 16px 18px;
+  min-width: 0; /* يسمح للبطاقة بالانكماش تحت عرض رقمها؛ بدونه تفرض minmax(auto) القصّ */
 }
+.kpi .value { min-width: 0; overflow-wrap: anywhere; }
 .kpi.alert { border-color: var(--red); border-width: 1.5px; }
 .kpi .label { font-size: var(--text-label-field); color: var(--muted); }
 /* 28px مقصودة لهذه البطاقة — لا تطابق أي مقاس في السلّم (30 الأقرب) فتُركت كما هي */
@@ -497,7 +505,26 @@ th.ltr .th-inner { flex-direction: row-reverse; }
 
 /* الجداول العريضة تنزلق داخل حاويتها بدل أن تلتف وتتكسّر أعمدتها.
    A wide table scrolls inside its own box; it never reflows into stacked cells. */
-.table-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+/* م-١٧: القصّ الأفقي كان صامتاً — لا شريط تمرير ظاهر ولا أي إشارة أن أعمدة
+   إضافية (مثل "آخر دفعة" أو أزرار التعديل/الحذف) مخفية خارج الإطار. تدرّج
+   عند حافة الحاوية اليسرى (بداية الجدول في RTL) يجعل وجود المزيد مرئياً
+   دائماً بدل الاعتماد على اكتشاف المستخدم للتمرير بنفسه. */
+.table-scroll {
+  overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+  /* تقنية "ظلال التمرير" القياسية: تدرّجان يتحركان مع المحتوى (local) يخفيان
+     أنفسهما عند بلوغ الحافة + تدرّجان ثابتان بالنسبة للحاوية (scroll) يرسمان
+     الظل الفعلي. تعمل بلا JS وتختفي تلقائياً عند عدم وجود ما يُقصّ. */
+  background-repeat: no-repeat;
+  background-color: var(--card);
+  background-image:
+    linear-gradient(to right, var(--card) 30%, transparent),
+    linear-gradient(to left, var(--card) 30%, transparent),
+    radial-gradient(farthest-side at 0 50%, rgba(0,0,0,.16), rgba(0,0,0,0)),
+    radial-gradient(farthest-side at 100% 50%, rgba(0,0,0,.16), rgba(0,0,0,0));
+  background-position: 0 0, 100% 0, 0 0, 100% 0;
+  background-size: 32px 100%, 32px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
 .table-scroll > table { min-width: var(--table-min, 760px); }
 .table-scroll.wide > table { --table-min: 1040px; }
 /* اسم الطرف هو مرساة الصف — يحجز عرضاً لا ينزل عنه مهما ازدحمت الأعمدة، وإلا

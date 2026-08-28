@@ -194,6 +194,8 @@ def test_contractor_export_reflects_filtered_set_only(client):
     import io as _io
     from openpyxl import load_workbook
     wb = load_workbook(_io.BytesIO(r.content))
-    ws = wb.active
+    # الورقة الأولى (wb.active) الآن تحليلية — الجدول الخام في ورقة «المقاولون».
+    assert wb.active.title == 'تحليل المقاولين'
+    ws = wb['المقاولون']
     codes = [row[0].value for row in ws.iter_rows(min_row=2, max_row=ws.max_row - 1)]
     assert codes == ['C1']

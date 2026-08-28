@@ -12,14 +12,16 @@ import os
 
 import pytest
 
+from conftest import sample_missing
+
 SAMPLES = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'design', 'samples')
 SUPPLIERS_XLSX = os.path.join(SAMPLES, 'suppliers-terms.xlsx')
 STATEMENT_QANBAR = os.path.join(SAMPLES, 'statement-qanbar.pdf')
 STATEMENT_INJAZ = os.path.join(SAMPLES, 'statement-injaz-alsuddan.pdf')
+BUDGET_XLSX = os.path.join(SAMPLES, 'budget-deviation-2026-07.xlsx')
 
 pytestmark = pytest.mark.skipif(
-    not (os.path.exists(SUPPLIERS_XLSX) and os.path.exists(STATEMENT_QANBAR)
-         and os.path.exists(STATEMENT_INJAZ)),
+    sample_missing(SUPPLIERS_XLSX, STATEMENT_QANBAR, STATEMENT_INJAZ),
     reason='design/samples not present in this checkout')
 
 
@@ -159,6 +161,69 @@ def test_batch_bad_path_becomes_a_result_row_not_an_exception(db, env):
     assert by_path[SUPPLIERS_XLSX]['status'] == 'saved'
     assert out['failed'] == 1
     assert out['saved'] == 1
+
+
+# ------------------------------------------------------------------ م-٣ / م-٢٠
+# نقطة تصنيف واحدة (classify_xlsx_source/classify_xls_source) يستدعيها مسح
+# المجلد، الرفع الجماعي، ونقطة /import/classify التي يستدعيها منتقي الملف
+# المفرد في تطبيق سطح المكتب (main/index.ts لا يملك مفسّر بايثون).
+
+budget_missing = pytest.mark.skipif(
+    sample_missing(BUDGET_XLSX), reason='design/samples not present in this checkout')
+
+
+@budget_missing
+def test_scan_dir_classifies_xlsx_budget_file_by_content_not_extension(tmp_path, env):
+    """قبل الإصلاح: scan_dir كان يصنّف كل .xlsx 'suppliers_excel' بالامتداد وحده،
+    فالمستخدم يرى تصنيفاً خاطئاً في شاشة المسح قبل الرفع حتى لو صحّحه batch_import
+    لاحقاً وقت الحفظ الفعلي."""
+    import shutil
+    dst = tmp_path / 'تقرير انحراف الموازنة.xlsx'
+    shutil.copyfile(BUDGET_XLSX, dst)
+
+    result = env.import_service.scan_dir(str(tmp_path))
+    assert result['files'][0]['source'] == 'budget_deviation'
+
+
+@budget_missing
+def test_classify_route_detects_budget_file_by_sheet_name(client):
+    """م-٣ — الراوت الذي يستدعيه منتقي الملف المفرد/المتعدد."""
+    r = client.post('/import/classify', json={'path': BUDGET_XLSX})
+    assert r.status_code == 200
+    assert r.json()['source'] == 'budget_deviation'
+
+
+def test_classify_route_detects_suppliers_file(client):
+    r = client.post('/import/classify', json={'path': SUPPLIERS_XLSX})
+    assert r.status_code == 200
+    assert r.json()['source'] == 'suppliers_excel'
+
+
+def test_classify_route_404_for_missing_file(client):
+    r = client.post('/import/classify', json={'path': '/no/such/file.xlsx'})
+    assert r.status_code == 404
+
+
+@budget_missing
+def test_single_file_import_of_budget_deviation_actually_saves(db, env):
+    """م-٣ — رفع تقرير انحراف الموازنة منفرداً (لا عبر مسح مجلد) كان يفشل بصمت
+    قبل هذا الإصلاح: /import لم يكن يعرف المصدر 'budget_deviation' إطلاقاً فيسقط
+    على مسار كشف حساب خاطئ. يثبت هذا أن رقماً حقيقياً تغيّر: عدد لقطات الموازنة
+    المحفوظة زاد فعلاً بعد الاستدعاء، لا مجرد استجابة HTTP ناجحة شكلياً."""
+    before = env.session.SessionLocal().query(env.models.BudgetSnapshot).count()
+    res = env.import_service.import_budget_file(db, BUDGET_XLSX)
+    assert res['imported'] + res['updated'] > 0
+    after = env.session.SessionLocal().query(env.models.BudgetSnapshot).count()
+    assert after > before
+
+
+@budget_missing
+def test_single_file_import_route_accepts_budget_deviation_source(client):
+    """نفس الإثبات عبر مسار /import HTTP الحقيقي الذي يستدعيه الطابور في الواجهة."""
+    r = client.post('/import', json={'path': BUDGET_XLSX, 'source': 'budget_deviation'})
+    assert r.status_code == 200
+    body = r.json()
+    assert body['imported'] + body['updated'] > 0
 
 
 def test_batch_route_returns_aggregate_shape(client):

@@ -14,14 +14,17 @@ import os
 
 import pytest
 
+from conftest import sample_missing
+
 SAMPLES_DIR = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'design', 'samples')
 # الملف الحقيقي الذي أبلغ عنه المستخدم — ليس ضمن عينات المستودع لأن حسابه
-# (2110124) غير معروف بتصميمه؛ الاختبار يُتخطى بأمان إن لم يوجد في هذا الجهاز.
+# (2110124) غير معروف بتصميمه؛ الاختبار يُتخطى بأمان إن لم يوجد في هذا الجهاز،
+# ويُفشل صراحة في CI (لن يوجد هناك أبداً — راجع docs/testing-samples.md).
 REAL_STATEMENT = os.path.expanduser(
     '~/Downloads/شركة تداين للخرسانة اليرموك.pdf')
 
 pytestmark = pytest.mark.skipif(
-    not os.path.exists(REAL_STATEMENT),
+    sample_missing(REAL_STATEMENT),
     reason='الملف الحقيقي غير موجود في هذا الجهاز — انظر ~/Downloads')
 
 

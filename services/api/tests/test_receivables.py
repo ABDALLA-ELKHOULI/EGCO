@@ -5,12 +5,13 @@ import os
 
 import pytest
 
+from conftest import sample_missing
 from app.ingest import receivables_legacy
 
 REAL_REPORT4 = os.path.expanduser('/Users/abdallaalkhouli/Desktop/Anchor/EGCO/report4.html')
 
 
-@pytest.mark.skipif(not os.path.exists(REAL_REPORT4), reason='الملف الحقيقي غير متوفر في هذه البيئة')
+@pytest.mark.skipif(sample_missing(REAL_REPORT4), reason='الملف الحقيقي غير متوفر في هذه البيئة')
 def test_parses_real_report4_with_plausible_totals():
     parsed = receivables_legacy.parse(REAL_REPORT4)
     rows = parsed['receivables']
@@ -26,7 +27,7 @@ def test_parses_real_report4_with_plausible_totals():
         assert r.status in ('collected', 'open')
 
 
-@pytest.mark.skipif(not os.path.exists(REAL_REPORT4), reason='الملف الحقيقي غير متوفر في هذه البيئة')
+@pytest.mark.skipif(sample_missing(REAL_REPORT4), reason='الملف الحقيقي غير متوفر في هذه البيئة')
 def test_import_receivables_persists_rows(tmp_path, monkeypatch):
     monkeypatch.setenv('EGCO_DATA_DIR', str(tmp_path / 'data'))
     import app.core.config as config_mod

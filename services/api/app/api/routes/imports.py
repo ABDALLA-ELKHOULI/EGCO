@@ -13,15 +13,17 @@ from sqlalchemy.orm import Session
 from app.db import models
 from app.db.session import get_session
 from app.ingest import contractor_statement
+from app.ingest.budget_xlsx import BudgetParseError
 from app.ingest.csv_statement import CsvStatementParseError
+from app.ingest.contractors_balance_xls import ContractorsBalanceParseError
 from app.ingest.debts_report_xls import DebtsReportParseError
 from app.ingest.pdf_statement import StatementParseError
 from app.ingest.receivables_excel import ReceivablesExcelParseError
 from app.ingest.receivables_legacy import ReceivablesParseError
 from app.ingest.suppliers_excel import SuppliersParseError
 from app.schemas.common import (AccountClassificationIn, BatchImportRequest,
-                                ClassifySuggestRequest, ImportRequest, PreviewRequest,
-                                ScanDirRequest)
+                                ClassifyFileRequest, ClassifySuggestRequest,
+                                ImportRequest, PreviewRequest, ScanDirRequest)
 from app.services import import_service, receivables_service
 
 router = APIRouter()
@@ -30,7 +32,8 @@ router = APIRouter()
 #: /preview و /import مثل كشوف الحساب — استثناءاتها يجب أن تُلتقط هنا أيضاً وإلا
 #: خرجت كخطأ 500 غير معالج بدل رسالة 422 عربية واضحة.
 _PARSE_ERRORS = (StatementParseError, SuppliersParseError, CsvStatementParseError,
-                 DebtsReportParseError, ReceivablesExcelParseError, ReceivablesParseError)
+                 DebtsReportParseError, ContractorsBalanceParseError, BudgetParseError,
+                 ReceivablesExcelParseError, ReceivablesParseError)
 
 #: sources managed from their own dedicated screen — deleting them here would be
 #: dangerous (the supplier list drives every FIFO calculation; budget snapshots feed
@@ -58,6 +61,8 @@ def preview(body: PreviewRequest, db: Session = Depends(get_session)) -> dict:
             return import_service.preview_statement(body.path, body.source, db)
         if body.source == 'debts_report_xls':
             return import_service.preview_debts_report(body.path, db)
+        if body.source == 'contractors_balance_xls':
+            return import_service.preview_contractors_balance(body.path)
         raise HTTPException(400, detail='المعاينة متاحة لكشف الحساب أو تقرير المديونيات المجمّع فقط')
     except _PARSE_ERRORS as e:
         raise HTTPException(422, detail=str(e))
@@ -68,8 +73,12 @@ def run_import(body: ImportRequest, db: Session = Depends(get_session)) -> dict:
     try:
         if body.source == 'suppliers_excel':
             return import_service.import_suppliers(db, body.path)
+        if body.source == 'budget_deviation':
+            return import_service.import_budget_file(db, body.path)
         if body.source == 'debts_report_xls':
             return import_service.commit_debts_report(db, body.path)
+        if body.source == 'contractors_balance_xls':
+            return import_service.commit_contractors_balance(db, body.path)
         if body.source in import_service.RECEIVABLE_SOURCES:
             # التحصيلات (الداخل) — لا تمر بمطابقة رصيد الكشف لأنها ليست كشف حساب
             return receivables_service.import_receivables(db, body.path, body.source)
@@ -88,6 +97,21 @@ def scan(body: ScanDirRequest) -> dict:
         return import_service.scan_dir(body.dir)
     except NotADirectoryError:
         raise HTTPException(404, detail='المجلد غير موجود أو ليس مجلداً')
+
+
+@router.post('/classify')
+def classify_file(body: ClassifyFileRequest) -> dict:
+    """م-٣ — نقطة الحقيقة الوحيدة لتصنيف ملف واحد قبل رفعه.
+
+    يستدعيها منتقي الملف المفرد/المتعدد في تطبيق سطح المكتب (main/index.ts) بدل أن
+    يخمّن بالامتداد وحده — الامتداد لا يميّز تقرير انحراف الموازنة عن ملف الموردين
+    (كلاهما .xlsx)، ولا تقرير المديونيات المجمّع عن كشف رصيد المقاولين (كلاهما
+    .xls). نفس دالتَي `classify_xlsx_source`/`classify_xls_source` اللتين يستعملهما
+    مسح المجلد والرفع الجماعي — لا نسخة موازية من المنطق.
+    """
+    if not os.path.isfile(body.path):
+        raise HTTPException(404, detail='الملف غير موجود')
+    return dict(source=import_service.classify_path(body.path))
 
 
 @router.post('/batch')

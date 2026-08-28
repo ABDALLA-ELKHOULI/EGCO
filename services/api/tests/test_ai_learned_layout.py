@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import require_sample
 from app.services import ai_service
 
 SAMPLES = Path(__file__).resolve().parents[3] / 'design' / 'samples'
@@ -15,9 +16,9 @@ XLSX_C = SAMPLES / 'suppliers-terms.xlsx'
 
 
 def _skip_if_missing(*paths):
-    for p in paths:
-        if not p.exists():
-            pytest.skip(f'sample missing: {p}')
+    """محلياً: تخطٍّ كالسابق تماماً. في CI: فشل صريح يسمّي الملف الناقص (م-١٤) —
+    راجع docs/testing-samples.md."""
+    require_sample(*(str(p) for p in paths))
 
 
 # ---------------------------------------------------------------- fingerprint

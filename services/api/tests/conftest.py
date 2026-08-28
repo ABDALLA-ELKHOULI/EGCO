@@ -7,6 +7,57 @@ import os
 import pytest
 
 
+# --- بوابة عيّنات الاختبار (م-١٤) --------------------------------------------
+# كثير من الاختبارات هنا تعتمد على ملفات حقيقية غير موجودة في المستودع: بعضها
+# design/samples/* (مستبعد عمداً من git)، وبعضها مسارات مطلقة على جهاز المطوّر
+# (~/Downloads/*.pdf، ~/Downloads/*.xls، ملف report4.html خارج المستودع تماماً).
+# محلياً غيابها يُخطّى بأمان — لا داعي لتعطيل عمل المستخدم على جهازه. لكن في CI
+# (لا توجد هذه الملفات على أي جهاز CI إطلاقاً) كان التخطّي يمرّ صامتاً فيُخرج
+# البناء "أخضر" بلا أن يكون قد شغّل ٢٠٪+ من السويّة فعلياً. الحل: نفس الفحص،
+# لكن حين CI=true يتحوّل التخطّي إلى فشل صريح يسمّي الملف الناقص، بدل أن يختفي.
+#
+# راجع docs/testing-samples.md لمعرفة أي الملفات يلزم وضعها يدوياً لتشغيل
+# السويّة كاملة على جهاز جديد.
+
+def _in_ci():
+    """أي قيمة غير فارغة لـCI تُعتبر تفعيلاً — هذا هو المتغيّر القياسي الذي تضبطه
+    GitHub Actions ومعظم أنظمة CI الأخرى تلقائياً."""
+    return bool(os.environ.get('CI'))
+
+
+def sample_missing(*paths, kind='exists'):
+    """للاستخدام داخل pytest.mark.skipif(...) — يُقيَّم عند تحميل الوحدة (نفس توقيت
+    os.path.exists القديم)، فيبقى الاستبدال شفافاً محلياً. في CI يُفشل الجمع
+    (collection) صراحة بدل أن يُعيد True هادئة تتحول إلى SKIPPED."""
+    check = os.path.isdir if kind == 'isdir' else os.path.exists
+    missing = [p for p in paths if not check(p)]
+    if not missing:
+        return False
+    if _in_ci():
+        pytest.fail(
+            'CI: ملف/مجلد عيّنة ناقص ولا يمكن تشغيل هذا الاختبار بلا فشل صريح: '
+            + '، '.join(missing) + ' — راجع docs/testing-samples.md',
+            pytrace=False,
+        )
+    return True
+
+
+def require_sample(*paths):
+    """للاستخدام داخل جسم الاختبار (بدل pytest.skip المباشر). محلياً يتخطّى كما
+    كان تماماً؛ في CI يُفشل الاختبار صراحة بدل أن يُبلَّغ عنه SKIPPED بصمت."""
+    missing = [p for p in paths if not os.path.exists(p)]
+    if not missing:
+        return
+    if _in_ci():
+        pytest.fail(
+            'CI: ملف/مجلد عيّنة ناقص ولا يمكن تشغيل هذا الاختبار بلا فشل صريح: '
+            + '، '.join(missing) + ' — راجع docs/testing-samples.md',
+            pytrace=False,
+        )
+    pytest.skip('عيّنة غير متاحة على هذا الجهاز: ' + '، '.join(missing))
+# ------------------------------------------------------------------------------
+
+
 @pytest.fixture()
 def api_client(tmp_path, monkeypatch):
     """A FastAPI TestClient wired to a fresh temp database.

@@ -7,6 +7,8 @@ import os
 
 import pytest
 
+from conftest import sample_missing
+
 SAMPLES = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'design', 'samples')
 GUARANTEE_ALQUDS = os.path.join(SAMPLES, 'guarantee-alquds.pdf')
 
@@ -168,7 +170,7 @@ def test_account_detail_and_404(db, env, client):
     assert 'لا يوجد' in missing.json()['detail']
 
 
-@pytest.mark.skipif(not os.path.exists(GUARANTEE_ALQUDS),
+@pytest.mark.skipif(sample_missing(GUARANTEE_ALQUDS),
                     reason='design/samples/guarantee-alquds.pdf not present in this checkout')
 def test_alquds_sample_appears_in_page_after_import(db, env, client):
     res = env.import_service.commit_statement(db, GUARANTEE_ALQUDS, source='pdf_statement')

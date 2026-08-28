@@ -13,12 +13,14 @@ import uuid
 
 import pytest
 
+from conftest import sample_missing
+
 SAMPLES = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'design', 'samples')
 SUPPLIERS_XLSX = os.path.join(SAMPLES, 'suppliers-terms.xlsx')
 STATEMENT_QANBAR = os.path.join(SAMPLES, 'statement-qanbar.pdf')
 
 pytestmark = pytest.mark.skipif(
-    not (os.path.exists(SUPPLIERS_XLSX) and os.path.exists(STATEMENT_QANBAR)),
+    sample_missing(SUPPLIERS_XLSX, STATEMENT_QANBAR),
     reason='design/samples not present in this checkout')
 
 

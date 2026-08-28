@@ -10,6 +10,7 @@ import os
 
 import pytest
 
+from conftest import sample_missing
 from app.domain.payables import (
     Ageing, Invoice, Payment, Supplier, allocate_fifo, compute_ageing, due_date,
     parse_term, payment_schedule, position, reconciles,
@@ -147,7 +148,7 @@ SAMPLE_PDF = os.path.join(os.path.dirname(__file__), '..', '..', '..',
 
 
 @pytest.mark.skipif(
-    not os.path.exists(SAMPLE_PDF),
+    sample_missing(SAMPLE_PDF),
     reason='sample file not present (excluded from repo)')
 def test_real_statement_reconciles_to_its_printed_balance():
     """المطابقة مع رصيد الكشف المطبوع — the test that matters."""
@@ -176,7 +177,7 @@ SAMPLE_QANBAR = os.path.join(os.path.dirname(__file__), '..', '..', '..',
 
 
 @pytest.mark.skipif(
-    not os.path.exists(SAMPLE_QANBAR),
+    sample_missing(SAMPLE_QANBAR),
     reason='sample file not present (excluded from repo)')
 def test_qanbar_statement_with_opening_balance_reconciles():
     """كشف برصيد افتتاحي وصفحتين — the second real-world statement format.

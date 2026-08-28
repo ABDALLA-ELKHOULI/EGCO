@@ -162,6 +162,121 @@ def build_project_summary_workbook(payload: dict) -> bytes:
     return buf.getvalue()
 
 
+#: تسميات عربية لاتجاه الرصيد — نفس القيم المستعملة في تصفية /contractors
+#: (_VALID_DIRECTIONS في routes/contractors.py) بترجمة عربية لعرض ورقة التحليل.
+_DIRECTION_LABELS_AR = {
+    'owed_to_them': 'لهم علينا', 'owed_to_us': 'لنا عليهم', 'balanced': 'متساوٍ',
+}
+
+
+def build_contractors_export_workbook(data: dict, filters_label: str) -> bytes:
+    """تصدير المقاولين — ورقتان: «تحليل المقاولين» (الأولى، مبنية من نفس rows
+    المصفّاة التي يعرضها الجدول) ثم «المقاولون» (الجدول الخام، عبر _contractors_sheet
+    المُعاد استعمالها من build_workbook). العمل السابق ترك استدعاءً لهذه الدالة
+    بلا تعريفها إطلاقاً — GET /contractors/export.xlsx كان يعيد ٥٠٠ دائماً.
+
+    الورقة التحليلية مبنية من data['rows'] المصفّاة نفسها لا من الدفتر كاملاً، وإلا
+    ناقض التصدير ما تعرضه الشاشة فعلاً (نفس مبدأ priorities/analysis في الموردين).
+    """
+    from app.services.contractors_service import CONTRACTOR_STATUS_LABELS_AR
+
+    wb = Workbook()
+    rows = data.get('rows') or []
+    totals = data.get('totals') or {}
+
+    # ---------------------------------------------------------- ورقة التحليل
+    ws = wb.active
+    ws.title = 'تحليل المقاولين'
+    ws.sheet_view.rightToLeft = True
+
+    ws.append(['تحليل المقاولين'])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=14)
+    ws.append([f'التصفية المطبَّقة: {filters_label}'])
+    ws.append([f'عدد المقاولين ضمن هذه التصفية: {totals.get("count", 0)}'])
+    ws.append([])
+
+    ws.append(['الإجماليات بالاتجاه'])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+    ws.append(['البند', 'المبلغ (ر.س)'])
+    _style_header(ws, ws.max_row)
+    ws.append(['مستحق لهم علينا (owedToContractors)', totals.get('owedToContractors', 0)])
+    ws.append(['مستحق لنا عليهم (owedToUs)', totals.get('owedToUs', 0)])
+    ws.append(['الرصيد الصافي', totals.get('balance', 0)])
+    ws.append(['التأمينات المحتجزة', totals.get('retentionHeld', 0)])
+    ws.append([])
+
+    # ---- التوزيع بالمشروع — توزيع مبسّط: رصيد كل مقاول يُقسم بالتساوي على
+    # مشاريعه المُعيَّنة (حتى لا يتضاعف المجموع حين يعمل مقاول على أكثر من مشروع)،
+    # بلا مشروع → «بلا مشروع». هذا اشتقاق محلي من rows نفسها، لا استعلام إضافي
+    # للحركات لكل مشروع — يبقى التصدير موصوفاً بنفس المجموعة المصفّاة المعروضة.
+    by_project: dict = {}
+    for r in rows:
+        projects = r.get('projects') or ['بلا مشروع']
+        share_owed = (abs(r['balance']) / len(projects)) if r['balance'] < 0 else 0
+        share_us = (r['balance'] / len(projects)) if r['balance'] > 0 else 0
+        for p in projects:
+            b = by_project.setdefault(p, dict(owedToContractors=0.0, owedToUs=0.0, count=0))
+            b['owedToContractors'] += share_owed
+            b['owedToUs'] += share_us
+            b['count'] += 1
+    ws.append(['التوزيع بالمشروع'])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+    ws.append(['المشروع', 'عدد المقاولين', 'مستحق لهم علينا', 'مستحق لنا عليهم'])
+    _style_header(ws, ws.max_row)
+    for p, b in sorted(by_project.items(), key=lambda kv: -kv[1]['owedToContractors']):
+        ws.append([p, b['count'], round(b['owedToContractors'], 2), round(b['owedToUs'], 2)])
+    ws.append([])
+
+    # ---- التوزيع بالحالة
+    ws.append(['التوزيع بالحالة'])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+    ws.append(['الحالة', 'العدد', 'الرصيد', 'مستحق لهم علينا', 'مستحق لنا عليهم'])
+    _style_header(ws, ws.max_row)
+    by_status = totals.get('byStatus') or {}
+    for status, b in sorted(by_status.items(), key=lambda kv: -kv[1]['owedToContractors']):
+        label = CONTRACTOR_STATUS_LABELS_AR.get(status, status)
+        ws.append([label, b.get('count', 0), b.get('balance', 0),
+                  b.get('owedToContractors', 0), b.get('owedToUs', 0)])
+    ws.append([])
+
+    # ---- أعلى ١٠ في كل اتجاه — من يحتاج قرار سداد أولاً، ومن يستحق متابعة تحصيل.
+    # يتضمن آخر دفعة وهاتف المقاول: مدير مالي أمام قائمة دائنين يحتاج «متى دفعنا
+    # له آخر مرة» و«كيف أتواصل معه» في نفس الصف لا في كشف منفصل، وإلا يعود للنظام
+    # يبحث عن هذين الحقلين لكل اسم في القائمة يدوياً.
+    owed_them = sorted((r for r in rows if r['balance'] < 0), key=lambda r: r['balance'])[:10]
+    owed_us = sorted((r for r in rows if r['balance'] > 0),
+                     key=lambda r: -r['balance'])[:10]
+    for title, subset in (('أعلى ١٠ — لهم علينا', owed_them),
+                          ('أعلى ١٠ — لنا عليهم', owed_us)):
+        ws.append([title])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+        ws.append(['الكود', 'الاسم', 'الرصيد', 'آخر دفعة — التاريخ', 'آخر دفعة — المبلغ',
+                  'الهاتف', 'الحالة'])
+        _style_header(ws, ws.max_row)
+        for r in subset:
+            lp = r.get('lastPayment') or {}
+            ws.append([r.get('code', ''), r.get('name', ''), r.get('balance', 0),
+                      lp.get('date', ''), lp.get('amount', ''), r.get('phone', ''),
+                      CONTRACTOR_STATUS_LABELS_AR.get(r.get('status', ''), r.get('status', ''))])
+        ws.append([])
+
+    # تنسيق الأرقام على كل الأعمدة الرقمية المحتملة في الورقة
+    for r in range(2, ws.max_row + 1):
+        for c in range(2, 6):
+            cell = ws.cell(row=r, column=c)
+            if isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool):
+                cell.number_format = NUM_FMT
+    _autosize(ws)
+    _add_logo(ws, f'{get_column_letter(ws.max_column + 2)}1')
+
+    # ---------------------------------------------------------- ورقة الجدول الخام
+    _contractors_sheet(wb, data, first=False)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def build_workbook(analysis: dict, periodic: Optional[dict] = None,
                    suppliers_rows: Optional[list] = None,
                    contractors_only: bool = False,

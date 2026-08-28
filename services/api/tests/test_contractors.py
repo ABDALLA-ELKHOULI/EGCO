@@ -12,6 +12,8 @@ from decimal import Decimal
 
 import pytest
 
+from conftest import sample_missing, require_sample
+
 SAMPLES = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'design', 'samples')
 DIYAR_PDF = os.path.join(SAMPLES, 'contractor-diyar-alwadi.pdf')
 SUPPLIERS_XLSX = os.path.join(SAMPLES, 'suppliers-terms.xlsx')
@@ -25,7 +27,7 @@ EXTRA_STATEMENTS = [
 ]
 
 pytestmark = pytest.mark.skipif(
-    not os.path.exists(DIYAR_PDF),
+    sample_missing(DIYAR_PDF),
     reason='design/samples not present in this checkout')
 
 
@@ -152,8 +154,7 @@ def test_parse_extra_statements_reconcile(fname, account, closing):
     from app.ingest import contractor_statement
     from app.domain.payables import D
     path = os.path.join(SAMPLES, fname)
-    if not os.path.exists(path):
-        pytest.skip('sample missing')
+    require_sample(path)
     p = contractor_statement.parse(path)
     assert p['account'] == account
     computed = sum((D(r['debit']) - D(r['credit']) for r in p['rows']), Decimal('0'))
@@ -193,8 +194,9 @@ BATCH_EXPECTED = {
 #: contractor-*.pdf single-file tests above keep running.
 _HAS_BATCH = (os.path.isdir(STATEMENTS_BATCH) and
               any(f.endswith('.pdf') for f in os.listdir(STATEMENTS_BATCH)))
-_needs_batch = pytest.mark.skipif(not _HAS_BATCH,
-                                  reason='statements-batch not present')
+_needs_batch = pytest.mark.skipif(
+    sample_missing(STATEMENTS_BATCH, kind='isdir') or not _HAS_BATCH,
+    reason='statements-batch not present')
 
 
 @_needs_batch
@@ -205,8 +207,6 @@ def test_full_statement_book_reconciles():
     closing must equal the printed «اجمالي الحساب» EXACTLY for every one."""
     from app.ingest import contractor_statement
     from app.domain.payables import D
-    if not os.path.isdir(STATEMENTS_BATCH):
-        pytest.skip('statements-batch not present')
     for fname in sorted(os.listdir(STATEMENTS_BATCH)):
         if not fname.endswith('.pdf'):
             continue
@@ -229,8 +229,7 @@ def test_batch_dispatch_over_representative_statement_book(db, env):
     211 accounts, i.e. suppliers, so the SUPPLIER flow must now represent them:
     zero-transaction statements and overpaid (credit) balances included.
     """
-    if not os.path.exists(SUPPLIERS_XLSX):
-        pytest.skip('samples missing')
+    require_sample(SUPPLIERS_XLSX)
     reps = ['شركة ديار الوادي.pdf', 'شركة بي سي في جلوبال.pdf',
             'شركة بيت الاباء روشن.pdf', 'شركة فاروس عقد 1.pdf', 'شركة قنبر.pdf']
     paths = [SUPPLIERS_XLSX] + [os.path.join(STATEMENTS_BATCH, f) for f in reps]
@@ -289,8 +288,7 @@ def test_211_account_takes_supplier_flow_even_when_unknown(db, env):
     must never appear among المقاولون.
     """
     path = os.path.join(SAMPLES, 'contractor-harmony.pdf')   # account 2111636
-    if not os.path.exists(path):
-        pytest.skip('sample missing')
+    require_sample(path)
     out = env.import_service.batch_import(db, [path])
     row = out['results'][0]
     assert row['account'] == '2111636'
@@ -300,8 +298,7 @@ def test_211_account_takes_supplier_flow_even_when_unknown(db, env):
 
 
 def test_known_supplier_pdf_still_takes_supplier_flow(db, env):
-    if not os.path.exists(SUPPLIERS_XLSX):
-        pytest.skip('sample missing')
+    require_sample(SUPPLIERS_XLSX)
     qanbar = os.path.join(SAMPLES, 'statement-qanbar.pdf')
     out = env.import_service.batch_import(db, [qanbar, SUPPLIERS_XLSX])
     by_path = {r['path']: r for r in out['results']}

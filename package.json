@@ -1,6 +1,6 @@
 {
   "name": "egco-dashboard",
-  "version": "0.9.7",
+  "version": "0.9.8",
   "private": true,
   "description": "لوحة إعمار الخليج — تطبيق محلي لويندوز وماك",
   "main": "apps/desktop/dist/main/index.js",
@@ -17,7 +17,7 @@
     "build:desktop": "tsc -p apps/desktop/tsconfig.json",
     "build:api": "node scripts/py.mjs -m PyInstaller egco-api.spec --clean --noconfirm --distpath dist --workpath build",
     "package": "npm run build && npm run build:api && electron-builder --config electron-builder.yml",
-    "test:api": "node scripts/py.mjs -m pytest tests -q",
+    "test:api": "node scripts/py.mjs -m pytest tests -q -rs",
     "bundle": "node scripts/make-transfer-bundle.mjs"
   },
   "devDependencies": {

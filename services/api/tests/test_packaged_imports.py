@@ -47,11 +47,11 @@ def test_xlrd_reads_biff_debts_report_real_file():
     fixture ثنائي مُضاف لهذا المستودع."""
     import os
 
+    from conftest import require_sample
     from app.ingest import debts_report_xls
 
     real_file = os.path.expanduser(
         '~/Downloads/تقرير مديونيات المقاولين والموردين للمشاريع حتى 07-13.xls')
-    if not os.path.exists(real_file):
-        pytest.skip('real downloaded .xls not present in this checkout')
+    require_sample(real_file)
     parsed = debts_report_xls.parse(real_file)
     assert parsed['rows']

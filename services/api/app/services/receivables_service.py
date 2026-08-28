@@ -22,8 +22,10 @@ import json
 
 from sqlalchemy.orm import Session
 
+from decimal import Decimal
+
 from app.db import models
-from app.domain.payables import money
+from app.domain.payables import D, money
 from app.ingest import receivables_legacy, receivables_excel
 
 _PARSERS = {
@@ -88,6 +90,9 @@ def import_receivables(db: Session, path: str, source: str = 'receivables_legacy
     log.skipped = skipped
     db.commit()
 
+    # جمع Decimal لا float خام — نفس قاعدة كل مسارات التحصيلات الأخرى (D() لكل صف)،
+    # وإلا يتسرب انحراف بالهللات من جمع أرقام float مباشرة.
     return dict(saved=True, added=added, skipped=skipped, reconciled=True,
                 imported=added, issues=issues,
-                totalCollected=money(sum((r.amount for r in rows if r.status == 'collected'), 0)))
+                totalCollected=money(sum((D(r.amount) for r in rows if r.status == 'collected'),
+                                         Decimal('0'))))

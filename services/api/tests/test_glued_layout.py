@@ -22,6 +22,8 @@ import pytest
 
 from app.ingest import pdf_statement as PS
 
+from conftest import sample_missing, require_sample
+
 SAMPLES = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'design', 'samples')
 
 CASES = [
@@ -31,14 +33,13 @@ CASES = [
 ]
 
 pytestmark = pytest.mark.skipif(
-    not os.path.isdir(SAMPLES), reason='design/samples غير متاح')
+    sample_missing(SAMPLES, kind='isdir'), reason='design/samples غير متاح')
 
 
 @pytest.mark.parametrize('fname,account,closing,n_inv,n_pay', CASES)
 def test_glued_layout_parses_and_reconciles(fname, account, closing, n_inv, n_pay):
     path = os.path.join(SAMPLES, fname)
-    if not os.path.exists(path):
-        pytest.skip('%s غير متاح' % fname)
+    require_sample(path)
     r = PS.parse(path)
 
     assert r['account'] == account
@@ -63,8 +64,7 @@ def test_spilled_description_row_is_not_dropped():
     ويبدو الملف كأنه لا يطابق — وهو يطابق تماماً.
     """
     path = os.path.join(SAMPLES, 'statement-glued-sami-muhandiya.pdf')
-    if not os.path.exists(path):
-        pytest.skip('العيّنة غير متاحة')
+    require_sample(path)
     r = PS.parse(path)
     spilled = [p for p in r['payments']
                if 'جزء من' in p.description and D(str(p.amount)) == D('10000.00')]
