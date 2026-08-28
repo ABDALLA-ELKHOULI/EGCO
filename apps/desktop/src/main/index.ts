@@ -29,6 +29,42 @@ function sendUpdateStatus(status: UpdateStatus) {
   win?.webContents.send('update:status', status);
 }
 
+/**
+ * نسخة احتياطية قبل التحديث — تُؤخذ لحظة اكتمال التنزيل لا لحظة التثبيت.
+ *
+ * التثبيت له ثلاثة طرق: زر «تحديث الآن»، وزر «إعادة التشغيل» في الإعدادات،
+ * و autoInstallOnAppQuit الذي يثبّت عند إغلاق التطبيق بلا أن يضغط المستخدم شيئاً.
+ * الربط باكتمال التنزيل يغطّي الثلاثة بنقطة واحدة: ما إن ينزل التحديث حتى يصير
+ * تثبيته حتمياً.
+ *
+ * الفشل هنا لا يوقف التحديث ولا يُظهر خطأً: التحديث نفسه لا يمسّ قاعدة البيانات
+ * (ملف منفصل عن التطبيق)، والنسخة احتياطٌ لِما قد تفعله هجرات المخطَّط في الإصدار
+ * الجديد. تعطيل تحديثٍ سليم بسبب تعذُّر النسخ ضررٌ أكبر من نفعه.
+ */
+function backupBeforeUpdate(version: string): void {
+  try {
+    const src = dbPath();
+    if (!fs.existsSync(src)) return;
+    const dir = path.join(app.getPath('userData'), 'backups');
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    fs.copyFileSync(src, path.join(dir, `before-update-${version}-${stamp}.db`));
+    pruneUpdateBackups(dir);
+  } catch (e) {
+    console.error('[update] تعذّرت النسخة الاحتياطية قبل التحديث:', e);
+  }
+}
+
+/** يُبقي آخر عشر نسخ تحديث فقط — القاعدة تُقاس بالميغابايتات وتتراكم بلا سقف. */
+function pruneUpdateBackups(dir: string, keep = 10): void {
+  const files = fs.readdirSync(dir)
+    .filter((f) => f.startsWith('before-update-') && f.endsWith('.db'))
+    .sort();                      // الطابع الزمني ISO يجعل الترتيب الأبجدي زمنياً
+  for (const f of files.slice(0, Math.max(0, files.length - keep))) {
+    try { fs.unlinkSync(path.join(dir, f)); } catch { /* نسخة عالقة لا تستحق تعطيل شيء */ }
+  }
+}
+
 let updaterPromise: Promise<import('electron-updater').AppUpdater> | null = null;
 
 /**
@@ -54,13 +90,15 @@ async function getAutoUpdater() {
       }));
 
       autoUpdater.on('update-downloaded', async (info) => {
+        backupBeforeUpdate(info.version);
         sendUpdateStatus({ state: 'downloaded', version: info.version });
         if (!win) return;
         const { response } = await dialog.showMessageBox(win, {
           type: 'info',
           title: 'تحديث جديد',
           message: `يتوفر إصدار جديد (${info.version}) من لوحة إعمار الخليج`,
-          detail: 'تم تنزيل التحديث. بياناتك تبقى كما هي — التحديث يبدّل التطبيق فقط.',
+          detail: 'تم تنزيل التحديث. بياناتك تبقى كما هي — التحديث يبدّل التطبيق فقط، '
+                + 'وأُخذت نسخة احتياطية منها قبل التثبيت.',
           buttons: ['تحديث الآن وإعادة التشغيل', 'لاحقاً'],
           defaultId: 0,
           cancelId: 1,
