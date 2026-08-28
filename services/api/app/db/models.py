@@ -164,6 +164,15 @@ class Contractor(TimestampMixin, Base):
     #: لنفس الرقم — وهو ما يمنعه هذا الفصل صراحةً.
     reported_balance: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     reported_balance_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    #: حالة التعامل مع المقاول — قرار إداري لا يشتقّه أي رقم:
+    #: 'active' نشط | 'paused' متوقف | 'finished' منتهٍ (انتهى العمل وقد يبقى رصيد)
+    #: | 'closed' مغلق (انتهى وسُدِّد) | 'disputed' متنازع عليه | 'blacklisted' قائمة سوداء
+    #: تبقى قائمة مغلقة لأنها تُصفّى ويُجمع عليها؛ الملاحظة الحرة تحتها لا فوقها.
+    status: Mapped[str] = mapped_column(String(20), default='active', index=True)
+    #: ملاحظة الحالة — نصّ حرّ يشرح «لماذا متوقف» أو «طبيعة النزاع». لا يُصفّى عليه
+    #: ولا يدخل أي حساب؛ وجوده بجانب الحالة هو ما يمنع تحويل الحالة نفسها إلى نصّ حرّ
+    #: فتفقد صلاحيتها للتصفية والجمع.
+    status_note: Mapped[str] = mapped_column(Text, default='')
 
     entries: Mapped[List['ContractorEntry']] = relationship(back_populates='contractor')
     claims: Mapped[List['ContractorClaim']] = relationship(back_populates='contractor')

@@ -66,11 +66,23 @@ _VALID_DIRECTIONS = ('owed_to_them', 'owed_to_us', 'balanced')
 CS_VALID_SORT = tuple(CS.CONTRACTOR_SORT_KEYS.keys())
 
 
+def _validate_status_filter(status: Optional[str]) -> None:
+    """يتحقق من كل قيمة في تصفية status (مفصولة بفواصل) مقابل المجموعة المغلقة."""
+    if status is None:
+        return
+    bad = [s.strip() for s in status.split(',') if s.strip()
+           and s.strip() not in CS.CONTRACTOR_STATUSES]
+    if bad:
+        raise HTTPException(422, detail=f'قيمة حالة غير صالحة: {", ".join(bad)} — '
+                                        f'المسموح: {", ".join(CS.CONTRACTOR_STATUSES)}')
+
+
 @router.get('')
 def list_contractors(q: Optional[str] = Query(None),
                      project: Optional[str] = Query(None),
                      direction: Optional[str] = Query(None),
                      has_guarantees: Optional[bool] = Query(None),
+                     status: Optional[str] = Query(None),
                      sort: Optional[str] = Query(None),
                      dir: str = Query('asc'),
                      db: Session = Depends(get_session)) -> dict:
@@ -84,8 +96,10 @@ def list_contractors(q: Optional[str] = Query(None),
                                         f'المسموح: {", ".join(CS_VALID_SORT)}')
     if dir not in ('asc', 'desc'):
         raise HTTPException(422, detail=f'اتجاه ترتيب غير صالح: {dir}')
+    _validate_status_filter(status)
     return CS.contractors_list_json(db, q=q, project=project, direction=direction,
-                                    has_guarantees=has_guarantees, sort=sort, dir=dir)
+                                    has_guarantees=has_guarantees, status=status,
+                                    sort=sort, dir=dir)
 
 
 @router.get('/overview')
@@ -102,46 +116,21 @@ def export_contractors_xlsx(q: Optional[str] = Query(None),
                             project: Optional[str] = Query(None),
                             direction: Optional[str] = Query(None),
                             has_guarantees: Optional[bool] = Query(None),
+                            status: Optional[str] = Query(None),
                             sort: Optional[str] = Query(None),
                             dir: str = Query('asc'),
                             db: Session = Depends(get_session)):
     """تصدير لائحة المقاولين — بنفس التصفية المطبَّقة على الشاشة، لا الدفتر كاملاً.
     نفس نمط export_suppliers_xlsx: يستدعي list_contractors مباشرةً فيبقى مساراً
-    واحداً للتصفية يصف الشاشة والملف معاً."""
+    واحداً للتصفية يصف الشاشة والملف معاً. الورقة الأولى تحليلية (مبنية على نفس
+    rows المصفّاة)، والثانية الجدول الخام — انظر ES.build_contractors_export_workbook."""
     data = list_contractors(q=q, project=project, direction=direction,
-                            has_guarantees=has_guarantees, sort=sort, dir=dir, db=db)
+                            has_guarantees=has_guarantees, status=status,
+                            sort=sort, dir=dir, db=db)
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'المقاولون'
-    ws.sheet_view.rightToLeft = True
-    ws.append(['كود المقاول', 'الاسم', 'المشاريع', 'المحمّل عليه', 'المدفوع',
-              'خصومات وتحميلات', 'الرصيد', 'ضمانات محتجزة'])
-    for cell in ws[1]:
-        cell.font = Font(bold=True)
-    for r in data['rows']:
-        ws.append([r.get('code', ''), r.get('name', ''),
-                  '، '.join(r.get('projects') or []),
-                  r.get('duesTotal', 0), r.get('paidTotal', 0),
-                  r.get('deductionsTotal', 0), r.get('balance', 0),
-                  r.get('retentionHeld', 0)])
-    t = data['totals']
-    ws.append(['الإجمالي', '', '', t.get('claimsTotal', 0), t.get('paidTotal', 0),
-              t.get('deductionsTotal', 0), t.get('balance', 0), t.get('retentionHeld', 0)])
-    for cell in ws[ws.max_row]:
-        cell.font = Font(bold=True)
-    for row in range(2, ws.max_row + 1):
-        for col in (4, 5, 6, 7, 8):
-            cell = ws.cell(row=row, column=col)
-            if isinstance(cell.value, (int, float)):
-                cell.number_format = '#,##0.00'
-    for col_cells in ws.columns:
-        length = max((len(str(c.value)) if c.value is not None else 0) for c in col_cells)
-        letter = get_column_letter(col_cells[0].column)
-        ws.column_dimensions[letter].width = min(max(length + 2, 10), 40)
-
-    buf = io.BytesIO()
-    wb.save(buf)
+    filters_label = _filters_label(data['filtersApplied'])
+    buf_bytes = ES.build_contractors_export_workbook(data, filters_label)
+    buf = io.BytesIO(buf_bytes)
     today = dt.date.today()
     ascii_name = f'EGCO-contractors-{today:%Y%m%d}.xlsx'
     encoded = quote(f'EGCO-المقاولون-{today:%Y%m%d}.xlsx', safe='')
@@ -202,6 +191,15 @@ def update_contractor(code: str, body: ContractorUpdate,
         row.default_retention_rate = body.defaultRetentionRate
     if body.defaultGuaranteeDays is not None:
         row.default_guarantee_days = body.defaultGuaranteeDays
+    if body.status is not None:
+        # قيمة غير صالحة هنا تكسر totals.byStatus بصمت (تفتح مجموعة بلا اسم عربي
+        # معروف) — تُرفض بوضوح بدل أن تُقبل وتُفسد التجميع لاحقاً.
+        if body.status not in CS.CONTRACTOR_STATUSES:
+            raise HTTPException(422, detail=f'حالة غير صالحة: {body.status} — '
+                                            f'المسموح: {", ".join(CS.CONTRACTOR_STATUSES)}')
+        row.status = body.status
+    if body.statusNote is not None:
+        row.status_note = body.statusNote
     # body.projects=None يعني «لا تغيّر» — تعديل جزئي (اسم فقط) لا يمحو المشاريع.
     projects = PP.set_projects(db, PP.CONTRACTOR, row.id, body.projects)
     db.commit()

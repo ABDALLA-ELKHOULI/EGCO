@@ -21,6 +21,18 @@ from app.domain.payables import D, money
 from app.services import party_projects as PP
 from app.utils.arabic import contains_ar, normalize_ar
 
+#: مجموعة حالات المقاول المغلقة — نفس القيم الموثّقة على models.Contractor.status.
+#: أي قيمة خارج هذه المجموعة تُرفض في الراوت (422) قبل أن تصل هنا؛ خلاف ذلك تنكسر
+#: totals.byStatus بصمت (تفتح مجموعة جديدة بلا اسم عربي معروف للواجهة).
+CONTRACTOR_STATUSES = ('active', 'paused', 'finished', 'closed', 'disputed', 'blacklisted')
+
+#: تسميات عربية للحالات — تُستعمل في ورقة تحليل التصدير؛ لا تُرسل للواجهة (التي
+#: تملك ترجمتها الخاصة) حتى لا يتكرر مصدر الترجمة.
+CONTRACTOR_STATUS_LABELS_AR = {
+    'active': 'نشط', 'paused': 'متوقف', 'finished': 'منتهٍ', 'closed': 'مغلق',
+    'disputed': 'متنازع عليه', 'blacklisted': 'قائمة سوداء',
+}
+
 
 # ---------------------------------------------------------------- known projects
 
@@ -221,6 +233,8 @@ def contractor_row_json(row: models.Contractor, today: Optional[dt.date] = None,
         lastActivity=max(e.date for e in entries).isoformat() if entries else None,
         lastPayment=_last_payment(entries),
         releaseAlerts=alerts,
+        status=row.status or 'active',
+        statusNote=row.status_note or '',
     )
 
 
@@ -261,6 +275,7 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
                           q: Optional[str] = None, project: Optional[str] = None,
                           direction: Optional[str] = None,
                           has_guarantees: Optional[bool] = None,
+                          status: Optional[str] = None,
                           sort: Optional[str] = None, dir: str = 'asc') -> dict:
     # المشاريع المعروضة/المُصفّى عليها = لائحة party_projects المعيَّنة صراحةً ∪
     # المشاريع المستنتجة من حركات الدفتر — إسقاط الثاني كان يكسر التصفية لأي مقاول
@@ -282,6 +297,9 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
     # مطابقة مطبَّعة لصيغ المشروع المكافئة إملائياً (المدينة/المدينه) — تُحسب مرة
     # واحدة خارج الحلقة لا لكل صف، نفس سبب حساب ids_in_project مرة في suppliers.py.
     project_key = normalize_ar(project) if project else None
+    # فاصلة مفصولة اختيارياً — تصفية متعددة الاختيار أرخص من طلب واحد لكل حالة،
+    # والواجهة تطلب غالباً «نشط + متوقف» معاً في شاشة متابعة واحدة.
+    status_set = set(s.strip() for s in status.split(',') if s.strip()) if status else None
     for r in all_rows:
         if q:
             # مقارنة مُطبَّعة عربياً — انظر app/utils/arabic.py وتعليق suppliers.py
@@ -297,6 +315,8 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
             row_has = r['retentionHeld'] > 0
             if row_has != has_guarantees:
                 continue
+        if status_set and r['status'] not in status_set:
+            continue
         rows.append(r)
 
     if sort and sort in CONTRACTOR_SORT_KEYS:
@@ -315,6 +335,29 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
     owed_to_us = sum((D(r['balance']) for r in rows if r['balance'] > 0), zero)
     balance = sum((D(r['balance']) for r in rows), zero)
     retention = sum((D(r['retentionHeld']) for r in rows), zero)
+
+    # توزيع حسب الحالة — على نفس rows المصفّاة (مجموع صفوف كل حالة يساوي المجموع
+    # الكلي فوق دائماً، لأنه تجميع لنفس المجموعة لا استعلام مستقل). المستخدم طلب
+    # صراحةً «فلترة وشوف الأرقام الرئيسية لكل مجموعة».
+    by_status: dict = {}
+    for r in rows:
+        s = r['status']
+        b = by_status.setdefault(s, dict(count=0, balance=zero,
+                                         owed_to_contractors=zero, owed_to_us=zero))
+        b['count'] += 1
+        bal = D(r['balance'])
+        b['balance'] += bal
+        if bal < 0:
+            b['owed_to_contractors'] += abs(bal)
+        elif bal > 0:
+            b['owed_to_us'] += bal
+    by_status_json = {
+        s: dict(count=b['count'], balance=money(b['balance']),
+               owedToContractors=money(b['owed_to_contractors']),
+               owedToUs=money(b['owed_to_us']))
+        for s, b in by_status.items()
+    }
+
     totals = dict(count=len(rows),
                  claimsTotal=money(claims_total),
                  paidTotal=money(paid_total),
@@ -322,9 +365,10 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
                  balance=money(balance),
                  owedToContractors=money(owed_to_contractors),
                  owedToUs=money(owed_to_us),
-                 retentionHeld=money(retention))
+                 retentionHeld=money(retention),
+                 byStatus=by_status_json)
     filters_applied = dict(q=q, project=project, direction=direction,
-                           hasGuarantees=has_guarantees)
+                           hasGuarantees=has_guarantees, status=status)
     return dict(count=len(rows), rows=rows, totals=totals, filtersApplied=filters_applied)
 
 

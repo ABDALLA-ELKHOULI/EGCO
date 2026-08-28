@@ -1,6 +1,6 @@
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, apiBase, ApiError, type ContractorQuery, type ContractorRow } from '@/lib/api';
+import { api, apiBase, CONTRACTOR_STATUSES, ApiError, type ContractorQuery, type ContractorRow } from '@/lib/api';
 import { Th, type SortState } from '@/components/ColumnMenu';
 import { ar, arDate, sar } from '@/lib/format';
 import { Card, EmptyState, ErrorState, Kpi, Money, State } from '@/components/ui';
@@ -20,6 +20,15 @@ export function balanceView(balance: number): { cls: string; label: string } {
   if (balance > 0) return { cls: 'ok', label: 'لنا' };
   return { cls: 'muted', label: 'متوازن' };
 }
+
+/** لون شارة الحالة — القرارات السلبية (نزاع/قائمة سوداء) تُقرأ من لونها قبل نصّها،
+ *  فمقاولٌ ممنوع لا يجوز أن يبدو كمقاولٍ نشط في مسح سريع للجدول. */
+const STATUS_TONE: Record<string, string> = {
+  active: 'ok', paused: 'warn', finished: '', closed: 'muted',
+  disputed: 'warn', blacklisted: 'red',
+};
+const statusLabel = (v: string) =>
+  CONTRACTOR_STATUSES.find((s) => s.value === v)?.label ?? v;
 
 //: قيم الاتجاه كما يرسلها الخادم (app/services/contractors_service.py: _direction_of) —
 //: لا فلترة محلية بعد اليوم، فلا مجال لقيم مختلفة بين الواجهة والخادم.
@@ -42,6 +51,7 @@ export function Contractors() {
   const [q, setQ] = useState('');
   const [project, setProject] = useState('');
   const [direction, setDirection] = useState('');
+  const [status, setStatus] = useState('');
 
   // تصفية العمود وترتيبه — كلاهما يُرسل للخادم فيُطبَّق على المجموعة كاملةً،
   // فيبقى سطر الإجماليات واصفاً لما تراه بالضبط (نفس نمط Suppliers.tsx).
@@ -52,12 +62,13 @@ export function Contractors() {
     q: q || code || undefined,
     project: project || undefined,
     direction: direction || undefined,
+    status: status || undefined,
     sort: sort?.key,
     dir: sort?.dir,
-  }), [q, code, project, direction, sort]);
+  }), [q, code, project, direction, status, sort]);
 
   const clearAll = () => {
-    setQ(''); setCode(''); setProject(''); setDirection('');
+    setQ(''); setCode(''); setProject(''); setDirection(''); setStatus('');
   };
 
   // رابط تصدير Excel — نفس فكرة Suppliers.tsx: بمعايير query الحالية بالضبط.
@@ -76,6 +87,7 @@ export function Contractors() {
     project && { k: 'p', label: `المشروع: ${project}`, clear: () => setProject('') },
     direction && { k: 'd', label: `الاتجاه: ${DIRECTIONS.find((x) => x.value === direction)?.label ?? direction}`,
                   clear: () => setDirection('') },
+    status && { k: 's', label: `الحالة: ${statusLabel(status)}`, clear: () => setStatus('') },
   ].filter(Boolean) as { k: string; label: string; clear: () => void }[];
 
   const [addOpen, setAddOpen] = useState(false);
@@ -159,7 +171,9 @@ export function Contractors() {
         columns={printColumns}
         rows={d.rows}
         totalsCells={[
-          `الإجمالي (${ar(d.count)})`, '', '', '',
+          // ست خلايا لستة أعمدة: المقاول، الرمز، المشروع، الرصيد، الحالة، الضمان.
+          // خليةٌ ناقصة هنا تُزحزح رقم الضمان تحت عمود الحالة بصمت.
+          `الإجمالي (${ar(d.count)})`, '', '', '', '',
           sar(d.totals.retentionHeld),
         ]}
         footNote={`إجمالي مستحق للمقاولين ${sar(d.totals.owedToContractors)} ر.س · إجمالي مستحق لنا ${sar(d.totals.owedToUs)} ر.س`}
@@ -284,6 +298,12 @@ export function Contractors() {
                     filter={{ kind: 'select', value: direction, onChange: setDirection,
                               allLabel: 'كل الاتجاهات',
                               options: DIRECTIONS }} />
+                <Th label="الحالة" sortKey="status" sort={sort} onSort={setSort}
+                    ascLabel="أ ← ي" descLabel="ي ← أ"
+                    active={Boolean(status)}
+                    filter={{ kind: 'select', value: status, onChange: setStatus,
+                              allLabel: 'كل الحالات',
+                              options: CONTRACTOR_STATUSES.map((x) => ({ value: x.value, label: x.label })) }} />
                 <Th label="الضمان المحتجز" className="ltr" sortKey="retentionHeld"
                     sort={sort} onSort={setSort}
                     ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً" />
@@ -328,6 +348,21 @@ export function Contractors() {
                     <td className="ltr">
                       <Money v={r.balance} cls={v.cls} />{' '}
                       <span className={'balance-tag ' + v.cls}>{v.label}</span>
+                    </td>
+                    <td>
+                      <span className={`pill ${STATUS_TONE[r.status] ?? ''}`}
+                            title={r.statusNote || undefined}>
+                        {statusLabel(r.status)}
+                      </span>
+                      {/* الملاحظة تفسّر «لماذا متوقف» — تظهر مقتطعة تحت الشارة
+                          وكاملةً عند التحويم، فالحالة وحدها لا تقول السبب. */}
+                      {r.statusNote && (
+                        <div className="muted" style={{ fontSize: 11, marginTop: 2,
+                                                        maxWidth: 160, overflow: 'hidden',
+                                                        textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {r.statusNote}
+                        </div>
+                      )}
                     </td>
                     <td className="ltr">
                       {r.retentionHeld > 0 ? <Money v={r.retentionHeld} /> : <span className="muted">—</span>}

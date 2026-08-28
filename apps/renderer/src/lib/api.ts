@@ -98,7 +98,7 @@ export interface SupplierQuery {
 /** استعلام قائمة المقاولين — لا يوجد delay هنا: حركات المقاول قيود مدين/دائن
  * بلا تاريخ استحقاق (انظر app/domain/contractors.py)، فلا معنى لشريحة تأخر. */
 export interface ContractorQuery {
-  q?: string; project?: string; direction?: string; has_guarantees?: boolean;
+  q?: string; project?: string; direction?: string; status?: string; has_guarantees?: boolean;
   sort?: string; dir?: 'asc' | 'desc';
   [k: string]: string | number | boolean | undefined;
 }
@@ -331,8 +331,21 @@ export interface LearnedLayout {
 
 /* ---------------- أنواع المقاولين والموازنة ---------------- */
 
+/** حالات المقاول — قائمة مغلقة يتحقّق منها الخادم أيضاً. تركها نصّاً حرّاً كان
+ *  يجعلها غير صالحة للتصفية ولا للجمع، وهو ما تحتاجه الشاشة أساساً. */
+export const CONTRACTOR_STATUSES = [
+  { value: 'active',      label: 'نشط' },
+  { value: 'paused',      label: 'متوقف' },
+  { value: 'finished',    label: 'منتهٍ' },
+  { value: 'closed',      label: 'مغلق' },
+  { value: 'disputed',    label: 'متنازع عليه' },
+  { value: 'blacklisted', label: 'قائمة سوداء' },
+] as const;
+export type ContractorStatus = typeof CONTRACTOR_STATUSES[number]['value'];
+
 export interface ContractorBody {
   code: string; name: string; phone?: string; notes?: string;
+  status?: ContractorStatus; statusNote?: string;
   defaultRetentionRate?: number; defaultGuaranteeDays?: number;
   projects?: string[];
 }
@@ -357,6 +370,7 @@ export interface ContractorGuaranteeBody {
 
 export interface ContractorRow {
   code: string; name: string; phone: string | null; projects: string[];
+  status: ContractorStatus; statusNote: string;
   balance: number; duesTotal: number; paidTotal: number; retentionHeld: number;
   entryCount: number; lastActivity: string | null; releaseAlerts: number;
   lastPayment: { date: string; amount: number } | null;

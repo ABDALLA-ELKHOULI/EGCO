@@ -148,6 +148,11 @@ def init_db() -> None:
         # تغيير على أي عمود قائم. مرجع للمقارنة لا مصدر حقيقة (انظر models.py).
         _migrate_add_column(conn, 'contractors', 'reported_balance', 'FLOAT', 'NULL')
         _migrate_add_column(conn, 'contractors', 'reported_balance_at', 'DATETIME', 'NULL')
+        # الحالة الإدارية — 'active' افتراضاً للصفوف القائمة: المقاول الموجود في
+        # الدفتر اليوم يُفترض أنه قيد التعامل حتى يقول المستخدم غير ذلك. اشتقاقها
+        # من الرصيد كان سيصنّف كل مسدَّد «مغلقاً» وهو قرار ليس للأرقام أن تتخذه.
+        _migrate_add_column(conn, 'contractors', 'status', 'VARCHAR(20)', "'active'")
+        _migrate_add_column(conn, 'contractors', 'status_note', 'TEXT', "''")
         _seed_party_projects(conn)
         # `app_settings` / `payment_allocations` are new as of the opt-in payment
         # allocation review feature — additive tables only (no ALTER on existing

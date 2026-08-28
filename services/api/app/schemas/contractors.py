@@ -32,6 +32,10 @@ class ContractorUpdate(BaseModel):
     defaultGuaranteeDays: Optional[int] = None
     #: None تعني «لا تغيّر» — نفس عقد SupplierUpdate.projects.
     projects: Optional[List[str]] = None
+    #: الحالة الإدارية — تُتحقّق في الراوت مقابل CONTRACTOR_STATUSES (422 عربي
+    #: لأي قيمة خارج المجموعة المغلقة)، لا هنا: pydantic لا يعرف المجموعة الحية.
+    status: Optional[str] = None
+    statusNote: Optional[str] = None
 
 
 class EntryIn(BaseModel):
