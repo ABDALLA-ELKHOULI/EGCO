@@ -191,8 +191,24 @@ def claim_json(c: models.ContractorClaim) -> dict:
                 description=c.description or '', source=c.source or 'manual')
 
 
+#: مصدر حركة «اللقطة» الصامتة التي يُنشئها commit_contractors_balance لكل مقاول
+#: مستورَد من تقرير المديونيات — يقابل BALANCE_SNAPSHOT_SOURCE في import_service.py
+#: (لا نستورد من هناك: الملف مملوك لوكيل آخر، والقيمة نصّ ثابت موثَّق في العمود
+#: نفسه). هذا هو المصدر الوحيد الذي لا يعني «إفصاح حقيقي» — 'statement' (كشف مرفوع)
+#: و'manual' (أُدخلت يدوياً عبر الشاشة) كلاهما إفصاح حقيقي، فالتمييز الصحيح هو
+#: استبعاد اللقطة وحدها لا الاقتصار على 'statement' فقط (كان سيُسقط المدخلات
+#: اليدوية من كل عدّاد تغطية، وهي ليست العطب المُبلَّغ في م-٢٦).
+_BALANCE_SNAPSHOT_SOURCE = 'balance_snapshot'
+
+
 def _live_entries(row: models.Contractor) -> list:
     return [e for e in row.entries if e.deleted_at is None]
+
+
+def _statement_entries(entries: list) -> list:
+    """حركات الإفصاح الحقيقي — كل شيء عدا حركتَي اللقطة الصامتتين (م-٢٦): تمييز
+    «له كشف حساب/إدخال حقيقي» عن «له حركة حساب مهما كان مصدرها»."""
+    return [e for e in entries if (e.source or '') != _BALANCE_SNAPSHOT_SOURCE]
 
 
 def _entry_dicts(entries) -> List[dict]:
@@ -221,6 +237,7 @@ def contractor_row_json(row: models.Contractor, today: Optional[dt.date] = None,
             alerts += 1
     if projects is None:
         projects = sorted({e.project for e in entries if e.project})
+    statement_entries = _statement_entries(entries)
     return dict(
         code=row.code, name=row.name, phone=row.phone or '',
         projects=projects,
@@ -230,6 +247,10 @@ def contractor_row_json(row: models.Contractor, today: Optional[dt.date] = None,
         deductionsTotal=money(pos['deductions_total']),
         retentionHeld=money(retention_held),
         entryCount=len(entries),
+        #: «له كشف حساب حقيقي» — لا «له حركات» (م-٢٦). لا تُستعمل لحساب أي مبلغ،
+        #: فقط لتمييز الإفصاح الحقيقي عن حركتَي اللقطة الصامتتين.
+        hasStatement=len(statement_entries) > 0,
+        statementEntryCount=len(statement_entries),
         lastActivity=max(e.date for e in entries).isoformat() if entries else None,
         lastPayment=_last_payment(entries),
         releaseAlerts=alerts,
@@ -282,6 +303,61 @@ def _all_contractor_projects(db: Session) -> dict:
     out: dict = {}
     for r in rows:
         out.setdefault(r.party_id, []).append(r.project)
+    return out
+
+
+#: التسمية الصريحة لدلو الحركات التي لا تُفصح عن مشروع — لا يُقسَّم عليها شيء
+#: أبداً (م-٢٨). الواجهة/محرّك التصدير يميّزانها بحقل `unassigned` لا بمطابقة هذا
+#: النص، لكنه يبقى موحَّداً هنا حتى لا يختلف حرفياً بين موضعين.
+UNASSIGNED_PROJECT_LABEL = 'غير مُسند'
+
+
+def _by_project_breakdown(db: Session, rows: List[dict]) -> List[dict]:
+    """توزيع حقيقي على المشاريع من `ContractorEntry.project` — مستوى الحركة، لا
+    القسمة بالتساوي على رصيد المقاول (م-٢٨: export_service.py:214-216 كان يقسم
+    رصيد المقاول على عدد مشاريعه بالتساوي، فيخترع رقماً لا وجود له في الدفتر).
+
+    كل حركة تُنسَب لمشروعها كما سجّله الاستيراد أو التصنيف (C.detect_project)؛
+    حركة بلا مشروع مُفصَح عنه تُجمَع تحت `UNASSIGNED_PROJECT_LABEL` ولا تُقسَّم على
+    أي مشروع آخر. مُقيَّد بمجموعة `rows` (بعد كل عوامل التصفية) حتى يطابق مجموع
+    byProject + غير مُسند = totals.owedToContractors/owedToUs بالضبط لنفس الطلب —
+    لا معنى لتوزيع مشروع يخصّ مقاولاً استُبعد من القائمة المصفّاة.
+    """
+    if not rows:
+        return []
+    code_to_id = {c.code: c.id for c in db.query(models.Contractor.id, models.Contractor.code)
+                 .filter(models.Contractor.code.in_([r['code'] for r in rows])).all()}
+    contractor_ids = {code_to_id[r['code']] for r in rows if r['code'] in code_to_id}
+
+    q = (db.query(models.ContractorEntry.project, models.ContractorEntry.contractor_id,
+                 models.ContractorEntry.debit, models.ContractorEntry.credit)
+         .filter(models.ContractorEntry.deleted_at.is_(None),
+                 models.ContractorEntry.contractor_id.in_(contractor_ids)))
+    # رصيد كل (مشروع، مقاول) على حدة — لا يُنتَج رصيد المقاول الكلي هنا، فحركاته في
+    # مشروعين مختلفين لا تتلاشى بالمقاصّة قبل أن تصل لدلوها الصحيح.
+    per_cp: dict = {}
+    for project, contractor_id, debit, credit in q.all():
+        key = (project or '', contractor_id)
+        per_cp[key] = per_cp.get(key, Decimal('0')) + D(debit or 0) - D(credit or 0)
+
+    buckets: dict = {}
+    for (project, contractor_id), bal in per_cp.items():
+        label = project if project else UNASSIGNED_PROJECT_LABEL
+        b = buckets.setdefault(label, dict(owed=Decimal('0'), owed_us=Decimal('0'),
+                                           ids=set(), unassigned=(project == '')))
+        if bal < 0:
+            b['owed'] += abs(bal)
+        elif bal > 0:
+            b['owed_us'] += bal
+        b['ids'].add(contractor_id)
+
+    out = [dict(project=label, owedToContractors=money(b['owed']),
+               owedToUs=money(b['owed_us']), count=len(b['ids']),
+               unassigned=b['unassigned'])
+          for label, b in buckets.items()]
+    # غير مُسند أخيراً دائماً — بقية المشاريع بالأكبر مديونية أولاً، نفس ترتيب
+    # _by_project_debt، حتى لا يتصدّر الدلو غير المُفصَح عنه القائمة.
+    out.sort(key=lambda r: (r['unassigned'], -r['owedToContractors']))
     return out
 
 
@@ -380,13 +456,13 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
         for s, b in by_status.items()
     }
 
-    # كم مقاولاً من ضمن هذا العدد له فعلاً حركات دفتر مباشرة (entryCount > 0) —
-    # owedToContractors أعلاه مشتقّ من هذه الحركات حصراً، فأي مقاول بلا حركات
-    # (الحالة الشائعة بعد استيراد تقرير المديونيات المجمّع: مئات الأكواد بأرصدة
-    # مُبلَّغة بلا قيود دفترية بعد) لا يُساهم فيه بشيء رغم أن له رصيداً معروفاً.
-    # نرسل العدّاد هنا لا الرقم المدمج — الواجهة هي من تقرّر كيف تسم الرقم البارز
-    # (مثال: «٧٥٠,٠٠٠ ر.س من ٢ مقاول بحركات دفتر من أصل ٥٩٩ مقاولاً مُستورداً»).
-    with_ledger_entries = len([r for r in rows if r['entryCount'] > 0])
+    # كم مقاولاً من ضمن هذا العدد له فعلاً كشف حساب حقيقي (source='statement') —
+    # owedToContractors أعلاه مشتقّ من حركات الدفتر حصراً، لكن العدّاد يجب أن يقيس
+    # الإفصاح الحقيقي لا مجرّد وجود حركة: حركتا اللقطة (balance_snapshot) لكل مقاول
+    # بعد استيراد تقرير المديونيات كانتا تجعلان entryCount > 0 للجميع فتُبلّغ هذه
+    # القيمة عن تغطية كاملة كاذبة (م-٢٦). لا نُغيّر entryCount نفسه — جهات أخرى
+    # قد تعتمده — hasStatement/statementEntryCount أعلاه هما الحقلان الجديدان.
+    with_statement = len([r for r in rows if r['hasStatement']])
     totals = dict(count=len(rows),
                  claimsTotal=money(claims_total),
                  paidTotal=money(paid_total),
@@ -396,10 +472,11 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
                  owedToUs=money(owed_to_us),
                  retentionHeld=money(retention),
                  byStatus=by_status_json,
-                 #: عدد المقاولين الذين اشتُقّ منهم owedToContractors/owedToUs فعلاً —
+                 #: عدد المقاولين الذين لهم كشف حساب حقيقي (source='statement') —
                  #: انظر تعليق reported_balance في models.py: الرقم المشتقّ من الحركات
                  #: والرقم المُبلَّغ من تقرير المديونيات مصدران مختلفان لا يُجمعان أبداً.
-                 derivedFromEntriesCount=with_ledger_entries)
+                 derivedFromEntriesCount=with_statement,
+                 byProject=_by_project_breakdown(db, rows))
     filters_applied = dict(q=q, project=project, direction=direction,
                            hasGuarantees=has_guarantees, status=status)
     return dict(count=len(rows), rows=rows, totals=totals, filtersApplied=filters_applied)
@@ -586,7 +663,10 @@ def _reported_without_ledger(db: Session) -> dict:
     rows = (db.query(models.Contractor)
             .filter(models.Contractor.deleted_at.is_(None),
                     models.Contractor.reported_balance.isnot(None)).all())
-    missing = [r for r in rows if not _live_entries(r)]
+    # «بلا كشف» = بلا حركة source='statement' — لا «بلا حركات إطلاقاً». حركتا اللقطة
+    # (balance_snapshot) اللتان يُنشئهما commit_contractors_balance لكل مقاول تُبقيان
+    # _live_entries غير فارغة، فكانت هذه الدالة تُبلّغ عن تغطية كاملة كاذبة (م-٢٦).
+    missing = [r for r in rows if not _statement_entries(_live_entries(r))]
     owed = sum((abs(D(r.reported_balance)) for r in missing if D(r.reported_balance) < 0),
                Decimal('0'))
     return dict(count=len(missing), owed=money(owed))

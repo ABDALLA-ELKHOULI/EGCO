@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db import models
 from app.domain.payables import money
+from app.services import contractors_service as CS
 from app.services import payables_service as PS
 
 
@@ -90,6 +91,12 @@ def contractor_coverage(db: Session, today: Optional[dt.date] = None, stale_days
     تجاهل هذا الطرف كلياً كما كان الحال (grep contractor في هذا الملف كان يعيد صفر
     نتيجة). المصدر هنا حركات دفتر المقاول (ContractorEntry) لا فواتير/دفعات
     الموردين — لا يوجد PS.positions مكافئ للمقاولين فالاستعلام مباشر على الجدول.
+
+    الحالة (none/stale/ok) تُقاس على حركات **الكشف الحقيقي فقط** (source='statement')
+    لا كل الحركات — حركتا اللقطة (balance_snapshot) اللتان يُنشئهما
+    commit_contractors_balance لكل مقاول مستورَد تجعلان last_activity/entryCount
+    ممتلئين حتى بلا أي كشف حقيقي، فتُبلّغ 'ok' كاذبة (م-٢٦). anyone يريد تاريخ آخر
+    حركة (بما فيها اللقطة) يجده في lastActivity على شاشة القائمة، لا هنا.
     """
     today = today or dt.date.today()
     rows_q = db.query(models.Contractor).filter(models.Contractor.deleted_at.is_(None)).all()
@@ -97,7 +104,8 @@ def contractor_coverage(db: Session, today: Optional[dt.date] = None, stale_days
     all_rows = []
     for c in rows_q:
         entries = [e for e in c.entries if e.deleted_at is None]
-        dates = [e.date for e in entries]
+        statement_entries = CS._statement_entries(entries)
+        dates = [e.date for e in statement_entries]
         first_activity = min(dates) if dates else None
         last_activity = max(dates) if dates else None
         days_since_last = (today - last_activity).days if last_activity else None
@@ -115,6 +123,8 @@ def contractor_coverage(db: Session, today: Optional[dt.date] = None, stale_days
             lastActivity=last_activity.isoformat() if last_activity else None,
             daysSinceLast=days_since_last,
             entryCount=len(entries),
+            hasStatement=len(statement_entries) > 0,
+            statementEntryCount=len(statement_entries),
             # الرصيد المُبلَّغ من تقرير المديونيات — موجود حتى بلا حركة دفتر، فيبقى
             # صفّ «none» ذا معنى مالي بدل رقم فارغ (انظر _reported_without_ledger
             # في contractors_service.py).

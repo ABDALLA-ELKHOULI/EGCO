@@ -102,7 +102,11 @@ def test_logo_degrades_gracefully_without_pillow(env, monkeypatch):
     monkeypatch.setattr(env.ES, '_logo_image', lambda: None)
     data = dict(rows=[], totals=dict(count=0, owedToContractors=0, owedToUs=0,
                                      balance=0, retentionHeld=0, byStatus={}))
-    out = env.ES.build_contractors_export_workbook(data, 'بلا تصفية')
+    db = env.session.SessionLocal()
+    try:
+        out = env.ES.build_contractors_export_workbook(data, 'بلا تصفية', db)
+    finally:
+        db.close()
     wb = load_workbook(io.BytesIO(out))
     assert 'تحليل المقاولين' in wb.sheetnames
 

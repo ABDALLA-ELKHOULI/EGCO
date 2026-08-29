@@ -1,6 +1,9 @@
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, apiBase, CONTRACTOR_STATUSES, ApiError, type ContractorQuery, type ContractorRow } from '@/lib/api';
+import {
+  api, apiBase, CONTRACTOR_STATUSES, ApiError,
+  type ContractorQuery, type ContractorRow, type ContractorDetailResponse, type ContractorEntry,
+} from '@/lib/api';
 import { Th, type SortState } from '@/components/ColumnMenu';
 import { ar, arDate, sar } from '@/lib/format';
 import { Card, EmptyState, ErrorState, Kpi, Money, State } from '@/components/ui';
@@ -9,6 +12,7 @@ import { ContractorForm, type ContractorFormValues } from '@/components/Contract
 import { ExplainDot } from '@/components/Explain';
 import { PrintableList, type PrintableColumn } from '@/components/PrintableList';
 import { Carousel, loadStoredCarouselView } from '@/components/Carousel';
+import { ExportMenu, StatementExportButton } from '@/components/ExportMenu';
 
 /**
  * المقاولون — قاعدة الإشارة (متفق عليها مع المستخدم):
@@ -29,6 +33,13 @@ const STATUS_TONE: Record<string, string> = {
 };
 const statusLabel = (v: string) =>
   CONTRACTOR_STATUSES.find((s) => s.value === v)?.label ?? v;
+
+/** تسمية أنواع حركات دفتر المقاول — نسخة مختصرة عن KIND في ContractorDetail.tsx
+ * (ملف مملوك لوكيل آخر، لا يُعدَّل هنا) لتسمية عمود «النوع» في كشف الحساب المطبوع فقط. */
+const ENTRY_KIND_LABEL: Record<string, string> = {
+  claim: 'مستخلص', payment: 'دفعة', retention: 'تأمين', deduction: 'خصم',
+  invoice: 'فاتورة', opening: 'رصيد افتتاحي', other: 'أخرى',
+};
 
 //: قيم الاتجاه كما يرسلها الخادم (app/services/contractors_service.py: _direction_of) —
 //: لا فلترة محلية بعد اليوم، فلا مجال لقيم مختلفة بين الواجهة والخادم.
@@ -89,15 +100,9 @@ export function Contractors() {
   // صفحة رقم ٨ فارغة بعد تصفية تُنقص النتائج إلى صفحتين.
   useEffect(() => { setPage(1); }, [query]);
 
-  // رابط تصدير Excel — نفس فكرة Suppliers.tsx: بمعايير query الحالية بالضبط.
-  const exportUrl = useMemo(() => {
-    const params = new URLSearchParams();
-    for (const [k, v] of Object.entries(query)) {
-      if (v !== undefined && v !== '') params.set(k, String(v));
-    }
-    const s = params.toString();
-    return apiBase() + '/api/v1/contractors/export.xlsx' + (s ? `?${s}` : '');
-  }, [query]);
+  // معاملات التصدير — نفس query الحالية بالضبط، تمرَّر لمنتقي الصيغ ولزر
+  // «كشف حساب» في كل صف (ExportMenu.tsx). ما تراه الشاشة هو ما يُصدَّر.
+  const exportParams = query as Record<string, string | number | undefined>;
 
   const chips = [
     q && { k: 'q', label: `بحث: ${q}`, clear: () => setQ('') },
@@ -114,6 +119,26 @@ export function Contractors() {
   const [busy, setBusy] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
   const [showPrint, setShowPrint] = useState(false);
+  // كشف حساب مقاول واحد بصيغة PDF — أعلى صيغ التصدير قيمة (تُرسَل للمقاول نفسه
+  // للمطابقة). state منفصل عن showPrint: يحمل رمز المقاول المطلوب طباعته + بيانات
+  // كشفه بعد الجلب (api.contractor نفس ما تستعمله ContractorDetail.tsx)، وحقل
+  // hasStatement مُلتقَط من صف الجدول وقت الضغط لأن استجابة تفاصيل المقاول لا
+  // تحمل هذا الحقل (هو خاص باستجابة القائمة فقط — انظر ContractorRow في api.ts).
+  const [printStatement, setPrintStatement] = useState<
+    { code: string; name: string; hasStatement: boolean } | null
+  >(null);
+  const [statementData, setStatementData] = useState<ContractorDetailResponse | null>(null);
+  const [statementErr, setStatementErr] = useState<string | null>(null);
+  // «إجماليات المشاريع» بصيغة PDF — صفحة واحدة تجيب «أي مشروع أسدّد أولاً؟»،
+  // على نفس d.totals.byProject المصفّاة بمعاملات الجدول الحالية بالضبط (لا حساب
+  // محلي — البيانات محسوبة في _by_project_breakdown على الخادم).
+  const [showProjectTotalsPrint, setShowProjectTotalsPrint] = useState(false);
+
+  const openStatementPrint = (r: ContractorRow) => {
+    setPrintStatement({ code: r.code, name: r.name, hasStatement: r.hasStatement });
+    setStatementData(null); setStatementErr(null);
+    api.contractor(r.code).then(setStatementData).catch((e) => setStatementErr(e.message));
+  };
 
   // نفس نص شريط «تصفية نشطة» أعلى الجدول — يُطبع مع الجدول بدل أن يُفقد سياقه.
   const filterLine = chips.length > 0 ? chips.map((c) => c.label).join(' · ') : null;
@@ -226,6 +251,103 @@ export function Contractors() {
     );
   }
 
+  // كشف حساب PDF لمقاول واحد — نفس آلية PrintableList، لكن رأس الورقة يحمل اسم
+  // المقاول ورمزه بدل عنوان قائمة عامة، والصفوف حركات دفتره الكاملة (بلا تصفية:
+  // كشف حساب يُرسَل للمقاول يجب أن يعرض كل حركة، لا مجموعة مصفّاة جزئياً).
+  if (printStatement) {
+    if (statementErr) {
+      return (
+        <div className="page-head no-print">
+          <div className="grow"><h1>تعذّر تحميل كشف الحساب</h1><p>{statementErr}</p></div>
+          <button className="btn" onClick={() => setPrintStatement(null)}>رجوع</button>
+        </div>
+      );
+    }
+    if (!statementData) {
+      return (
+        <div className="page-head no-print">
+          <div className="grow"><h1>جارٍ تحميل كشف الحساب…</h1></div>
+          <button className="btn" onClick={() => setPrintStatement(null)}>رجوع</button>
+        </div>
+      );
+    }
+    const sd = statementData;
+    const entryColumns: PrintableColumn[] = [
+      { key: 'date', label: 'التاريخ', ltr: true, render: (e: ContractorEntry) => arDate(e.date) },
+      { key: 'kind', label: 'النوع', render: (e: ContractorEntry) => ENTRY_KIND_LABEL[e.kind] ?? e.kind ?? 'أخرى' },
+      { key: 'description', label: 'الوصف', render: (e: ContractorEntry) => e.description || '—' },
+      { key: 'project', label: 'المشروع', render: (e: ContractorEntry) => e.project || '—' },
+      { key: 'debit', label: 'مدين (ر.س)', ltr: true, render: (e: ContractorEntry) => e.debit ? sar(e.debit) : '—' },
+      { key: 'credit', label: 'دائن (ر.س)', ltr: true, render: (e: ContractorEntry) => e.credit ? sar(e.credit) : '—' },
+    ];
+    const sv = balanceView(sd.balance);
+    return (
+      <PrintableList
+        docTitle={`كشف حساب — ${sd.name}`}
+        fileStamp={`كشف-حساب-${sd.code}`}
+        scopeLine={`الرمز ${sd.code}${sd.perProject.length > 0 ? ` · ${sd.perProject.map((p) => p.project).join('، ')}` : ''}`}
+        filterLine={null}
+        countLabel={`${ar(sd.entries.length)} حركة`}
+        columns={entryColumns}
+        rows={sd.entries}
+        totalsCells={[
+          `الإجمالي (${ar(sd.entries.length)})`, '', '', '',
+          sar(sd.debitTotal ?? 0), sar(sd.creditTotal ?? 0),
+        ]}
+        summary={[
+          { label: `الرصيد الختامي (${sv.label})`, value: `${sar(Math.abs(sd.balance))} ر.س` },
+          { label: 'إجمالي مدين', value: `${sar(sd.debitTotal ?? 0)} ر.س` },
+          { label: 'إجمالي دائن', value: `${sar(sd.creditTotal ?? 0)} ر.س` },
+          { label: 'الضمان المحتجز', value: sd.retentionTotal ? `${sar(sd.retentionTotal)} ر.س` : '—' },
+        ]}
+        warnBanner={!printStatement.hasStatement
+          ? 'لا كشف حساب مرفوع لهذا المقاول — الرصيد أعلاه من ملف مديونيات مستورد فقط، والحركات أدناه (إن وُجدت) لا تمثّل كشف حسابه الكامل.'
+          : undefined}
+        footNote="كشف حساب داخلي من دفتر الشركة — للمطابقة مع سجلات المقاول."
+        onBack={() => setPrintStatement(null)}
+      />
+    );
+  }
+
+  // إجماليات المشاريع PDF — d.totals.byProject مرتّبة من الخادم بالأكبر التزاماً
+  // (له) أولاً، وهو ترتيب قرار السداد نفسه (نفس فرز projectGroups أعلاه لكن من
+  // الخادم مباشرة هنا لا حساب محلي). وسم «بلا كشف» غير منطبق على هذا المستوى:
+  // الصف هنا مشروع لا مقاول بعينه.
+  if (showProjectTotalsPrint && d) {
+    const byProject: { project: string; owedToContractors: number; owedToUs: number; count: number; unassigned?: boolean }[] =
+      d.totals.byProject ?? [];
+    const projectColumns: PrintableColumn[] = [
+      { key: 'project', label: 'المشروع', render: (r: any) => r.project },
+      { key: 'count', label: 'عدد المقاولين', ltr: true, render: (r: any) => ar(r.count) },
+      { key: 'owed', label: 'مستحق للمقاولين — له (ر.س)', ltr: true,
+        render: (r: any) => r.owedToContractors > 0 ? sar(r.owedToContractors) : '—' },
+      { key: 'owedUs', label: 'مستحق لنا (ر.س)', ltr: true,
+        render: (r: any) => r.owedToUs > 0 ? sar(r.owedToUs) : '—' },
+    ];
+    return (
+      <PrintableList
+        docTitle="إجماليات المشاريع — نظرة القرار"
+        fileStamp="إجماليات-المشاريع"
+        scopeLine="مرتّبة بالأكبر مستحقاً للمقاولين أولاً — أي مشروع أسدّد مستحقاته أولاً"
+        filterLine={filterLine}
+        countLabel={`${ar(byProject.length)} مشروعاً`}
+        columns={projectColumns}
+        rows={byProject}
+        totalsCells={[
+          `الإجمالي (${ar(byProject.length)})`, ar(d.count),
+          sar(d.totals.owedToContractors), sar(d.totals.owedToUs),
+        ]}
+        summary={[
+          { label: 'إجمالي مستحق للمقاولين', value: `${sar(d.totals.owedToContractors)} ر.س` },
+          { label: 'إجمالي مستحق لنا', value: `${sar(d.totals.owedToUs)} ر.س` },
+          { label: 'الضمانات المحتجزة', value: `${sar(d.totals.retentionHeld)} ر.س` },
+        ]}
+        footNote="مقاول على أكثر من مشروع يُحتسب تحت كل مشروع بكامل رصيده — لا تجزئة محلية غير مدعومة بالبيانات."
+        onBack={() => setShowProjectTotalsPrint(false)}
+      />
+    );
+  }
+
   async function handleAdd(values: ContractorFormValues) {
     setBusy(true); setFormErr(null);
     try {
@@ -303,8 +425,10 @@ export function Contractors() {
             تجميع بالمشروع
           </button>
         </div>
-        <a className="btn sm" href={exportUrl} download>تصدير Excel</a>
+        <ExportMenu params={exportParams} projects={projects} />
         <button className="btn sm" disabled={!d} onClick={() => setShowPrint(true)}>PDF</button>
+        <button className="btn sm" disabled={!d} onClick={() => setShowProjectTotalsPrint(true)}
+                title="ورقة واحدة: أي مشروع أسدّد مستحقاته أولاً">PDF إجماليات المشاريع</button>
       </div>
 
       <Card>
@@ -376,10 +500,12 @@ export function Contractors() {
             <tbody>
               {pageRows.map((r: ContractorRow) => {
                 const v = balanceView(r.balance);
-                // ٥٩٢ من ٥٩٩ مقاولاً مستوردون بأرصدة ملف فقط بلا قيد دفتري واحد
-                // (entryCount=0) — الفراغ في عمود الضمان لهم يعني «لم يُرفع كشفه»
-                // لا «لا ضمان»، والفرق هنا مالي: إفراج عن ضمان غير معروف للنظام.
-                const hasStatement = r.entryCount > 0;
+                // hasStatement من الخادم مباشرة (لا entryCount>0 — كانت خاطئة: تُصفَّر
+                // أيضاً بعد فلترة الفترة فلا تظهر أبداً بعد الاستيراد، عطب م-٢٦).
+                // ٥٩٨ من ٥٩٩ مقاولاً مستوردون بأرصدة ملف فقط بلا كشف حركة مرفوع بعد —
+                // الفراغ في عمود الضمان لهم يعني «غير معروف» لا «لا ضمان»، والفرق هنا
+                // مالي: إفراج عن ضمان غير معروف للنظام.
+                const hasStatement = r.hasStatement;
                 return (
                   <tr key={r.code} className={r.balance < 0 ? 'row-overdue' : ''}>
                     <td className="party">
@@ -450,6 +576,9 @@ export function Contractors() {
                     <td>{r.lastActivity ? arDate(r.lastActivity) : <span className="muted">—</span>}</td>
                     <td className="ltr">
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                        <StatementExportButton code={r.code} params={exportParams} />
+                        <button className="btn sm" onClick={() => openStatementPrint(r)}
+                                aria-label="طباعة كشف الحساب PDF" title="طباعة كشف الحساب (PDF)">🖶</button>
                         <button className="btn sm"
                                 onClick={() => { setFormErr(null); setEditRow(r); }} aria-label="تعديل" title="تعديل">✎</button>
                         <button className="btn sm"

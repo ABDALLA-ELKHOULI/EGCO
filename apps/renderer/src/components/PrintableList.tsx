@@ -25,7 +25,7 @@ export type PrintableColumn = {
 
 export function PrintableList({
   docTitle, fileStamp, scopeLine, filterLine, countLabel,
-  columns, rows, totalsCells, footNote, onBack,
+  columns, rows, totalsCells, footNote, onBack, summary, warnBanner,
 }: {
   /** عنوان الوثيقة — «قائمة الموردين» أو «قائمة المقاولين» */
   docTitle: string;
@@ -43,6 +43,12 @@ export function PrintableList({
   totalsCells: ReactNode[];
   footNote?: string;
   onBack: () => void;
+  /** إجماليات أعلى الورقة — طلبٌ صريح من المستخدم لكل صيغة: من يمسك ورقةً مطبوعة
+   * يقرأ الرقم الحاسم أولاً، لا بعد تمرير كل الصفوف حتى تذييل الجدول. كل قيمة هنا
+   * يجب أن تأتي جاهزة من استجابة الخادم (d.totals/d.balance) — لا حساب محلي. */
+  summary?: { label: string; value: ReactNode }[];
+  /** تنبيه أعلى الورقة — مثل «لا كشف حساب مرفوع لهذا المقاول» — يُطبع لا يُخفى. */
+  warnBanner?: string;
 }) {
   const [exporting, setExporting] = useState(false);
   const [exportErr, setExportErr] = useState<string | null>(null);
@@ -126,6 +132,24 @@ export function PrintableList({
         <p className="rpt-sub muted">
           {filterLine ? `تصفية مطبَّقة: ${filterLine}` : 'بلا تصفية — القائمة كاملة'}
         </p>
+
+        {warnBanner && (
+          <p className="rpt-sub" style={{ border: '1px solid #b00', borderRadius: 6, padding: '6px 10px' }}>
+            ⚠ {warnBanner}
+          </p>
+        )}
+
+        {summary && summary.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '4px 0 10px' }}>
+            {summary.map((s, i) => (
+              <div key={i} style={{ border: '1px solid var(--hair, #ccc)', borderRadius: 6,
+                                     padding: '6px 12px', minWidth: 130 }}>
+                <div className="muted" style={{ fontSize: 10 }}>{s.label}</div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+        )}
         <hr />
 
         {/* لا table-scroll هنا: تلك الفئة تفرض min-width مصمَّماً لجداول الشاشة

@@ -130,6 +130,19 @@ def _filters_label(filters: dict) -> str:
     return '؛ '.join(parts) if parts else 'بلا تصفية — كل المقاولين'
 
 
+#: صيغة → اتجاه تُفرَض على الاستعلام (تتجاوز direction الوارد من الطلب) — الصيغ
+#: ٢/٣/١٢ *معرَّفة* باتجاه واحد، فطلب صيغة «لهم علينا» مع direction=owed_to_us
+#: تناقض لا معنى له؛ الصيغة تحسم الاتجاه لا المعامل المنفصل.
+_FORMAT_FORCED_DIRECTION = {
+    'creditors': 'owed_to_them', 'debtors': 'owed_to_us', 'balanced_dormant': 'balanced',
+}
+
+#: صيغ تحتاج project= إلزامياً / code= إلزامياً — يُرفض الطلب 422 بلا هذا المُعطى
+#: بدل بناء ورقة فارغة تُقرأ خطأً كأنها «لا يوجد شيء لهذا المشروع/الجهة».
+_FORMAT_REQUIRES_PROJECT = ('single_project',)
+_FORMAT_REQUIRES_CODE = ('single_statement',)
+
+
 @router.get('/export.xlsx')
 def export_contractors_xlsx(q: Optional[str] = Query(None),
                             project: Optional[str] = Query(None),
@@ -138,21 +151,40 @@ def export_contractors_xlsx(q: Optional[str] = Query(None),
                             status: Optional[str] = Query(None),
                             sort: Optional[str] = Query(None),
                             dir: str = Query('asc'),
+                            format: str = Query('full'),
+                            code: Optional[str] = Query(None),
                             db: Session = Depends(get_session)):
-    """تصدير لائحة المقاولين — بنفس التصفية المطبَّقة على الشاشة، لا الدفتر كاملاً.
-    نفس نمط export_suppliers_xlsx: يستدعي list_contractors مباشرةً فيبقى مساراً
-    واحداً للتصفية يصف الشاشة والملف معاً. الورقة الأولى تحليلية (مبنية على نفس
-    rows المصفّاة)، والثانية الجدول الخام — انظر ES.build_contractors_export_workbook."""
-    data = list_contractors(q=q, project=project, direction=direction,
+    """تصدير المقاولين — ١٤ صيغة عبر format= (انظر ES.CONTRACTOR_EXPORT_FORMATS
+    وdocs/feedback/PLAN.md §٣). الافتراضي 'full' يحفظ السلوك القديم (ورقة تحليل
+    + الجدول الخام) — استدعاء بلا format= لا ينكسر.
+
+    كل صيغة تُبنى من نفس list_contractors بنفس المعاملات («ما تراه الشاشة هو ما
+    يُصدَّر») ما عدا الصيغ ذات الاتجاه الثابت (creditors/debtors/balanced_dormant)
+    التي تفرض direction الخاص بها بصرف النظر عمّا وصل في الطلب."""
+    if format not in ES.CONTRACTOR_EXPORT_FORMATS:
+        raise HTTPException(422, detail=f'صيغة تصدير غير صالحة: {format} — '
+                                        f'المسموح: {", ".join(ES.CONTRACTOR_EXPORT_FORMATS)}')
+    if format in _FORMAT_REQUIRES_PROJECT and not project:
+        raise HTTPException(422, detail=f'صيغة {format} تحتاج project= إلزامياً')
+    if format in _FORMAT_REQUIRES_CODE and not code:
+        raise HTTPException(422, detail=f'صيغة {format} تحتاج code= إلزامياً')
+
+    effective_direction = _FORMAT_FORCED_DIRECTION.get(format, direction)
+    data = list_contractors(q=q, project=project, direction=effective_direction,
                             has_guarantees=has_guarantees, status=status,
                             sort=sort, dir=dir, db=db)
 
     filters_label = _filters_label(data['filtersApplied'])
-    buf_bytes = ES.build_contractors_export_workbook(data, filters_label)
+    detail = None
+    if format == 'single_statement':
+        row = _get_contractor(db, code)
+        detail = CS.contractor_detail_json(row, projects=PP.projects_of(db, PP.CONTRACTOR, row.id))
+    buf_bytes = ES.build_contractors_format_workbook(
+        format, data, filters_label, db, project=project, code=code, detail=detail)
     buf = io.BytesIO(buf_bytes)
     today = dt.date.today()
-    ascii_name = f'EGCO-contractors-{today:%Y%m%d}.xlsx'
-    encoded = quote(f'EGCO-المقاولون-{today:%Y%m%d}.xlsx', safe='')
+    ascii_name = f'EGCO-contractors-{format}-{today:%Y%m%d}.xlsx'
+    encoded = quote(f'EGCO-المقاولون-{format}-{today:%Y%m%d}.xlsx', safe='')
     headers = {'Content-Disposition':
               f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"}
     return StreamingResponse(

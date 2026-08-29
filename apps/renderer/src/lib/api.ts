@@ -374,13 +374,81 @@ export interface ContractorRow {
   balance: number; duesTotal: number; paidTotal: number; retentionHeld: number;
   entryCount: number; lastActivity: string | null; releaseAlerts: number;
   lastPayment: { date: string; amount: number } | null;
+  /** رصيده مستورد من ملف ولم تُرفع له قيود حركة تفصيلية بعد — بخلاف entryCount=0
+   * التي كانت خاطئة (تُصفَّر أيضاً بعد فلترة الفترة)، هذا الحقل من الخادم مباشرة. */
+  hasStatement: boolean;
+  statementEntryCount: number;
 }
 
 export interface ContractorsResponse {
   count: number;
   rows: ContractorRow[];
-  totals: { owedToContractors: number; owedToUs: number; retentionHeld: number };
+  totals: {
+    owedToContractors: number; owedToUs: number; retentionHeld: number;
+    /** موجودة فعلياً تحت totals لا على مستوى الاستجابة — تحقَّق من الخادم مباشرة. */
+    byProject?: { project: string; owedToContractors: number; owedToUs: number; count: number; unassigned?: boolean }[];
+  };
 }
+
+/** صيغ تصدير Excel لقائمة المقاولين — GET /api/v1/contractors/export.xlsx?format=…
+ * مع كل معاملات التصفية القائمة (q/project/direction/status/sort/dir). */
+export type ContractorExportFormat =
+  | 'full' | 'creditors' | 'debtors' | 'project_totals'
+  | 'by_project_creditors' | 'by_project_debtors' | 'missing_statement'
+  | 'reported_vs_derived' | 'balanced_dormant' | 'by_status'
+  | 'opening_vs_activity' | 'single_project' | 'single_statement' | 'full_report';
+
+export interface ContractorExportOption {
+  format: ContractorExportFormat;
+  title: string;
+  /** المعامل الإضافي الذي تتطلبه هذه الصيغة قبل التصدير، وإلا ٤٢٢ من الخادم. */
+  requires?: 'project' | 'code';
+}
+
+/** رابط تصدير مباشر لصيغة مقاولين معيّنة — يحمل تصفية الجدول الحالية (params)
+ * بالضبط، فما تراه الشاشة هو ما يُصدَّر، زائداً format والمعامل الإضافي إن وُجد. */
+export function contractorsExportUrl(
+  format: ContractorExportFormat,
+  params: Record<string, string | number | undefined>,
+  extra?: { project?: string; code?: string },
+): string {
+  const s = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== '') s.set(k, String(v));
+  }
+  s.set('format', format);
+  if (extra?.project) s.set('project', extra.project);
+  if (extra?.code) s.set('code', extra.code);
+  return apiBase() + '/api/v1/contractors/export.xlsx?' + s.toString();
+}
+
+export const CONTRACTOR_EXPORT_GROUPS: { group: string; options: ContractorExportOption[] }[] = [
+  { group: 'قوائم', options: [
+    { format: 'full', title: 'تحليل المقاولين' },
+    { format: 'creditors', title: 'لهم علينا فقط' },
+    { format: 'debtors', title: 'لنا عليهم فقط' },
+    { format: 'by_status', title: 'التوزيع بالحالة' },
+    { format: 'missing_statement', title: 'بلا كشف مرفوع — قائمة عمل' },
+  ] },
+  { group: 'بالمشروع', options: [
+    { format: 'project_totals', title: 'إجماليات المشاريع — نظرة القرار' },
+    { format: 'by_project_creditors', title: 'بالمشروع ← الدائنون تحته' },
+    { format: 'by_project_debtors', title: 'بالمشروع ← المدينون تحته' },
+    { format: 'single_project', title: 'مشروع واحد…', requires: 'project' },
+  ] },
+  { group: 'تقارير تدقيق', options: [
+    { format: 'reported_vs_derived', title: 'المبلَّغ مقابل المشتقّ' },
+    { format: 'balanced_dormant', title: 'المتساوية والخاملة' },
+    { format: 'opening_vs_activity', title: 'الافتتاحي مقابل نشاط الحركة' },
+  ] },
+  { group: 'تقرير شامل', options: [
+    { format: 'full_report', title: 'التقرير الكامل (١١ ورقة)' },
+  ] },
+  // ملاحظة: single_statement غير موجودة هنا عمداً — كشف الحساب المفرد يُصدَّر من
+  // زر 📄 في صفّ المقاول نفسه (StatementExportButton في ExportMenu.tsx)، حيث
+  // الرمز معروف مسبقاً؛ عرضها في هذه القائمة العامة يتطلب اختيار مقاول بلا سبب
+  // حين الصف نفسه أقرب وأسرع.
+];
 
 export type GuaranteeDueStatus = 'released' | 'due' | 'upcoming' | 'scheduled';
 

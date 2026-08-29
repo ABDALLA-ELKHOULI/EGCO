@@ -12,8 +12,8 @@ import pytest
 
 from conftest import sample_missing
 from app.domain.payables import (
-    Ageing, Invoice, Payment, Supplier, allocate_fifo, compute_ageing, due_date,
-    parse_term, payment_schedule, position, reconciles,
+    Ageing, Invoice, Payment, Supplier, allocate_fifo, bucket_of_days, compute_ageing,
+    compute_delay, due_date, parse_term, payment_schedule, position, reconciles,
 )
 
 TODAY = dt.date(2026, 8, 7)
@@ -200,3 +200,56 @@ def test_qanbar_statement_with_opening_balance_reconciles():
     inv = sum((i.amount for i in r['invoices']), Decimal(0))
     pay = sum((p.amount for p in r['payments']), Decimal(0))
     assert abs((inv - pay) - Decimal('80049.95')) < Decimal('0.01')
+
+
+# ---------------------------------------------------------------- م-٢٧ج: حدود DELAY_BUCKETS
+#
+# لا اختبار اليوم يستدعي bucket_of_days/compute_delay مباشرة (تحقّقنا بـ
+# grep قبل كتابة هذا). الحدود ٣٠/٦٠/٩٠/١٢٠/١٥٠/١٨٠ مُستهلَكة ضمنياً في اختبارات
+# التأخر بأرقام عشوائية فقط — لو غُيّر حدّ شريحة (١٨٠ → ١٩٠ مثلاً) لن يفشل شيء ما
+# دامت الشرائح مرتّبة. هذا لا يُغيّر مبلغاً لكنه يُغيّر تصنيف التأخر المعروض
+# في الشاشة الرئيسية بصمت. نثبّت هنا كل حدّ عند القيمة بالضبط، وقيمة قبله وبعده،
+# واسم الشريحة الناتج — أي تحريك لحدّ واحد يكسر هذا الاختبار فوراً.
+@pytest.mark.parametrize('late_days,expected_bucket', [
+    (0, None),        # لا تأخر بعد (حدّ <=0)
+    (1, 'm1'),         # أول يوم تأخر يدخل الشريحة الأولى
+    (29, 'm1'),
+    (30, 'm1'),        # الحدّ نفسه ضمن الشريحة (<=)
+    (31, 'm2'),        # أول يوم بعد الحدّ ينتقل للشريحة التالية
+    (59, 'm2'),
+    (60, 'm2'),
+    (61, 'm3'),
+    (89, 'm3'),
+    (90, 'm3'),
+    (91, 'm4'),
+    (119, 'm4'),
+    (120, 'm4'),
+    (121, 'm5'),
+    (149, 'm5'),
+    (150, 'm5'),
+    (151, 'm6'),
+    (179, 'm6'),
+    (180, 'm6'),        # آخر يوم في الشريحة السادسة
+    (181, 'm6_plus'),   # أول يوم يتجاوز كل الشرائح الشهرية المسمّاة
+    (400, 'm6_plus'),
+])
+def test_bucket_of_days_boundaries_pinned_exactly(late_days, expected_bucket):
+    assert bucket_of_days(late_days) == expected_bucket
+
+
+def test_compute_delay_routes_amount_to_correct_bucket_at_boundary():
+    """اختبار تكامل خفيف: فاتورتان على حدّي شريحتين متجاورتين (٦٠ و٦١ يوماً تأخراً)
+    يجب أن يذهب كل مبلغ لشريحته الصحيحة في by_bucket لا أن يختلطا — لو انقلب
+    الحدّ (<= إلى <) في bucket_of_days ستقع فاتورة الحدّ في الشريحة الخطأ هنا."""
+    today = dt.date(2026, 8, 28)
+    i1 = inv(today - dt.timedelta(days=60), 1000)   # تأخره بالضبط ٦٠ يوماً -> m2
+    i1.due_date = today - dt.timedelta(days=60)
+    i1.remaining = 1000
+    i2 = inv(today - dt.timedelta(days=61), 2000)   # ٦١ يوماً -> m3
+    i2.due_date = today - dt.timedelta(days=61)
+    i2.remaining = 2000
+
+    d = compute_delay([i1, i2], today)
+    assert d.by_bucket['m2'] == 1000
+    assert d.by_bucket['m3'] == 2000
+    assert d.days == 61

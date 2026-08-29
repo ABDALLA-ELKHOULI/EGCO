@@ -9,16 +9,22 @@ from __future__ import annotations
 import base64
 import io
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 NUM_FMT = '#,##0.00'
+
+#: بند «غير مُسنَد» — حركة دفتر بلا مشروع محدَّد (project=''). يُعرض صراحةً في كل
+#: تجميع بالمشروع ولا يُقسَّم على مشاريع أخرى (م-٢٨ في PLAN.md): رقمٌ ناقص معلومٌ
+#: نقصه خيرٌ من رقم مخترَع يبدو كاملاً.
+UNASSIGNED_LABEL = 'غير مُسنَد'
 
 # شعار الشركة — نسخة مصغّرة من build/icon.png (بلا الشريط السفلي «Emaar Gulf
 # for Construction» غير المقروء بهذا الحجم)، مُضمَّنة كـ base64 داخل الكود
@@ -66,6 +72,140 @@ def _autosize(ws):
         length = max((len(str(c.value)) if c.value is not None else 0) for c in col_cells)
         letter = get_column_letter(col_cells[0].column)
         ws.column_dimensions[letter].width = min(max(length + 2, 10), 40)
+
+
+# =============================================================================
+# استعلامات مساعدة على حركات الدفتر مباشرة (ContractorEntry) — تخدم صيغ التصدير
+# ١٤ التي تحتاج إسناداً حقيقياً بالمشروع أو تمييز «له كشف حقيقي» أو مقارنة
+# الافتتاحي بالحركة، وهذه لا تُحسب في contractors_service.contractors_list_json
+# اليوم. تُقيَّد كل الاستعلامات هنا بمجموعة أكواد الصفوف المصفّاة (codes) حتى
+# تصف بالضبط ما تعرضه الشاشة، لا الدفتر كاملاً (قاعدة «ما تراه الشاشة يُصدَّر»).
+# =============================================================================
+
+def _statement_flags(db: Session, codes: set) -> dict:
+    """code → {hasStatement, statementEntryCount} — مبني على حركات
+    source='statement' (كشف حقيقي مرفوع) فقط، لا حركات اللقطة التركيبية
+    (balance_snapshot) التي ينشئها استيراد تقرير المديونيات المجمّع تلقائياً
+    لكل مقاول سطرين. الخلط بين الاثنين هو عطب م-٢٦: إبلاغ عن «تغطية كاملة»
+    بينما مقاول واحد فقط له كشف حساب حقيقي مرفوع."""
+    from app.db import models
+    if not codes:
+        return {}
+    q = (db.query(models.Contractor.code, models.ContractorEntry.id)
+         .join(models.ContractorEntry,
+               models.ContractorEntry.contractor_id == models.Contractor.id)
+         .filter(models.Contractor.code.in_(codes),
+                 models.ContractorEntry.source == 'statement',
+                 models.ContractorEntry.deleted_at.is_(None)))
+    counts: dict = {}
+    for code, _id in q.all():
+        counts[code] = counts.get(code, 0) + 1
+    return {c: dict(hasStatement=True, statementEntryCount=n) for c, n in counts.items()}
+
+
+def _statement_flag(flags: dict, code: str) -> dict:
+    """قيمة افتراضية آمنة لمقاول بلا أي حركة كشف حقيقي على الإطلاق."""
+    return flags.get(code) or dict(hasStatement=False, statementEntryCount=0)
+
+
+def _contractor_project_balances(db: Session, codes: set) -> List[dict]:
+    """رصيد كل مقاول ضمن كل مشروع عمل عليه فعلاً، من حركات دفتره الحقيقية
+    (ContractorEntry.project) — لا بالقسمة بالتساوي على مشاريعه (عطب م-٢٨).
+    مقاولٌ له ١٠٠ ألف على مشروع وصفر على آخر يظهر هنا ١٠٠ ألف على الأول
+    وصفراً على الثاني، لا ٥٠ ألفاً لكلٍّ. project='' → UNASSIGNED_LABEL."""
+    from app.db import models
+    if not codes:
+        return []
+    q = (db.query(models.Contractor.code, models.Contractor.name,
+                  models.ContractorEntry.project,
+                  models.ContractorEntry.debit, models.ContractorEntry.credit)
+         .join(models.ContractorEntry,
+               models.ContractorEntry.contractor_id == models.Contractor.id)
+         .filter(models.Contractor.code.in_(codes),
+                 models.ContractorEntry.deleted_at.is_(None)))
+    per: dict = {}
+    names: dict = {}
+    for code, name, project, debit, credit in q.all():
+        key = (code, project or UNASSIGNED_LABEL)
+        per[key] = per.get(key, 0.0) + (debit or 0.0) - (credit or 0.0)
+        names[code] = name
+    out = []
+    for (code, project), bal in per.items():
+        if abs(bal) < 0.005:
+            continue  # صفر تام لا يخدم قائمة دائنين/مدينين
+        out.append(dict(project=project, code=code, name=names.get(code, ''),
+                        balance=round(bal, 2),
+                        unassigned=(project == UNASSIGNED_LABEL)))
+    return out
+
+
+def _project_totals(per_pairs: List[dict]) -> List[dict]:
+    """يجمع _contractor_project_balances إلى صفّ واحد لكل مشروع — نظرة القرار
+    (صيغة ٤). المجموع الكلي هنا يساوي بالضبط totals.owedToContractors/owedToUs
+    لنفس مجموعة الأكواد، لأنه مبني من نفس الحركات بنفس المعادلة."""
+    buckets: dict = {}
+    for r in per_pairs:
+        b = buckets.setdefault(r['project'], dict(owedToContractors=0.0, owedToUs=0.0,
+                                                  count=0, unassigned=r['unassigned']))
+        if r['balance'] < 0:
+            b['owedToContractors'] += abs(r['balance'])
+        else:
+            b['owedToUs'] += r['balance']
+        b['count'] += 1
+    out = [dict(project=p, owedToContractors=round(b['owedToContractors'], 2),
+               owedToUs=round(b['owedToUs'], 2), count=b['count'],
+               unassigned=b['unassigned']) for p, b in buckets.items()]
+    out.sort(key=lambda r: -r['owedToContractors'])
+    return out
+
+
+def _reported_vs_derived_rows(db: Session, codes: set, derived_by_code: dict) -> List[dict]:
+    """يقارن الرصيد المُبلَّغ (تقرير المديونيات المجمّع، reported_balance) بالرصيد
+    المشتقّ من حركات الدفتر لنفس مجموعة الأكواد المصفّاة. كل اختلاف > هللة واحدة
+    يستحق النظر — قد يكون خطأ إدخال أو حركة ناقصة."""
+    from app.db import models
+    if not codes:
+        return []
+    rows = (db.query(models.Contractor)
+            .filter(models.Contractor.code.in_(codes),
+                    models.Contractor.deleted_at.is_(None),
+                    models.Contractor.reported_balance.isnot(None)).all())
+    out = []
+    for r in rows:
+        derived = derived_by_code.get(r.code, 0.0)
+        diff = round((r.reported_balance or 0.0) - derived, 2)
+        out.append(dict(code=r.code, name=r.name, reportedBalance=round(r.reported_balance, 2),
+                        derivedBalance=round(derived, 2), diff=diff,
+                        mismatch=abs(diff) > 0.01))
+    out.sort(key=lambda r: -abs(r['diff']))
+    return out
+
+
+def _opening_vs_activity_rows(db: Session, codes: set) -> dict:
+    """code → {openingBalance, activityBalance} — الرصيد الافتتاحي (kind='opening')
+    مقابل بقية الحركات، من نفس معادلة الرصيد (مدين − دائن). دَينٌ راكد من قبل
+    استعمال التطبيق أم نشاط هذا العام؟ البيانات مخزَّنة أصلاً ولا تُعرض حالياً."""
+    from app.db import models
+    if not codes:
+        return {}
+    q = (db.query(models.Contractor.code, models.ContractorEntry.kind,
+                  models.ContractorEntry.debit, models.ContractorEntry.credit)
+         .join(models.ContractorEntry,
+               models.ContractorEntry.contractor_id == models.Contractor.id)
+         .filter(models.Contractor.code.in_(codes),
+                 models.ContractorEntry.deleted_at.is_(None)))
+    out: dict = {}
+    for code, kind, debit, credit in q.all():
+        b = out.setdefault(code, dict(openingBalance=0.0, activityBalance=0.0))
+        net = (debit or 0.0) - (credit or 0.0)
+        if kind == 'opening':
+            b['openingBalance'] += net
+        else:
+            b['activityBalance'] += net
+    for b in out.values():
+        b['openingBalance'] = round(b['openingBalance'], 2)
+        b['activityBalance'] = round(b['activityBalance'], 2)
+    return out
 
 
 def _contractors_sheet(wb: Workbook, contractors: dict, first: bool = False):
@@ -116,6 +256,452 @@ def _priorities_sheet(wb: Workbook, priorities: dict):
             cell.number_format = NUM_FMT
     _autosize(ws)
     return ws
+
+
+# =============================================================================
+# صيغ تصدير المقاولين الـ١٤ (docs/feedback/PLAN.md §٣)
+#
+# قرار التصميم: كل صيغة **ملف مستقل** بورقة تحليل واحدة (لا أوراق متعددة داخل
+# ملف واحد لكل الصيغ معاً)، ما عدا «تقرير كامل» الذي يجمعها كلها كأوراق داخل
+# ملف واحد لأن غرضه بالتعريف أن يكون كل شيء في مكان واحد. السبب: المستخدم يطبع
+# هذه الملفات (راجع السياق في مهمة الوكيل) — ملف واحد بورقة واحدة يُفتح ويُطبع
+# مباشرة بلا اختيار ورقة، وملف "لهم علينا" منفصل عن "لنا عليهم" لا يحتاج تنظيفاً
+# قبل تسليمه لمحاسب أو طباعته وحده. صيغة «تقرير كامل» وحدها تكسر هذه القاعدة
+# عمداً لأنها *بديل* عن فتح كل الملفات الأخرى واحداً واحداً.
+# =============================================================================
+
+def _sheet_title_block(ws, title: str, filters_label: str, count_label: str,
+                       count: int) -> None:
+    """سطر العنوان + سطر التصفية المطبَّقة أعلى كل ورقة — وإلا قُرئت ورقة مصفّاة
+    كأنها القائمة كاملة (قاعدة صريحة في PLAN.md §٣-٣)."""
+    ws.append([title])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=14)
+    ws.append([f'التصفية المطبَّقة: {filters_label}'])
+    ws.append([f'{count_label}: {count}'])
+    ws.append([])
+
+
+def _totals_block(ws, totals: dict) -> None:
+    """الإجماليات في الأعلى — في كل صيغة، لا في التقرير الكامل وحده (قاعدة صريحة)."""
+    ws.append(['الإجماليات'])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+    ws.append(['البند', 'المبلغ (ر.س)'])
+    _style_header(ws, ws.max_row)
+    ws.append(['مستحق لهم علينا (owedToContractors)', totals.get('owedToContractors', 0)])
+    ws.append(['مستحق لنا عليهم (owedToUs)', totals.get('owedToUs', 0)])
+    ws.append(['الرصيد الصافي', totals.get('balance', 0)])
+    ws.append(['التأمينات المحتجزة', totals.get('retentionHeld', 0)])
+    for r in range(ws.max_row - 3, ws.max_row + 1):
+        cell = ws.cell(row=r, column=2)
+        if isinstance(cell.value, (int, float)):
+            cell.number_format = NUM_FMT
+    ws.append([])
+
+
+_ROW_HEADERS = ['الكود', 'الاسم', 'المشاريع', 'له كشف حقيقي؟', 'عدد حركات الكشف',
+               'المستحقات (مستخلصات)', 'المدفوع', 'خصومات', 'التأمين المحتجز',
+               'الرصيد', 'الحالة', 'آخر دفعة — التاريخ', 'آخر دفعة — المبلغ', 'الهاتف']
+_ROW_NUM_COLS = (6, 7, 8, 9, 10, 13)
+
+
+def _row_values(r: dict, flags: dict) -> list:
+    """صفّ جهة واحدة بالأعمدة المشتركة بين معظم الصيغ — الجهات بلا كشف تُوسَم
+    صراحةً هنا (عمود «له كشف حقيقي؟») في كل صيغة تسرد جهات، لا في صيغة واحدة
+    فقط: فراغ عمود الضمان بلا هذا الوسم يُقرأ «لا ضمان» وحقيقته «لم يُرفع كشفه»."""
+    from app.services.contractors_service import CONTRACTOR_STATUS_LABELS_AR
+    f = _statement_flag(flags, r.get('code', ''))
+    lp = r.get('lastPayment') or {}
+    return [r.get('code', ''), r.get('name', ''), '، '.join(r.get('projects') or []),
+           'نعم' if f['hasStatement'] else 'لا', f['statementEntryCount'],
+           r.get('duesTotal', 0), r.get('paidTotal', 0), r.get('deductionsTotal', 0),
+           r.get('retentionHeld', 0), r.get('balance', 0),
+           CONTRACTOR_STATUS_LABELS_AR.get(r.get('status', ''), r.get('status', '')),
+           lp.get('date', ''), lp.get('amount', ''), r.get('phone', '')]
+
+
+def _write_rows_sheet(ws, rows: List[dict], flags: dict) -> None:
+    ws.append(_ROW_HEADERS)
+    _style_header(ws)
+    for r in rows:
+        ws.append(_row_values(r, flags))
+    header_row = ws.max_row - len(rows)
+    for rr in range(header_row + 1, ws.max_row + 1):
+        for c in _ROW_NUM_COLS:
+            cell = ws.cell(row=rr, column=c)
+            if isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool):
+                cell.number_format = NUM_FMT
+
+
+#: محارف يرفضها openpyxl في اسم الورقة، وحدّ الطول ٣١ محرفاً.
+#: اسم الورقة يأتي أحياناً من اسم مشروع يكتبه المستخدم — ومشروعٌ اسمه
+#: «روشن/المرحلة ٢» كان يُسقط التصدير كله بخطأ ٥٠٠ غامض بدل أن يُنتج ملفاً.
+#: التنقية هنا في نقطة الإنشاء الوحيدة، فلا يمكن لمسارٍ جديد أن يفوتها.
+_BAD_SHEET_CHARS = str.maketrans({c: '-' for c in '/\\?*[]:'})
+
+
+def _safe_sheet_title(title: str) -> str:
+    clean = (title or '').translate(_BAD_SHEET_CHARS).strip() or 'ورقة'
+    return clean[:31]
+
+
+def _new_ws(wb: Workbook, title: str, first: bool = False):
+    safe = _safe_sheet_title(title)
+    ws = wb.active if first else wb.create_sheet(safe)
+    if first:
+        ws.title = safe
+    ws.sheet_view.rightToLeft = True
+    return ws
+
+
+def _finish_sheet(ws) -> None:
+    _autosize(ws)
+    _add_logo(ws, f'{get_column_letter(ws.max_column + 2)}1')
+
+
+# ---------------------------------------------------------------- ١ · القائمة الكاملة
+def _sheet_full_list(wb, data: dict, filters_label: str, db: Session, first=False):
+    ws = _new_ws(wb, 'كل المقاولين', first)
+    rows = data.get('rows') or []
+    codes = {r.get('code', '') for r in rows}
+    flags = _statement_flags(db, codes)
+    _sheet_title_block(ws, 'القائمة الكاملة — المقاولون', filters_label,
+                       'عدد المقاولين ضمن هذه التصفية', data.get('count', 0))
+    _totals_block(ws, data.get('totals') or {})
+    _write_rows_sheet(ws, rows, flags)
+    _finish_sheet(ws)
+    return ws
+
+
+# ---------------------------------------------------------------- ٢/٣/١٢ · اتجاه واحد
+def _sheet_direction(wb, data: dict, filters_label: str, db: Session, title: str,
+                     first=False):
+    ws = _new_ws(wb, title, first)
+    rows = data.get('rows') or []
+    codes = {r.get('code', '') for r in rows}
+    flags = _statement_flags(db, codes)
+    _sheet_title_block(ws, title, filters_label, 'عدد الجهات ضمن هذه التصفية',
+                       data.get('count', 0))
+    _totals_block(ws, data.get('totals') or {})
+    _write_rows_sheet(ws, rows, flags)
+    _finish_sheet(ws)
+    return ws
+
+
+# ---------------------------------------------------------------- ٤ · إجماليات المشاريع
+def _sheet_project_totals(wb, data: dict, filters_label: str, db: Session, first=False):
+    ws = _new_ws(wb, 'إجماليات المشاريع', first)
+    rows = data.get('rows') or []
+    codes = {r.get('code', '') for r in rows}
+    per_pairs = _contractor_project_balances(db, codes)
+    totals_by_project = _project_totals(per_pairs)
+    _sheet_title_block(ws, 'إجماليات المشاريع — نظرة القرار', filters_label,
+                       'عدد المشاريع', len(totals_by_project))
+    _totals_block(ws, data.get('totals') or {})
+    ws.append(['المشروع', 'عدد الجهات', 'مستحق لهم علينا', 'مستحق لنا عليهم', 'غير مُسنَد؟'])
+    _style_header(ws, ws.max_row)
+    header_row = ws.max_row
+    for p in totals_by_project:
+        ws.append([p['project'], p['count'], p['owedToContractors'], p['owedToUs'],
+                  'نعم' if p['unassigned'] else ''])
+    for rr in range(header_row + 1, ws.max_row + 1):
+        for c in (3, 4):
+            cell = ws.cell(row=rr, column=c)
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = NUM_FMT
+    _finish_sheet(ws)
+    return ws
+
+
+# ---------------------------------------------------------------- ٥/٦ · بالمشروع ← تحته
+def _sheet_by_project_nested(wb, data: dict, filters_label: str, db: Session,
+                             want_negative: bool, title: str, first=False):
+    """لكل مشروع: إجماليه ثم من له علينا (want_negative=True) أو من لنا عليه
+    (want_negative=False) فيه، من حركات دفتره الحقيقية ضمن هذا المشروع تحديداً."""
+    from app.services.contractors_service import CONTRACTOR_STATUS_LABELS_AR
+    ws = _new_ws(wb, title, first)
+    rows = data.get('rows') or []
+    by_code = {r.get('code', ''): r for r in rows}
+    codes = set(by_code.keys())
+    flags = _statement_flags(db, codes)
+    per_pairs = _contractor_project_balances(db, codes)
+    per_pairs = [p for p in per_pairs
+                if (p['balance'] < 0) == want_negative]
+    totals_by_project = _project_totals(_contractor_project_balances(db, codes))
+    total_key = 'owedToContractors' if want_negative else 'owedToUs'
+    by_project_map = {p['project']: p for p in totals_by_project}
+
+    _sheet_title_block(ws, title, filters_label, 'عدد المشاريع',
+                       len({p['project'] for p in per_pairs}))
+    _totals_block(ws, data.get('totals') or {})
+
+    projects = sorted({p['project'] for p in per_pairs},
+                      key=lambda p: -by_project_map.get(p, {}).get(total_key, 0))
+    for proj in projects:
+        b = by_project_map.get(proj, {})
+        ws.append([f'مشروع: {proj}', '', f'الإجمالي: {b.get(total_key, 0)}',
+                  f'عدد الجهات في المشروع: {b.get("count", 0)}'])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+        ws.append(['الكود', 'الاسم', 'له كشف حقيقي؟', 'الرصيد في هذا المشروع',
+                  'الرصيد الكلي (كل المشاريع)', 'الحالة'])
+        _style_header(ws, ws.max_row)
+        header_row = ws.max_row
+        sub = sorted((p for p in per_pairs if p['project'] == proj),
+                    key=lambda p: p['balance'] if want_negative else -p['balance'])
+        for p in sub:
+            r = by_code.get(p['code'], {})
+            f = _statement_flag(flags, p['code'])
+            ws.append([p['code'], p['name'], 'نعم' if f['hasStatement'] else 'لا',
+                      p['balance'], r.get('balance', 0),
+                      CONTRACTOR_STATUS_LABELS_AR.get(r.get('status', ''), '')])
+        for rr in range(header_row + 1, ws.max_row + 1):
+            for c in (4, 5):
+                cell = ws.cell(row=rr, column=c)
+                if isinstance(cell.value, (int, float)):
+                    cell.number_format = NUM_FMT
+        ws.append([])
+    _finish_sheet(ws)
+    return ws
+
+
+# ---------------------------------------------------------------- ٧ · مشروع واحد
+def _sheet_single_project(wb, data: dict, filters_label: str, db: Session,
+                          project: str, first=False):
+    """كل ما يخصّ مشروعاً بعينه — data مسبقاً مصفّاة على هذا المشروع (project=
+    مُمرَّر إلى list_contractors)، فتصف الجهات المُسنَدة إليه، والمبالغ هنا مبنية
+    من حركات كل جهة *ضمن هذا المشروع تحديداً* لا رصيدها الكلي عبر كل مشاريعها."""
+    from app.services.contractors_service import CONTRACTOR_STATUS_LABELS_AR
+    ws = _new_ws(wb, f'مشروع {project}'[:31], first)
+    rows = data.get('rows') or []
+    by_code = {r.get('code', ''): r for r in rows}
+    codes = set(by_code.keys())
+    flags = _statement_flags(db, codes)
+    per_pairs = [p for p in _contractor_project_balances(db, codes)
+                if p['project'] == project]
+    owed = round(sum(abs(p['balance']) for p in per_pairs if p['balance'] < 0), 2)
+    owed_us = round(sum(p['balance'] for p in per_pairs if p['balance'] > 0), 2)
+
+    _sheet_title_block(ws, f'مشروع: {project}', filters_label, 'عدد الجهات في المشروع',
+                       len(per_pairs))
+    ws.append(['مستحق لهم علينا في هذا المشروع', owed])
+    ws.append(['مستحق لنا عليهم في هذا المشروع', owed_us])
+    for rr in (ws.max_row - 1, ws.max_row):
+        cell = ws.cell(row=rr, column=2)
+        cell.number_format = NUM_FMT
+    ws.append([])
+
+    ws.append(['الكود', 'الاسم', 'له كشف حقيقي؟', 'الرصيد في هذا المشروع',
+              'الرصيد الكلي (كل مشاريعه)', 'الحالة'])
+    _style_header(ws, ws.max_row)
+    header_row = ws.max_row
+    for p in sorted(per_pairs, key=lambda p: p['balance']):
+        r = by_code.get(p['code'], {})
+        f = _statement_flag(flags, p['code'])
+        ws.append([p['code'], p['name'], 'نعم' if f['hasStatement'] else 'لا',
+                  p['balance'], r.get('balance', 0),
+                  CONTRACTOR_STATUS_LABELS_AR.get(r.get('status', ''), '')])
+    for rr in range(header_row + 1, ws.max_row + 1):
+        for c in (4, 5):
+            cell = ws.cell(row=rr, column=c)
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = NUM_FMT
+    _finish_sheet(ws)
+    return ws
+
+
+# ---------------------------------------------------------------- ٩ · كشف جهة واحدة
+def _sheet_single_statement(wb, detail: dict, code: str, first=False):
+    """كشف مقاول واحد — يُرسَل إليه للمطابقة. detail من
+    contractors_service.contractor_detail_json (استدعاء قراءة فقط، لا تعديل
+    لملف contractors_service.py المملوك لوكيل آخر)."""
+    ws = _new_ws(wb, f'كشف {code}'[:31], first)
+    ws.append([f"كشف حساب — {detail.get('name', '')} ({code})"])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=14)
+    ws.append([f"الهاتف: {detail.get('phone', '')}"])
+    ws.append([f"المشاريع: {'، '.join(detail.get('projects') or [])}"])
+    ws.append([])
+    ws.append(['الرصيد الحالي', detail.get('balance', 0)])
+    ws.append(['إجمالي المستخلصات', detail.get('duesTotal', 0)])
+    ws.append(['إجمالي المدفوع', detail.get('paidTotal', 0)])
+    ws.append(['التأمين المحتجز', detail.get('retentionTotal', 0)])
+    for rr in range(ws.max_row - 3, ws.max_row + 1):
+        cell = ws.cell(row=rr, column=2)
+        if isinstance(cell.value, (int, float)):
+            cell.number_format = NUM_FMT
+    ws.append([])
+
+    ws.append(['التاريخ', 'النوع', 'المشروع', 'الوصف', 'رقم المستخلص', 'مدين', 'دائن',
+              'المصدر'])
+    _style_header(ws, ws.max_row)
+    header_row = ws.max_row
+    _KIND_LABELS = dict(claim='مستخلص', payment='دفعة', retention='تأمين/ضمان',
+                        deduction='خصم', invoice='فاتورة محمّلة', opening='رصيد افتتاحي',
+                        other='أخرى')
+    _SOURCE_LABELS = dict(statement='كشف مرفوع', manual='يدوي',
+                         balance_snapshot='لقطة رصيد (بلا كشف تفصيلي)')
+    for e in detail.get('entries') or []:
+        ws.append([e.get('date', ''), _KIND_LABELS.get(e.get('kind', ''), e.get('kind', '')),
+                  e.get('project', ''), e.get('description', ''), e.get('claimNo', ''),
+                  e.get('debit', 0), e.get('credit', 0),
+                  _SOURCE_LABELS.get(e.get('source', ''), e.get('source', ''))])
+    for rr in range(header_row + 1, ws.max_row + 1):
+        for c in (6, 7):
+            cell = ws.cell(row=rr, column=c)
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = NUM_FMT
+    _finish_sheet(ws)
+    return ws
+
+
+# ---------------------------------------------------------------- ١٠ · بلا كشف مرفوع
+def _sheet_missing_statement(wb, data: dict, filters_label: str, db: Session, first=False):
+    """قائمة عمل: الجهات ضمن التصفية الحالية التي لم يُرفع لها كشف حساب حقيقي
+    بعد (source='statement') — تحوّل النقص من تحذير عام إلى مهمة بأسماء وأكواد."""
+    ws = _new_ws(wb, 'بلا كشف مرفوع', first)
+    rows = data.get('rows') or []
+    codes = {r.get('code', '') for r in rows}
+    flags = _statement_flags(db, codes)
+    missing = [r for r in rows if not _statement_flag(flags, r.get('code', ''))['hasStatement']]
+    _sheet_title_block(ws, 'بلا كشف مرفوع — قائمة عمل', filters_label,
+                       'عدد الجهات بلا كشف حقيقي', len(missing))
+    _totals_block(ws, data.get('totals') or {})
+    _write_rows_sheet(ws, missing, flags)
+    _finish_sheet(ws)
+    return ws
+
+
+# ---------------------------------------------------------------- ١١ · المبلَّغ مقابل المشتقّ
+def _sheet_reported_vs_derived(wb, data: dict, filters_label: str, db: Session, first=False):
+    ws = _new_ws(wb, 'المبلَّغ مقابل المشتقّ', first)
+    rows = data.get('rows') or []
+    codes = {r.get('code', '') for r in rows}
+    derived_by_code = {r.get('code', ''): r.get('balance', 0) for r in rows}
+    cmp_rows = _reported_vs_derived_rows(db, codes, derived_by_code)
+    n_mismatch = sum(1 for r in cmp_rows if r['mismatch'])
+    _sheet_title_block(ws, 'المبلَّغ (تقرير المديونيات) مقابل المشتقّ (الحركات)',
+                       filters_label, 'عدد الجهات ذات رصيد مُبلَّغ', len(cmp_rows))
+    ws.append([f'عدد الاختلافات (> ٠.٠١ ر.س) التي تستحق النظر: {n_mismatch}'])
+    ws.append([])
+    ws.append(['الكود', 'الاسم', 'الرصيد المُبلَّغ', 'الرصيد المشتقّ من الحركات',
+              'الفرق', 'يستحق المراجعة؟'])
+    _style_header(ws, ws.max_row)
+    header_row = ws.max_row
+    for r in cmp_rows:
+        ws.append([r['code'], r['name'], r['reportedBalance'], r['derivedBalance'],
+                  r['diff'], 'نعم' if r['mismatch'] else ''])
+    for rr in range(header_row + 1, ws.max_row + 1):
+        for c in (3, 4, 5):
+            cell = ws.cell(row=rr, column=c)
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = NUM_FMT
+    _finish_sheet(ws)
+    return ws
+
+
+# ---------------------------------------------------------------- ١٣ · بالحالة
+def _sheet_by_status(wb, data: dict, filters_label: str, db: Session, first=False):
+    from app.services.contractors_service import CONTRACTOR_STATUS_LABELS_AR
+    ws = _new_ws(wb, 'بالحالة', first)
+    rows = data.get('rows') or []
+    codes = {r.get('code', '') for r in rows}
+    flags = _statement_flags(db, codes)
+    totals = data.get('totals') or {}
+    by_status = totals.get('byStatus') or {}
+    _sheet_title_block(ws, 'التوزيع بالحالة', filters_label, 'عدد الحالات المختلفة',
+                       len(by_status))
+    _totals_block(ws, totals)
+    ws.append(['الحالة', 'العدد', 'الرصيد', 'مستحق لهم علينا', 'مستحق لنا عليهم'])
+    _style_header(ws, ws.max_row)
+    header_row = ws.max_row
+    for status, b in sorted(by_status.items(), key=lambda kv: -kv[1].get('owedToContractors', 0)):
+        label = CONTRACTOR_STATUS_LABELS_AR.get(status, status)
+        ws.append([label, b.get('count', 0), b.get('balance', 0),
+                  b.get('owedToContractors', 0), b.get('owedToUs', 0)])
+    for rr in range(header_row + 1, ws.max_row + 1):
+        for c in (3, 4, 5):
+            cell = ws.cell(row=rr, column=c)
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = NUM_FMT
+    ws.append([])
+
+    # للمراجعة القانونية: تفصيل حالتي «متنازع عليه» و«قائمة سوداء» تحديداً بأسماء
+    for status in ('disputed', 'blacklisted'):
+        subset = [r for r in rows if r.get('status') == status]
+        if not subset:
+            continue
+        ws.append([CONTRACTOR_STATUS_LABELS_AR.get(status, status)])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+        _write_rows_sheet(ws, subset, flags)
+        ws.append([])
+    _finish_sheet(ws)
+    return ws
+
+
+# ---------------------------------------------------------------- ١٤ · الافتتاحي مقابل الحركة
+def _sheet_opening_vs_activity(wb, data: dict, filters_label: str, db: Session, first=False):
+    ws = _new_ws(wb, 'الافتتاحي مقابل الحركة', first)
+    rows = data.get('rows') or []
+    codes = {r.get('code', '') for r in rows}
+    flags = _statement_flags(db, codes)
+    by_code = _opening_vs_activity_rows(db, codes)
+    _sheet_title_block(ws, 'الرصيد الافتتاحي مقابل نشاط الحركة', filters_label,
+                       'عدد الجهات ذات حركات دفتر', len(by_code))
+    _totals_block(ws, data.get('totals') or {})
+    ws.append(['الكود', 'الاسم', 'له كشف حقيقي؟', 'الرصيد الافتتاحي', 'نشاط الحركة',
+              'الرصيد الكلي', 'الأغلب: افتتاحي راكد أم نشاط؟'])
+    _style_header(ws, ws.max_row)
+    header_row = ws.max_row
+    by_name = {r.get('code', ''): r.get('name', '') for r in rows}
+    for code, b in sorted(by_code.items(), key=lambda kv: kv[1]['openingBalance'] + kv[1]['activityBalance']):
+        f = _statement_flag(flags, code)
+        dominant = 'افتتاحي راكد' if abs(b['openingBalance']) >= abs(b['activityBalance']) \
+            else 'نشاط جديد'
+        ws.append([code, by_name.get(code, ''), 'نعم' if f['hasStatement'] else 'لا',
+                  b['openingBalance'], b['activityBalance'],
+                  round(b['openingBalance'] + b['activityBalance'], 2), dominant])
+    for rr in range(header_row + 1, ws.max_row + 1):
+        for c in (4, 5, 6):
+            cell = ws.cell(row=rr, column=c)
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = NUM_FMT
+    _finish_sheet(ws)
+    return ws
+
+
+#: الصيغ الاثنتا عشرة القابلة للتجميع في «تقرير كامل» — كل عنصر (عنوان، دالة
+#: بناء) يُستدعى بترتيب واحد. لا تشمل «مشروع واحد» و«كشف جهة واحدة»: تحتاجان
+#: مُعطى إضافياً (اسم مشروع / كود) لا معنى له في تقرير شامل لكل الجهات.
+def build_contractors_full_report(data: dict, filters_label: str, db: Session) -> bytes:
+    """صيغة ٨ — تقرير كامل: الإجماليات في الأعلى (على مستوى الملف) ثم كل الصيغ
+    القابلة للتجميع كأوراق داخل ملف واحد."""
+    wb = Workbook()
+    _sheet_full_list(wb, data, filters_label, db, first=True)
+    _sheet_direction(wb, _subset(data, lambda r: r['balance'] < 0), filters_label, db,
+                     'لهم علينا')
+    _sheet_direction(wb, _subset(data, lambda r: r['balance'] > 0), filters_label, db,
+                     'لنا عليهم')
+    _sheet_project_totals(wb, data, filters_label, db)
+    _sheet_by_project_nested(wb, data, filters_label, db, True, 'بالمشروع - الدائنون')
+    _sheet_by_project_nested(wb, data, filters_label, db, False, 'بالمشروع - المدينون')
+    _sheet_missing_statement(wb, data, filters_label, db)
+    _sheet_reported_vs_derived(wb, data, filters_label, db)
+    _sheet_direction(wb, _subset(data, lambda r: r['balance'] == 0), filters_label, db,
+                     'المتساوية والخاملة')
+    _sheet_by_status(wb, data, filters_label, db)
+    _sheet_opening_vs_activity(wb, data, filters_label, db)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _subset(data: dict, predicate) -> dict:
+    """ينسخ data['rows'] المصفّاة إلى مجموعة فرعية بنفس شكل payload القائمة —
+    totals تبقى totals الأصلية (تصف كل التصفية المطبَّقة، لا المجموعة الفرعية
+    وحدها) لأن هذه الأوراق تُبنى *داخل* تقرير كامل عن نفس التصفية بالضبط."""
+    rows = [r for r in (data.get('rows') or []) if predicate(r)]
+    out = dict(data)
+    out['rows'] = rows
+    out['count'] = len(rows)
+    return out
 
 
 def build_project_summary_workbook(payload: dict) -> bytes:
@@ -169,7 +755,7 @@ _DIRECTION_LABELS_AR = {
 }
 
 
-def build_contractors_export_workbook(data: dict, filters_label: str) -> bytes:
+def build_contractors_export_workbook(data: dict, filters_label: str, db: Session) -> bytes:
     """تصدير المقاولين — ورقتان: «تحليل المقاولين» (الأولى، مبنية من نفس rows
     المصفّاة التي يعرضها الجدول) ثم «المقاولون» (الجدول الخام، عبر _contractors_sheet
     المُعاد استعمالها من build_workbook). العمل السابق ترك استدعاءً لهذه الدالة
@@ -177,6 +763,11 @@ def build_contractors_export_workbook(data: dict, filters_label: str) -> bytes:
 
     الورقة التحليلية مبنية من data['rows'] المصفّاة نفسها لا من الدفتر كاملاً، وإلا
     ناقض التصدير ما تعرضه الشاشة فعلاً (نفس مبدأ priorities/analysis في الموردين).
+
+    `db` إلزامي الآن — التوزيع بالمشروع يُبنى من حركات الدفتر الحقيقية
+    (_contractor_project_balances) لا بالقسمة بالتساوي على مشاريع كل مقاول
+    (عطب م-٢٨ الموثَّق في PLAN.md §٢: مقاولٌ له ١٠٠ ألف على مشروع وصفر على آخر
+    كان يظهر ٥٠ ألفاً لكلٍّ منهما — رقمٌ لا وجود له في الدفتر يُطبَع ويُقرَّر عليه).
     """
     from app.services.contractors_service import CONTRACTOR_STATUS_LABELS_AR
 
@@ -205,26 +796,17 @@ def build_contractors_export_workbook(data: dict, filters_label: str) -> bytes:
     ws.append(['التأمينات المحتجزة', totals.get('retentionHeld', 0)])
     ws.append([])
 
-    # ---- التوزيع بالمشروع — توزيع مبسّط: رصيد كل مقاول يُقسم بالتساوي على
-    # مشاريعه المُعيَّنة (حتى لا يتضاعف المجموع حين يعمل مقاول على أكثر من مشروع)،
-    # بلا مشروع → «بلا مشروع». هذا اشتقاق محلي من rows نفسها، لا استعلام إضافي
-    # للحركات لكل مشروع — يبقى التصدير موصوفاً بنفس المجموعة المصفّاة المعروضة.
-    by_project: dict = {}
-    for r in rows:
-        projects = r.get('projects') or ['بلا مشروع']
-        share_owed = (abs(r['balance']) / len(projects)) if r['balance'] < 0 else 0
-        share_us = (r['balance'] / len(projects)) if r['balance'] > 0 else 0
-        for p in projects:
-            b = by_project.setdefault(p, dict(owedToContractors=0.0, owedToUs=0.0, count=0))
-            b['owedToContractors'] += share_owed
-            b['owedToUs'] += share_us
-            b['count'] += 1
+    # ---- التوزيع بالمشروع — من حركات الدفتر الحقيقية (ContractorEntry.project) لكل
+    # مقاول ضمن هذه المجموعة المصفّاة، لا بالقسمة بالتساوي (عطب م-٢٨، انظر تعليق
+    # الدالة). project='' → UNASSIGNED_LABEL يُعرض صراحةً ولا يُقسَّم على مشاريع أخرى.
+    codes = {r.get('code', '') for r in rows}
+    by_project = _project_totals(_contractor_project_balances(db, codes))
     ws.append(['التوزيع بالمشروع'])
     ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
     ws.append(['المشروع', 'عدد المقاولين', 'مستحق لهم علينا', 'مستحق لنا عليهم'])
     _style_header(ws, ws.max_row)
-    for p, b in sorted(by_project.items(), key=lambda kv: -kv[1]['owedToContractors']):
-        ws.append([p, b['count'], round(b['owedToContractors'], 2), round(b['owedToUs'], 2)])
+    for p in by_project:
+        ws.append([p['project'], p['count'], p['owedToContractors'], p['owedToUs']])
     ws.append([])
 
     # ---- التوزيع بالحالة
@@ -272,6 +854,74 @@ def build_contractors_export_workbook(data: dict, filters_label: str) -> bytes:
     # ---------------------------------------------------------- ورقة الجدول الخام
     _contractors_sheet(wb, data, first=False)
 
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+#: يربط قيمة format= في GET /contractors/export.xlsx بدالة بناء ورقة واحدة —
+#: كل صيغة غير full/full_report/single_project/single_statement ملف بورقة
+#: واحدة (انظر تعليق التصميم أعلى _sheet_title_block). القيمة تُستدعى بـ
+#: (wb, data, filters_label, db, first=True)، فتبني نفس التوقيع تماماً.
+_SINGLE_SHEET_BUILDERS = {
+    'creditors': lambda wb, data, fl, db, **kw: _sheet_direction(
+        wb, data, fl, db, 'لهم علينا فقط', first=True),
+    'debtors': lambda wb, data, fl, db, **kw: _sheet_direction(
+        wb, data, fl, db, 'لنا عليهم فقط', first=True),
+    'project_totals': lambda wb, data, fl, db, **kw: _sheet_project_totals(
+        wb, data, fl, db, first=True),
+    'by_project_creditors': lambda wb, data, fl, db, **kw: _sheet_by_project_nested(
+        wb, data, fl, db, True, 'بالمشروع - الدائنون تحته', first=True),
+    'by_project_debtors': lambda wb, data, fl, db, **kw: _sheet_by_project_nested(
+        wb, data, fl, db, False, 'بالمشروع - المدينون تحته', first=True),
+    'missing_statement': lambda wb, data, fl, db, **kw: _sheet_missing_statement(
+        wb, data, fl, db, first=True),
+    'reported_vs_derived': lambda wb, data, fl, db, **kw: _sheet_reported_vs_derived(
+        wb, data, fl, db, first=True),
+    'balanced_dormant': lambda wb, data, fl, db, **kw: _sheet_direction(
+        wb, data, fl, db, 'المتساوية والخاملة', first=True),
+    'by_status': lambda wb, data, fl, db, **kw: _sheet_by_status(
+        wb, data, fl, db, first=True),
+    'opening_vs_activity': lambda wb, data, fl, db, **kw: _sheet_opening_vs_activity(
+        wb, data, fl, db, first=True),
+}
+
+#: قيم format= الصالحة — تُستعمل في routes/contractors.py للتحقق قبل التنفيذ.
+CONTRACTOR_EXPORT_FORMATS = (
+    ('full',) + tuple(_SINGLE_SHEET_BUILDERS.keys()) +
+    ('single_project', 'single_statement', 'full_report'))
+
+
+def build_contractors_format_workbook(fmt: str, data: dict, filters_label: str,
+                                      db: Session, project: Optional[str] = None,
+                                      code: Optional[str] = None,
+                                      detail: Optional[dict] = None) -> bytes:
+    """المُوزِّع المركزي لصيغ تصدير المقاولين الـ١٤ — استدعاء واحد من
+    routes/contractors.py لأي format= صالح. 'full' و'full_report' لهما بناء خاص
+    (تحليل + جدول خام / تجميع كل الصيغ)؛ 'single_project'/'single_statement'
+    يحتاجان `project`/`code`+`detail` على الترتيب؛ البقية أوراق مفردة عبر
+    _SINGLE_SHEET_BUILDERS أعلاه."""
+    if fmt == 'full':
+        return build_contractors_export_workbook(data, filters_label, db)
+    if fmt == 'full_report':
+        return build_contractors_full_report(data, filters_label, db)
+    if fmt == 'single_project':
+        wb = Workbook()
+        _sheet_single_project(wb, data, filters_label, db, project or '', first=True)
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+    if fmt == 'single_statement':
+        wb = Workbook()
+        _sheet_single_statement(wb, detail or {}, code or '', first=True)
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+    builder = _SINGLE_SHEET_BUILDERS.get(fmt)
+    if builder is None:
+        raise ValueError(f'صيغة تصدير غير معروفة: {fmt}')
+    wb = Workbook()
+    builder(wb, data, filters_label, db)
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
