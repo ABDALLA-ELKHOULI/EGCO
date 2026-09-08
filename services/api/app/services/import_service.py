@@ -30,6 +30,7 @@ from app.ingest.budget_xlsx import BudgetParseError
 from app.ingest.contractors_balance_xls import ContractorsBalanceParseError
 from app.ingest.csv_statement import CsvStatementParseError
 from app.ingest.debts_report_xls import DebtsReportParseError
+from app.ingest.friendly_errors import FriendlyFileError, check_basic_file, check_scanned_pdf
 from app.ingest.pdf_statement import StatementParseError
 from app.ingest.receivables_excel import ReceivablesExcelParseError
 from app.ingest.receivables_legacy import ReceivablesParseError
@@ -512,6 +513,52 @@ def import_budget_file(db: Session, path: str, backup: bool = True) -> dict:
     if backup:
         backup_db()
     return budget_service.import_budget(db, path)
+
+
+#: امتدادات المرفق المقبولة — أصل الموازنة (١٥ عيّنة فُحصت) دائماً PDF ممسوح أو
+#: Excel، فلا داعي لقبول تنفيذي عام قد يخفي رفعاً خاطئاً.
+_ATTACHMENT_EXTS = {'.pdf', '.xlsx', '.xlsm', '.xls', '.jpg', '.jpeg', '.png'}
+
+
+def _sanitize_attachment_name(name: str) -> str:
+    """اسم ملف آمن للتخزين: يُسقط أي مسار (`/`، `\\`) بقي فيه، ويُبقي العربية
+    والأرقام واللاتيني فقط. اسم عربي طويل جداً أو بمحارف غريبة لا يجب أن يكسر
+    نظام الملفات أو يُفلت من مجلد المرفقات."""
+    name = os.path.basename(name).replace('\\', '_')
+    name = unicodedata.normalize('NFC', name)
+    base, ext = os.path.splitext(name)
+    base = re.sub(r'[^\w؀-ۿ\- ]', '_', base).strip(' _') or 'مرفق'
+    ext = re.sub(r'[^A-Za-z0-9.]', '', ext)[:10]
+    return (base[:120] + ext) or 'مرفق'
+
+
+def save_budget_attachment(src_path: str) -> str:
+    """ينسخ ملف تقرير الموازنة الأصلي (المرفوع عبر حوار النظام في العملية
+    الرئيسية) إلى مجلد مرفقات الموازنة، ويعيد المسار المخزَّن ليُحفظ في
+    `BudgetSnapshot.attachment`.
+
+    لا يُستعمل مسار الوجهة القادم من الواجهة كما هو أبداً — الاسم يُبنى هنا من
+    اسم الملف المصدر بعد تنظيفه (`_sanitize_attachment_name`)؛ تدقيق أمني سابق
+    أثبت أن كل مسارات الملفات تمر عبر حوار النظام، فالمصدر موثوق لكن اسمه غير
+    موثوق (عربي طويل، أو فيه `/`). تعارض الاسم (نفس الاسم مرفوعاً مرتين) يُحل
+    بلاحقة رقمية بدل الكتابة فوق مرفق قائم."""
+    check_basic_file(src_path, 'مرفق الموازنة', FriendlyFileError)
+    ext = os.path.splitext(src_path)[1].lower()
+    if ext not in _ATTACHMENT_EXTS:
+        raise FriendlyFileError(
+            f'صيغة المرفق {ext or "غير معروفة"} غير مدعومة — المقبول: PDF أو Excel أو صورة.')
+
+    dest_dir = settings.DATA_DIR / 'budget_attachments'
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = _sanitize_attachment_name(src_path)
+    base, ext = os.path.splitext(safe_name)
+    dest = dest_dir / safe_name
+    counter = 1
+    while dest.exists():
+        dest = dest_dir / f'{base}_{counter}{ext}'
+        counter += 1
+    shutil.copy2(src_path, dest)
+    return str(dest)
 
 
 def import_suppliers(db: Session, path: str, backup: bool = True) -> dict:
@@ -1000,9 +1047,21 @@ def _needs_classification_preview(parsed: dict) -> dict:
     )
 
 
+#: تقارير الانحراف الأربع (الرسين/السدن/دارة المدينة/سدايم شهر ٨) صورٌ ممسوحة
+#: ضوئياً بامتداد .pdf، فتُصنَّف `pdf_statement` بالامتداد وحده (لا مسار موازنة
+#: لملفات PDF إطلاقاً). بلا هذا الفحص كانت تدخل `contractor_statement.parse`
+#: فترتدّ برسالة كشف حساب غامضة لا تشرح أن المشكلة "صورة بلا نص" ولا توجّه
+#: للإدخال اليدوي. القياس لا الامتداد هو الحكم — PDF نصّي عادي (شركة قنبر مثلاً)
+#: يمرّ بلا أثر.
+def _reject_if_scanned_pdf(source: str, path: str) -> None:
+    if source == 'pdf_statement':
+        check_scanned_pdf(path, BudgetParseError)
+
+
 def preview_statement(path: str, source: str = 'pdf_statement',
                       db: Optional[Session] = None) -> dict:
     """قراءة بلا حفظ — powers the review screen (S5) before anything is written."""
+    _reject_if_scanned_pdf(source, path)
     if source == 'pdf_statement':
         probe = contractor_statement.parse(path)
         k = dispatch_kind(db, probe['account'])
@@ -1087,6 +1146,7 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
     saved — reason='needs_classification' — so the caller (batch_import / the route)
     can surface the تصنيف flow instead of guessing.
     """
+    _reject_if_scanned_pdf(source, path)
     if source == 'pdf_statement':
         probe = contractor_statement.parse(path)
         kind = dispatch_kind(db, probe['account'])

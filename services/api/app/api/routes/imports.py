@@ -14,6 +14,7 @@ from app.db import models
 from app.db.session import get_session
 from app.ingest import contractor_statement
 from app.ingest.budget_xlsx import BudgetParseError
+from app.ingest.friendly_errors import FriendlyFileError
 from app.ingest.csv_statement import CsvStatementParseError
 from app.ingest.contractors_balance_xls import ContractorsBalanceParseError
 from app.ingest.debts_report_xls import DebtsReportParseError
@@ -112,6 +113,25 @@ def classify_file(body: ClassifyFileRequest) -> dict:
     if not os.path.isfile(body.path):
         raise HTTPException(404, detail='الملف غير موجود')
     return dict(source=import_service.classify_path(body.path))
+
+
+class BudgetAttachmentRequest(BaseModel):
+    path: str
+
+
+@router.post('/budget-attachment')
+def upload_budget_attachment(body: BudgetAttachmentRequest) -> dict:
+    """ينسخ ملف التقرير الأصلي (Excel أو PDF ممسوح) إلى مجلد مرفقات الموازنة
+    ويعيد المسار المخزَّن — تستدعيها شاشة الموازنة (ح١) لتُثبته في
+    `BudgetSnapshot.attachment` بعد إنشاء/تعديل الشهر. لا كتابة في القاعدة هنا،
+    فقط نسخ الملف."""
+    if not os.path.isfile(body.path):
+        raise HTTPException(404, detail='الملف غير موجود')
+    try:
+        stored = import_service.save_budget_attachment(body.path)
+    except FriendlyFileError as e:
+        raise HTTPException(422, detail=str(e))
+    return dict(attachment=stored)
 
 
 @router.post('/batch')

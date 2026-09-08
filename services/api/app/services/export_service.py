@@ -13,7 +13,7 @@ from typing import List, Optional
 
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as XLImage
-from openpyxl.styles import Font
+from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from sqlalchemy.orm import Session
 
@@ -1017,6 +1017,233 @@ def build_workbook(analysis: dict, periodic: Optional[dict] = None,
 
     if priorities is not None:
         _priorities_sheet(wb, priorities)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+# =============================================================================
+# تصدير الموازنة — GET /api/v1/budget/export.xlsx (docs/feedback/PLAN-BUDGET.md
+# §٥-٤). يُصدَّر بالضبط ما يعرضه GET /budget بنفس فلاتره — لا الدفتر كاملاً
+# (نفس قاعدة export_suppliers_xlsx/export_contractors_xlsx أعلاه). `data` هنا هو
+# استجابة budget_service.budget_list_json نفسها بحرفها — لا حساب محلي جديد.
+# =============================================================================
+
+#: تلوين اتجاه التراكمي (لا عتبة سحرية — انظر PLAN-BUDGET §٥-١): أخضر فاتح حين
+#: الفعلي التراكمي أعلى من المخطط (إنجاز أعلى)، أحمر فاتح للعكس، بلا تلوين حين
+#: يتطابقان تماماً.
+_FILL_AHEAD = PatternFill(start_color='FFC6EFCE', end_color='FFC6EFCE', fill_type='solid')
+_FILL_BEHIND = PatternFill(start_color='FFFFC7CE', end_color='FFFFC7CE', fill_type='solid')
+
+_BUDGET_STATUS_LABELS_AR = {'ahead': 'متقدّم', 'behind': 'متأخر', 'on_track': 'مطابق'}
+_BUDGET_SOURCE_LABELS_AR = {'file': 'ملف', 'manual': 'يدوي'}
+
+
+def budget_filters_label(filters: dict) -> str:
+    """نص عربي واحد يصف كل تصفية مُطبَّقة على الموازنة — نفس دور _filters_label
+    في المقاولين، يُطبع أعلى ورقة التحليل حتى لا يُقرأ ملفٌ مُصدَّر لاحقاً على
+    أنه يصف كل المشاريع وهو في الحقيقة مصفّى."""
+    parts = []
+    if filters.get('project'):
+        parts.append(f"مشروع: {filters['project']}")
+    if filters.get('city'):
+        parts.append(f"مدينة: {filters['city']}")
+    if filters.get('fromMonth') or filters.get('toMonth'):
+        parts.append(f"المدة: {filters.get('fromMonth') or '—'} ← {filters.get('toMonth') or '—'}")
+    if filters.get('status'):
+        parts.append(f"الحالة: {_BUDGET_STATUS_LABELS_AR.get(filters['status'], filters['status'])}")
+    if filters.get('hasClaims') is not None:
+        parts.append('لها مستخلصات' if filters['hasClaims'] else 'بلا مستخلصات')
+    return '؛ '.join(parts) if parts else 'بلا تصفية — كل المشاريع وكل الأشهر'
+
+
+def _budget_missing_range_rows(db: Session, filters: dict) -> List[str]:
+    """يكتشف مشروعاً **ضمن التصفية** لا يملك أي شهر داخل مدى from_month/to_month
+    المختار رغم أن له لقطات حقيقية خارج هذه المدة — الخطر الرابع في PLAN-BUDGET
+    §٨: «الفراغ يُقرأ صفراً في مدة بلا بيانات». لا معنى لهذا الفحص بلا مدى تاريخ،
+    فيُعاد فارغاً حينها. يعتمد على استعلامات مباشرة على BudgetSnapshot لأنه يحتاج
+    رؤية ما *خارج* التصفية أيضاً (اللقطات خارج المدى) لا ما تعرضه الشاشة فقط."""
+    from app.db import models
+    import datetime as _dt
+
+    from_month, to_month = filters.get('fromMonth'), filters.get('toMonth')
+    if not from_month and not to_month:
+        return []
+    from_d = _dt.date.fromisoformat(from_month) if from_month else None
+    to_d = _dt.date.fromisoformat(to_month) if to_month else None
+
+    q = db.query(models.BudgetSnapshot.project, models.BudgetSnapshot.month).filter(
+        models.BudgetSnapshot.deleted_at.is_(None))
+    if filters.get('project'):
+        q = q.filter(models.BudgetSnapshot.project == filters['project'])
+    if filters.get('city'):
+        city_projects = {c.project for c in db.query(models.ProjectCity.project)
+                         .filter(models.ProjectCity.city == filters['city'],
+                                 models.ProjectCity.deleted_at.is_(None)).all()}
+        if not city_projects:
+            return []
+        q = q.filter(models.BudgetSnapshot.project.in_(city_projects))
+
+    by_project: dict = {}
+    for project, month in q.all():
+        by_project.setdefault(project, []).append(month)
+
+    warnings = []
+    for project, months in sorted(by_project.items()):
+        in_range = [m for m in months
+                   if (not from_d or m >= from_d) and (not to_d or m <= to_d)]
+        if not in_range and months:
+            first, last = min(months), max(months)
+            warnings.append(
+                f'مشروع «{project}»: لا يوجد أي شهر مُسجَّل ضمن المدة '
+                f'{from_month or "—"} ← {to_month or "—"} — لقطاته الفعلية '
+                f'تمتد من {first.isoformat()} إلى {last.isoformat()}. الفراغ هنا '
+                f'لا يعني صفراً، بل أن المدة المختارة لا تغطي هذا المشروع.')
+    return warnings
+
+
+def build_budget_export_workbook(data: dict, filters_label: str, db: Session,
+                                 filters: Optional[dict] = None) -> bytes:
+    """ورقة تحليل أولى للموازنة — الإجماليات المجمَّعة أعلاها، ثم سطر التصفية
+    المطبَّقة صراحةً، ثم جدول الأشهر بالمشروع ملوَّناً بالاتجاه (لا بعتبة)، ثم
+    المستخلصات، وأخيراً تنويه صريح لأي مشروع ضمن التصفية بلا شهر في المدة
+    المختارة. `data` هو خرج budget_service.budget_list_json حرفياً — لا حساب
+    محلي جديد للأرقام هنا، القيم كلها منسوخة كما وصلت من محرك الحساب المختبَر.
+    """
+    filters = filters or (data.get('filtersApplied') or {})
+    rows = data.get('rows') or []
+    totals = data.get('totals') or {}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'تحليل الموازنة'
+    ws.sheet_view.rightToLeft = True
+
+    ws.append(['تحليل الموازنة التقديرية'])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=14)
+    ws.append([f'التصفية المطبَّقة: {filters_label}'])
+    ws.append([f'عدد الأشهر ضمن هذه التصفية: {data.get("count", 0)}'])
+    ws.append([])
+
+    # ---- الإجماليات المجمَّعة في الأعلى (فعلي/مخطط/انحراف/نسبة إنجاز) — من
+    # totals الجاهزة نفسها التي يعرضها GET /budget، لا حساب محلي جديد.
+    cum_actual_t = totals.get('cumActual', 0) or 0
+    cum_planned_t = totals.get('cumPlanned', 0) or 0
+    deviation_t = (totals.get('actualMonth', 0) or 0) - (totals.get('plannedMonth', 0) or 0)
+    completion_t = (cum_actual_t / cum_planned_t) if cum_planned_t else None
+    delay_t = (1.0 - completion_t) if completion_t is not None else None
+
+    ws.append(['الإجماليات (مجمَّعة على التصفية الحالية)'])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+    ws.append(['البند', 'القيمة'])
+    _style_header(ws, ws.max_row)
+    ws.append(['الفعلي للأشهر المصفّاة', totals.get('actualMonth', 0)])
+    ws.append(['المخطط للأشهر المصفّاة', totals.get('plannedMonth', 0)])
+    ws.append(['انحراف الفترة (فعلي − مخطط)', deviation_t])
+    ws.append(['التراكمي الفعلي (آخر قيمة لكل صف مصفّى، مجموعة)', cum_actual_t])
+    ws.append(['التراكمي المخطط (آخر قيمة لكل صف مصفّى، مجموعة)', cum_planned_t])
+    ws.append(['نسبة الإنجاز المجمَّعة', f'{completion_t * 100:.2f}٪' if completion_t is not None else '—'])
+    ws.append(['نسبة التأخر المجمَّعة', f'{delay_t * 100:.2f}٪' if delay_t is not None else '—'])
+    for r in range(ws.max_row - 6, ws.max_row - 2):
+        cell = ws.cell(row=r, column=2)
+        if isinstance(cell.value, (int, float)):
+            cell.number_format = NUM_FMT
+    ws.append([])
+
+    # ---- تنويه صريح: مشروع ضمن التصفية بلا أي شهر في المدة المختارة — الفراغ
+    # لا يُقرأ صفراً (PLAN-BUDGET §٨ خطر ٤).
+    missing_warnings = _budget_missing_range_rows(db, filters)
+    if missing_warnings:
+        ws.append(['⚠ تنويه — مشاريع ضمن التصفية بلا بيانات في هذه المدة'])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True, color='FFCC0000')
+        for w in missing_warnings:
+            ws.append([w])
+            ws.cell(row=ws.max_row, column=1).font = Font(color='FFCC0000')
+        ws.append([])
+
+    # ---- جدول الأشهر بالمشروع — ملوَّن حسب اتجاه كلٍّ من الشهر وتراكميه كلٌّ
+    # بمعناه (شهرٌ أخضر لا يخفي تراكمياً أحمر، وبالعكس — قاعدة PLAN-BUDGET §٥-١).
+    ws.append(['جدول الأشهر بالمشروع'])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+    headers = ['المشروع', 'المدينة', 'الشهر', 'الفعلي', 'المخطط', 'انحراف الشهر',
+              'التراكمي الفعلي', 'التراكمي المخطط', 'نسبة الإنجاز', 'نسبة التأخر',
+              'تحسّن/تراجع (نقطة)', 'الحالة', 'المصدر', 'رقم الوثيقة', 'تاريخ الإصدار']
+    ws.append(headers)
+    _style_header(ws, ws.max_row)
+    header_row = ws.max_row
+    month_col, actual_col, planned_col, dev_col = 3, 4, 5, 6
+    cum_actual_col, cum_planned_col = 7, 8
+    completion_col, delay_col, delta_col = 9, 10, 11
+
+    sorted_rows = sorted(rows, key=lambda r: (r.get('project', ''), r.get('month', '')))
+    for r in sorted_rows:
+        completion = r.get('completionPct')
+        delay = r.get('delayPct')
+        delta = r.get('delayDeltaPp')
+        ws.append([
+            r.get('project', ''), r.get('city', ''), r.get('month', ''),
+            r.get('actualMonth', 0), r.get('plannedMonth', 0), r.get('deviationMonth', 0),
+            r.get('cumActual', 0), r.get('cumPlanned', 0),
+            f'{completion * 100:.2f}٪' if completion is not None else '—',
+            f'{delay * 100:.2f}٪' if delay is not None else '—',
+            delta if delta is not None else '—',
+            _BUDGET_STATUS_LABELS_AR.get(r.get('status', ''), r.get('status', '')),
+            _BUDGET_SOURCE_LABELS_AR.get(r.get('entrySource', ''), r.get('entrySource', '')),
+            r.get('docNo', ''), r.get('issuedOn', '') or '',
+        ])
+        row_idx = ws.max_row
+        # تلوين الشهر بمعناه: الفعلي مقابل المخطط لنفس الشهر تحديداً
+        month_fill = None
+        actual_m, planned_m = r.get('actualMonth', 0) or 0, r.get('plannedMonth', 0) or 0
+        if actual_m > planned_m:
+            month_fill = _FILL_AHEAD
+        elif actual_m < planned_m:
+            month_fill = _FILL_BEHIND
+        if month_fill is not None:
+            for c in (actual_col, planned_col, dev_col):
+                ws.cell(row=row_idx, column=c).fill = month_fill
+        # تلوين التراكمي بمعناه المستقل — قد يختلف عن تلوين الشهر (يوليو أخضر في
+        # شهره وأحمر في تراكميه، مثال PLAN-BUDGET §٥-١ بالحرف).
+        cum_fill = None
+        cum_a, cum_p = r.get('cumActual', 0) or 0, r.get('cumPlanned', 0) or 0
+        if cum_a > cum_p:
+            cum_fill = _FILL_AHEAD
+        elif cum_a < cum_p:
+            cum_fill = _FILL_BEHIND
+        if cum_fill is not None:
+            for c in (cum_actual_col, cum_planned_col, completion_col, delay_col):
+                ws.cell(row=row_idx, column=c).fill = cum_fill
+
+    for rr in range(header_row + 1, ws.max_row + 1):
+        for c in (actual_col, planned_col, dev_col, cum_actual_col, cum_planned_col):
+            cell = ws.cell(row=rr, column=c)
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = NUM_FMT
+    ws.append([])
+
+    # ---- المستخلصات — سطر لكل مستخلص، مربوطاً بمشروعه وشهره حتى لا يُفصَل عن
+    # سياقه (نفس فكرة عمود المشروع في _row_values للمقاولين).
+    ws.append(['المستخلصات'])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+    ws.append(['المشروع', 'الشهر', 'رقم المستخلص', 'المبلغ', 'التاريخ'])
+    _style_header(ws, ws.max_row)
+    claims_header_row = ws.max_row
+    any_claim = False
+    for r in sorted_rows:
+        for c in (r.get('claims') or []):
+            any_claim = True
+            ws.append([r.get('project', ''), r.get('month', ''), c.get('no', ''),
+                      c.get('amount', 0), c.get('date', '') or 'لم يصدر بعد'])
+    if not any_claim:
+        ws.append(['— لا مستخلصات ضمن هذه التصفية —'])
+    for rr in range(claims_header_row + 1, ws.max_row + 1):
+        cell = ws.cell(row=rr, column=4)
+        if isinstance(cell.value, (int, float)):
+            cell.number_format = NUM_FMT
+
+    _autosize(ws)
+    _add_logo(ws, f'{get_column_letter(ws.max_column + 2)}1')
 
     buf = io.BytesIO()
     wb.save(buf)

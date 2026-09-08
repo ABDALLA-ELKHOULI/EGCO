@@ -23,6 +23,10 @@ import { CalendarPage } from '@/pages/Calendar';
 import { ImportPage } from '@/pages/Import';
 import { ReportPage } from '@/pages/Report';
 import { Settings } from '@/pages/Settings';
+import { WhatsNewModal } from '@/components/WhatsNewModal';
+import { toursSince, type VersionTour } from '@/lib/whatsNew';
+
+const LAST_SEEN_VERSION_KEY = 'egco-last-seen-version';
 
 /** HashRouter لأن التطبيق المحزوم يُحمَّل عبر file:// */
 export function App() {
@@ -31,6 +35,42 @@ export function App() {
   const [attempt, setAttempt] = useState(0);
   // إشعار هادئ وقابل للإغلاق: الخدمة الخلفية ماتت وأعادت نفسها أثناء الجلسة.
   const [restartRecovered, setRestartRecovered] = useState(false);
+  // جولة «ما الجديد» — undefined = لم تُفحص بعد، null = لا شيء يُعرض.
+  const [whatsNewTours, setWhatsNewTours] = useState<VersionTour[] | null | undefined>(undefined);
+
+  // تُفحص مرة واحدة عند الإقلاع، بعد أن تصبح الخدمة جاهزة (لا حاجة لانتظارها فعلياً،
+  // لكن هذا يبقيها بعيدة عن شاشات الفشل/التحميل). أول تشغيل على الإطلاق (لا قيمة
+  // محفوظة) لا يعرض شيئاً — فقط يسجّل الإصدار الحالي كمرئي بصمت.
+  useEffect(() => {
+    if (!ready || !window.egco?.info) return;
+    let alive = true;
+    window.egco.info().then((info) => {
+      if (!alive) return;
+      let lastSeen: string | null = null;
+      try { lastSeen = localStorage.getItem(LAST_SEEN_VERSION_KEY); } catch { /* وضع خاص */ }
+      if (lastSeen === null) {
+        try { localStorage.setItem(LAST_SEEN_VERSION_KEY, info.version); } catch { /* وضع خاص */ }
+        return;
+      }
+      if (lastSeen === info.version) return;
+      const tours = toursSince(lastSeen);
+      if (tours.length === 0) {
+        try { localStorage.setItem(LAST_SEEN_VERSION_KEY, info.version); } catch { /* وضع خاص */ }
+        return;
+      }
+      setWhatsNewTours(tours);
+    });
+    return () => { alive = false; };
+  }, [ready]);
+
+  function closeWhatsNew() {
+    setWhatsNewTours(null);
+    if (window.egco?.info) {
+      window.egco.info().then((info) => {
+        try { localStorage.setItem(LAST_SEEN_VERSION_KEY, info.version); } catch { /* وضع خاص */ }
+      });
+    }
+  }
 
   // الخدمة قد تموت وتُعاد على منفذ مختلف — العنوان الذي حفظه initApi() عند
   // الإقلاع (lib/api.ts) لا يُعاد سؤاله أبداً بنفسه، فهذا هو ما يدفعه له.
@@ -112,6 +152,7 @@ export function App() {
         <main className="main">
           <RoutedPages />
         </main>
+        {whatsNewTours && <WhatsNewModal tours={whatsNewTours} onClose={closeWhatsNew} />}
       </div>
     </HashRouter>
   );

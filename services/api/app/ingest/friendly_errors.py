@@ -108,6 +108,54 @@ def describe_excel_open_error(exc: Exception, path: str, expected_ext: str = 'xl
         'Excel فعلاً، ثم أعد المحاولة.', technical=text)
 
 
+#: رسالة العيّنات الأربع (الرسين/السدن/دارة المدينة/سدايم شهر ٨): صور ممسوحة
+#: ضوئياً بصفر نص قابل للاستخراج. القرار المتخذ في PLAN-BUDGET.md §0/§5-5: لا OCR
+#: — رقم واحد يُقرأ خطأً في مبلغ بعشرات الملايين كارثة صامتة، وكل رقم سيُراجَع
+#: بشرياً على أي حال. فالرسالة توجّه للإدخال اليدوي + إرفاق هذا الملف كمرجع، لا
+#: تُغرق المستخدم برسالة "تعذّرت قراءة ملف Excel/PDF" الغامضة.
+SCANNED_PDF_MESSAGE = (
+    'هذا الملف صورة ممسوحة ضوئياً بلا نص قابل للقراءة (على الأرجح تقرير انحراف '
+    'موازنة مطبوع وممسوح). أدخل أرقامه يدوياً في صفحة الموازنة، وأرفق هذا الملف '
+    'نفسه كمرجع موقَّع بجانب القيد.'
+)
+
+
+def is_scanned_pdf(path: str, min_chars: int = 20) -> bool:
+    """يقيس لا يخمّن بالامتداد: نص كل صفحات الملف مجتمعاً شبه معدوم (< min_chars
+    حرفاً) مع وجود صورة واحدة على الأقل — أي صفحة ممسوحة ضوئياً مصوَّرة لا مكتوبة.
+
+    ملف PDF نصّي عادي (حتى بلا صور) لا يطابق هذا الشرط أبداً لأن نصه يتجاوز
+    العتبة بسهولة؛ فحص شركة قنبر مثلاً (كشف حساب نصّي) يمرّ من هنا بأمان ولا
+    يُوجَّه خطأً لرسالة الموازنة الممسوحة.
+    """
+    try:
+        import fitz
+    except ImportError:
+        return False
+    try:
+        doc = fitz.open(path)
+    except Exception:
+        return False
+    try:
+        total_chars = 0
+        total_images = 0
+        for page in doc:
+            total_chars += len(page.get_text().strip())
+            total_images += len(page.get_images())
+            if total_chars >= min_chars:
+                return False
+        return total_chars < min_chars and total_images > 0
+    finally:
+        doc.close()
+
+
+def check_scanned_pdf(path: str, error_cls: type = FriendlyFileError) -> None:
+    """يرفع `error_cls` برسالة `SCANNED_PDF_MESSAGE` إن كان الملف ممسوحاً ضوئياً
+    بلا نص. لا يفعل شيئاً غير ذلك — الاستدعاء آمن قبل أي محاولة تحليل أخرى."""
+    if is_scanned_pdf(path):
+        raise error_cls(SCANNED_PDF_MESSAGE)
+
+
 def describe_pdf_open_error(exc: Exception, path: str) -> FriendlyFileError:
     """يحوّل استثناء PyMuPDF (fitz) الخام عند فتح ملف PDF إلى رسالة عربية فعّالة."""
     text = str(exc)

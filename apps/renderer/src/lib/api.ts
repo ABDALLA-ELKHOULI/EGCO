@@ -248,8 +248,32 @@ export const api = {
     del<{ deleted: boolean }>(`/api/v1/contractors/${encodeURIComponent(code)}/guarantees/${id}`),
 
   /* ---- v0.4: الموازنة التقديرية ---- */
-  budget: () => call<BudgetResponse>('/api/v1/budget'),
+  budget: () => call<BudgetResponse>('/api/v1/budget/overview'),
   budgetImport: (path: string) => post<any>('/api/v1/budget/import', { path }),
+
+  /* ---- PLAN-BUDGET §٤: العقد الجديد — فلاتر الخادم + الإدخال اليدوي ---- */
+  /** القائمة المفلترة على الخادم — العقد القاطع، انظر docs/feedback/PLAN-BUDGET.md §٤. */
+  budgetList: (q: BudgetQuery = {}) => call<BudgetListResponse>('/api/v1/budget' + qs({
+    project: q.project, city: q.city, from_month: q.from_month, to_month: q.to_month,
+    status: q.status, has_claims: q.has_claims === undefined ? undefined : String(q.has_claims),
+  })),
+  /** تفصيل مشروع واحد + مقاولوه (مصدر منفصل — لا يُدمج بالموازنة). */
+  budgetProject: (name: string, q: { from_month?: string; to_month?: string } = {}) =>
+    call<BudgetProjectDetail>(`/api/v1/budget/project/${encodeURIComponent(name)}` +
+      qs({ from_month: q.from_month, to_month: q.to_month })),
+  /** يحسب الأثر ويكتشف التعارض بلا أي كتابة — يُستدعى أثناء الكتابة في النموذج. */
+  budgetPreview: (b: BudgetPreviewBody) => post<BudgetPreviewResponse>('/api/v1/budget/preview', b),
+  /** إنشاء شهر يدوياً — يرفض عند تعارض غير مؤكَّد (forceConflict). */
+  budgetCreate: (b: BudgetSnapshotBody) => post<BudgetSaveResponse>('/api/v1/budget', b),
+  /** تعديل شهر قائم + إعادة بناء السلسلة. */
+  budgetUpdate: (id: string, b: BudgetSnapshotBody) =>
+    put<BudgetSaveResponse>(`/api/v1/budget/${id}`, b),
+  budgetDelete: (id: string) => del<{ deleted: boolean }>(`/api/v1/budget/${id}`),
+  budgetSetCity: (project: string, city: string) =>
+    put<{ project: string; city: string }>(`/api/v1/budget/project/${encodeURIComponent(project)}/city`, { city }),
+  /** نسخ ملف التقرير الأصلي (مرجع فقط) إلى مجلد مرفقات الموازنة — لا كتابة في القاعدة. */
+  budgetUploadAttachment: (path: string) =>
+    post<{ attachment: string }>('/api/v1/import/budget-attachment', { path }),
 
   /* ---- v0.5: مساعد الذكاء الاصطناعي (Ollama أو أي مزود متوافق مع OpenAI) ---- */
   aiSettings: () => call<AiSettings>('/api/v1/ai/settings'),
@@ -527,6 +551,8 @@ export interface BudgetMonth {
   cumPrevActual: number; cumPrevPlanned: number;
   /** كسور لا نسب مئوية: 0.17 = ٪17 — تُضرب في 100 عند العرض. */
   delayPct: number; completionPct: number;
+  /** فرق نسبة التأخر عن الشهر السابق لنفس المشروع — سالبٌ يعني تحسّناً (PLAN §٥-١). */
+  delayDeltaPp?: number | null;
   claims: { no: string; amount: number; date: string | null }[];
   notes: string | null;
 }
@@ -539,6 +565,98 @@ export interface BudgetProject {
 }
 
 export interface BudgetResponse { projects: BudgetProject[] }
+
+/* ---------------- PLAN-BUDGET §٤: العقد الجديد ---------------- */
+
+/** حالة الصفّ: أعلى/أقل/مطابق للمخطط التراكمي — اتجاه لا عتبة (PLAN §٥-١). */
+export type BudgetStatus = 'ahead' | 'behind' | 'on_track';
+
+export interface BudgetClaim { no: string; amount: number; date: string | null }
+
+/** صفّ شهر موازنة واحد كما يعيده /budget و/budget/project/{name} (snake→camel). */
+export interface BudgetRow {
+  id: string;
+  project: string;
+  city: string;
+  month: string; // ISO — أول يوم من الشهر
+  actualMonth: number;
+  plannedMonth: number;
+  deviationMonth: number;
+  cumActual: number;
+  cumPlanned: number;
+  completionPct: number | null;
+  delayPct: number | null;
+  /** فرق نسبة التأخر عن الشهر السابق لنفس المشروع — سالبٌ يعني تحسّناً. */
+  delayDeltaPp: number | null;
+  claims: BudgetClaim[];
+  notes: string | null;
+  docNo: string;
+  issuedOn: string | null;
+  entrySource: 'file' | 'manual';
+  hasAttachment: boolean;
+  status: BudgetStatus;
+  serial: string | null;
+}
+
+export interface BudgetQuery {
+  project?: string; city?: string; from_month?: string; to_month?: string;
+  status?: BudgetStatus | ''; has_claims?: boolean;
+}
+
+export interface BudgetListResponse {
+  count: number;
+  rows: BudgetRow[];
+  totals: { count: number; actualMonth: number; plannedMonth: number; cumActual: number; cumPlanned: number };
+  projects: string[];
+  cities: string[];
+  filtersApplied: Record<string, unknown>;
+}
+
+/** مقاول ضمن «مقاولو هذا المشروع» — من وحدة المقاولين، شكل تقريبي (row فضفاض
+ * عمداً هنا: صفحة الموازنة لا تملك ولا تُعدّل عقد /contractors). */
+export interface ProjectContractorRow {
+  code?: string; name?: string; balance?: number; project?: string;
+  [k: string]: unknown;
+}
+
+export interface BudgetProjectDetail {
+  project: string;
+  city: string;
+  months: BudgetRow[];
+  totals: Partial<{ actualMonth: number; plannedMonth: number; cumActual: number;
+    cumPlanned: number; completionPct: number | null; delayPct: number | null }>;
+  contractors: ProjectContractorRow[];
+}
+
+export interface BudgetPreviewBody {
+  project: string; month: string; actualMonth: number; plannedMonth: number;
+}
+
+export interface BudgetChainImpact {
+  month: string; cumActualBefore: number; cumActualAfter: number;
+  delayPctBefore: number | null; delayPctAfter: number | null;
+}
+
+export interface BudgetConflict {
+  field: 'cumActual' | 'delayPct'; current: number; incoming: number; currentSource: string;
+}
+
+export interface BudgetPreviewResponse {
+  computed: { deviationMonth: number; cumActual: number; cumPlanned: number;
+    completionPct: number | null; delayPct: number | null };
+  chainImpact: BudgetChainImpact[];
+  conflict?: BudgetConflict;
+}
+
+export interface BudgetSnapshotBody {
+  project: string; month: string; actualMonth: number; plannedMonth: number;
+  claims: BudgetClaim[]; docNo: string; issuedOn: string | null; notes: string;
+  forceConflict?: boolean;
+}
+
+export type BudgetSaveResponse =
+  | { saved: true; row: BudgetRow }
+  | { saved: false; conflict: BudgetConflict };
 
 /* ---------------- الملفات المرفوعة ---------------- */
 

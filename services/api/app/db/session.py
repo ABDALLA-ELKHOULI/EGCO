@@ -153,6 +153,11 @@ def init_db() -> None:
         # من الرصيد كان سيصنّف كل مسدَّد «مغلقاً» وهو قرار ليس للأرقام أن تتخذه.
         _migrate_add_column(conn, 'contractors', 'status', 'VARCHAR(20)', "'active'")
         _migrate_add_column(conn, 'contractors', 'status_note', 'TEXT', "''")
+        # الموازنة — تمييز المصدر ورقم الوثيقة والمرفق. الافتراضي 'file' للصفّين
+        # القائمين: كلاهما جاء من ملف xlsx فعلاً، فالقيمة صادقة لا تخمين.
+        _migrate_add_column(conn, 'budget_snapshots', 'entry_source', 'VARCHAR(20)', "'file'")
+        _migrate_add_column(conn, 'budget_snapshots', 'doc_no', 'VARCHAR(60)', "''")
+        _migrate_add_column(conn, 'budget_snapshots', 'attachment', 'TEXT', 'NULL')
         _seed_party_projects(conn)
         # `app_settings` / `payment_allocations` are new as of the opt-in payment
         # allocation review feature — additive tables only (no ALTER on existing

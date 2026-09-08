@@ -284,6 +284,41 @@ class BudgetSnapshot(TimestampMixin, Base):
     claims: Mapped[str] = mapped_column(Text, default='[]')
     notes: Mapped[str] = mapped_column(Text, default='')
     source: Mapped[str] = mapped_column(Text, default='')
+    #: 'file' استُخرج من ملف · 'manual' أدخله المستخدم بنفسه.
+    #: التمييز ليس ترفاً: تقرير أغسطس PDF يذكر تراكمي يوليو 50,593,303.77 بينما
+    #: ملف يوليو xlsx يقول 49,844,690.75 — فرقٌ قدره 748,613.02 ر.س لنفس الشهر.
+    #: بلا معرفة المصدر لا يمكن للمستخدم أن يحكم أيّهما يثق به.
+    entry_source: Mapped[str] = mapped_column(String(20), default='file', index=True)
+    #: رقم الوثيقة كما يظهر في ترويسة التقرير (EGCO/0709026)
+    doc_no: Mapped[str] = mapped_column(String(60), default='')
+    #: مسار ملف التقرير الأصلي المرفق — الأصل الموقَّع يبقى مربوطاً بالرقم.
+    #: العيّنات مسحٌ ضوئي بلا نص، فالإرفاق هو ما يجعل الرقم قابلاً للمراجعة.
+    attachment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class BudgetComment(TimestampMixin, Base):
+    """تعليق مؤرَّخ على لقطة موازنة.
+
+    حقل notes نصٌّ واحد يُستبدَل مع كل تحديث، فيضيع سبب القرار السابق. التعليق
+    المؤرَّخ يُراكم التاريخ بدل أن يمحوه — وقرار «لماذا تأخر المشروع في أغسطس»
+    يبقى مقروءاً بعد ستة أشهر.
+    """
+    __tablename__ = 'budget_comments'
+    snapshot_id: Mapped[str] = mapped_column(ForeignKey('budget_snapshots.id'), index=True)
+    text: Mapped[str] = mapped_column(Text, default='')
+
+
+class ProjectCity(TimestampMixin, Base):
+    """ربط المشروع بمدينته — بُعدٌ حقيقي منفصل عن اسم المشروع.
+
+    «دارة المدينة» مشروعٌ **في** المدينة، و«الرسين» و«السدن» مشروعان آخران قد
+    يشتركان معه في المدينة نفسها. خلطُ البعدين يجعل «فلترة بمدينة» مساويةً
+    لـ«فلترة بمشروع» فتفقد معناها.
+    """
+    __tablename__ = 'project_cities'
+    __table_args__ = (UniqueConstraint('project', name='uq_project_city'),)
+    project: Mapped[str] = mapped_column(String(120), index=True)
+    city: Mapped[str] = mapped_column(String(120), default='', index=True)
 
 
 class AccountClassification(TimestampMixin, Base):

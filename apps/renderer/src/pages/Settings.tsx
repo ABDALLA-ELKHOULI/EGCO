@@ -2,6 +2,8 @@ import { ReactNode, useEffect, useState } from 'react';
 import { api, ApiError, AiSettings, ImportClassification, LearnedLayout } from '@/lib/api';
 import { Card, ErrorState, Pill, State } from '@/components/ui';
 import type { UpdateStatus } from '@/types/global';
+import { WhatsNewModal } from '@/components/WhatsNewModal';
+import { WHATS_NEW } from '@/lib/whatsNew';
 
 export function Settings() {
   const [info, setInfo] = useState<any>(null);
@@ -9,6 +11,7 @@ export function Settings() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [theme, setTheme] = useState(document.documentElement.dataset.theme ?? 'light');
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
 
   useEffect(() => {
     api.health().then(setHealth);
@@ -114,8 +117,22 @@ export function Settings() {
             <Row label="إصدار التطبيق" value={info?.version ?? '—'} />
             <Row label="إصدار الخدمة" value={health.version} />
             <Row label="الاتصال بالشبكة" value="لا يوجد — يعمل دون إنترنت" cls="ok" />
+            {WHATS_NEW.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <button className="btn" onClick={() => setShowWhatsNew(true)}>
+                  ما الجديد في هذا الإصدار
+                </button>
+              </div>
+            )}
           </div>
         </Card>
+
+        {showWhatsNew && WHATS_NEW.length > 0 && (
+          <WhatsNewModal
+            tours={[WHATS_NEW[WHATS_NEW.length - 1]]}
+            onClose={() => setShowWhatsNew(false)}
+          />
+        )}
 
         <UpdateCard currentVersion={info?.version} />
       </div>
@@ -134,7 +151,10 @@ function UpdateCard({ currentVersion }: { currentVersion?: string }) {
 
   useEffect(() => {
     // يلتقط أي حدث يصل لاحقاً (تنزيل جارٍ، اكتمل، إلخ) حتى بعد انتهاء checkForUpdates.
-    return window.egco?.onUpdateStatus((s) => { setStatus(s); setBusy(false); });
+    // `?.` يحمي فقط الوصول إلى egco نفسه — إن وُجد egco بلا onUpdateStatus (بيئة
+    // اختبار خارج Electron الحقيقي) يبقى الاستدعاء يرفع "is not a function".
+    if (typeof window.egco?.onUpdateStatus !== 'function') return undefined;
+    return window.egco.onUpdateStatus((s) => { setStatus(s); setBusy(false); });
   }, []);
 
   async function check() {
