@@ -473,10 +473,28 @@ function ProjectPanel({ project, onClose, onSaved }: {
   const [detail, setDetail] = useState<BudgetProjectDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [editing, setEditing] = useState<BudgetRow | 'new' | null>(null);
+  // حذف شهر — كان الزرّ غائباً تماماً رغم أن DELETE /budget/{id} مبنيّ ومختبَر
+  // في الخادم؛ المستخدم لم يكن يملك أي وسيلة لحذف شهرٍ أدخله بالخطأ.
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     api.budgetProject(project).then((r) => { setDetail(r); setErr(null); }).catch((e) => setErr(e.message));
   }, [project]);
+
+  async function doDelete(m: BudgetRow) {
+    if (!window.confirm(`حذف شهر ${arDate(m.month)}؟ سيُعاد حساب تراكمي الأشهر التالية بافتراض غيابه.`)) return;
+    setDeletingId(m.id); setDeleteErr(null);
+    try {
+      await api.budgetDelete(m.id);
+      reload();
+      onSaved();
+    } catch (e: any) {
+      setDeleteErr(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -522,12 +540,19 @@ function ProjectPanel({ project, onClose, onSaved }: {
                       {m.delayPct != null ? `${sar(m.delayPct * 100)}٪` : '—'}
                     </td>
                     <td className="ltr"><DeltaArrow deltaPp={m.delayDeltaPp} /></td>
-                    <td><button className="btn sm" onClick={() => setEditing(m)}>تعديل</button></td>
+                    <td style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn sm" onClick={() => setEditing(m)}>تعديل</button>
+                      <button className="btn sm" disabled={deletingId === m.id}
+                              onClick={() => doDelete(m)}>
+                        {deletingId === m.id ? 'جارٍ الحذف…' : 'حذف'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table></div>
           )}
+          {deleteErr && <ErrorState message={deleteErr} onRetry={() => setDeleteErr(null)} />}
 
           <ContractorsCard contractors={detail.contractors} project={project} />
         </div>
