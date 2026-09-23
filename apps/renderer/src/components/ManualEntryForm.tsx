@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export interface ManualEntryValues {
   amount: number;
@@ -11,18 +11,32 @@ export interface ManualEntryValues {
 const today = () => new Date().toISOString().slice(0, 10);
 
 /** نموذج إدخال يدوي — فاتورة أو دفعة. */
-export function ManualEntryForm({ mode, initial, onSubmit, busy, error }: {
+export function ManualEntryForm({ mode, initial, onSubmit, busy, error, onDirtyChange }: {
   mode: 'invoice' | 'payment';
   initial?: Partial<ManualEntryValues>;
   onSubmit: (values: ManualEntryValues) => void;
   busy?: boolean;
   error?: string | null;
+  /** م-٣٤: انظر تعليقها في SupplierForm.tsx. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const [amount, setAmount] = useState(initial?.amount != null ? String(initial.amount) : '');
-  const [date, setDate] = useState(initial?.date ?? today());
-  const [dueDate, setDueDate] = useState(initial?.due_date ?? '');
-  const [description, setDescription] = useState(initial?.description ?? '');
-  const [reference, setReference] = useState(initial?.reference ?? '');
+  const initialAmount = initial?.amount != null ? String(initial.amount) : '';
+  const [amount, setAmount] = useState(initialAmount);
+  const initialDate = initial?.date ?? today();
+  const [date, setDate] = useState(initialDate);
+  const initialDueDate = initial?.due_date ?? '';
+  const [dueDate, setDueDate] = useState(initialDueDate);
+  const initialDescription = initial?.description ?? '';
+  const [description, setDescription] = useState(initialDescription);
+  const initialReference = initial?.reference ?? '';
+  const [reference, setReference] = useState(initialReference);
+
+  useEffect(() => {
+    const dirty = amount !== initialAmount || date !== initialDate || dueDate !== initialDueDate
+      || description !== initialDescription || reference !== initialReference;
+    onDirtyChange?.(dirty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amount, date, dueDate, description, reference]);
 
   const amountNum = Number(amount);
   const canSubmit = amount.trim() && amountNum > 0 && date && !busy;

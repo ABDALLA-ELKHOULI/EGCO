@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { ContractorBody } from '@/lib/api';
 
 /** تطبيع عربي محلي للمقارنة فقط — نسخة مطابقة لِـ SupplierForm.tsx، انظر تعليقها
@@ -25,7 +25,8 @@ interface Initial {
 }
 
 /** نموذج مقاول — إضافة وتعديل (الرمز يُقفل عند التعديل). */
-export function ContractorForm({ initial, codeLocked = false, knownProjects, onSubmit, busy, error }: {
+export function ContractorForm({ initial, codeLocked = false, knownProjects, onSubmit, busy, error,
+                                  onDirtyChange }: {
   initial?: Initial;
   codeLocked?: boolean;
   /** أسماء المشاريع المعروفة — نفس فكرة SupplierForm، للاختيار السريع. */
@@ -33,20 +34,37 @@ export function ContractorForm({ initial, codeLocked = false, knownProjects, onS
   onSubmit: (v: ContractorFormValues) => void;
   busy: boolean;
   error: string | null;
+  /** م-٣٤: انظر تعليقها في SupplierForm.tsx — نفس الفكرة بالحرف. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [code, setCode] = useState(initial?.code ?? '');
   const [name, setName] = useState(initial?.name ?? '');
   const [phone, setPhone] = useState(initial?.phone ?? '');
-  const [retention, setRetention] = useState(
-    initial?.defaultRetentionRate != null ? String(initial.defaultRetentionRate) : '');
-  const [days, setDays] = useState(
-    initial?.defaultGuaranteeDays != null ? String(initial.defaultGuaranteeDays) : '');
+  const initialRetention = initial?.defaultRetentionRate != null ? String(initial.defaultRetentionRate) : '';
+  const [retention, setRetention] = useState(initialRetention);
+  const initialDays = initial?.defaultGuaranteeDays != null ? String(initial.defaultGuaranteeDays) : '';
+  const [days, setDays] = useState(initialDays);
   const [notes, setNotes] = useState(initial?.notes ?? '');
   // لائحة المشاريع — نفس منطق SupplierForm بالحرف: الأول «الأساسي»، شرائح قابلة
   // للإزالة، وحقل حر + قائمة معروفة للإضافة. المقاول لا يملك عمود مشروع مفرد
   // (خلافاً للمورد)، فكل مشاريعه تعيش هنا فقط.
-  const [projects, setProjects] = useState<string[]>(initial?.projects ?? []);
+  const initialProjects = initial?.projects ?? [];
+  const [projects, setProjects] = useState<string[]>(initialProjects);
   const [newProject, setNewProject] = useState('');
+
+  useEffect(() => {
+    const dirty = code.trim() !== (initial?.code ?? '')
+      || name.trim() !== (initial?.name ?? '')
+      || phone.trim() !== (initial?.phone ?? '')
+      || retention !== initialRetention
+      || days !== initialDays
+      || notes.trim() !== (initial?.notes ?? '')
+      || projects.length !== initialProjects.length
+      || projects.some((p, i) => p !== initialProjects[i])
+      || newProject.trim() !== '';
+    onDirtyChange?.(dirty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code, name, phone, retention, days, notes, projects, newProject]);
 
   // نفس اقتراح SupplierForm.tsx — مشروع قريب بإملاء مختلف بدل توأم صامت.
   const projectSuggestion = useMemo(() => {

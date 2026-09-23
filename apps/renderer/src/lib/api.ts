@@ -103,6 +103,18 @@ export interface ContractorQuery {
   [k: string]: string | number | boolean | undefined;
 }
 
+/** أنواع سلّة المحذوفات — يطابق _KINDS في services/api/app/api/routes/trash.py */
+export type TrashKind = 'supplier' | 'contractor' | 'invoice' | 'payment' |
+  'contractor_entry' | 'import_log' | 'budget_month';
+
+export interface TrashRow {
+  kind: TrashKind;
+  id: string;
+  name: string;
+  deletedAt: string | null;
+  summary: Record<string, number | string>;
+}
+
 export const api = {
   health: () => call<{ status: string; db: string; version: string }>('/health'),
 
@@ -325,6 +337,26 @@ export const api = {
     post<{ proposal: { partyKind?: string; key?: string; date?: string; debit?: number;
                        credit?: number; description?: string; claimNo?: string } }>(
       '/api/v1/ai/parse-text', { text }),
+
+  /* ---- سلّة المحذوفات (م-٣١) ---- */
+  trash: (kind?: TrashKind) => call<{ rows: TrashRow[]; count: number }>(
+    '/api/v1/trash' + qs({ kind })),
+  restoreTrash: (kind: TrashKind, id: string) =>
+    post<{ restored: { kind: string; id: string; dependents: Record<string, number> } }>(
+      `/api/v1/trash/${kind}/${encodeURIComponent(id)}/restore`, {}),
+  purgeTrash: (kind: TrashKind, id: string) =>
+    call<{ purged: { kind: string; id: string } }>(
+      `/api/v1/trash/${kind}/${encodeURIComponent(id)}?confirm=true`, { method: 'DELETE' }),
+
+  /* ---- إدارة المشاريع ودمجها (م-٣٠) ---- */
+  projectAdmin: () => call<{ projects: string[];
+    possibleDuplicates: { key: string; variants: string[] }[] }>('/api/v1/project-admin'),
+  projectMergePreview: (fromName: string, intoName: string) =>
+    call<{ fromName: string; intoName: string; affected: Record<string, number>; total: number }>(
+      '/api/v1/project-admin/merge/preview' + qs({ fromName, intoName })),
+  projectMerge: (fromName: string, intoName: string) =>
+    post<{ merged: { fromName: string; intoName: string; affected: Record<string, number> } }>(
+      '/api/v1/project-admin/merge', { fromName, intoName }),
 };
 
 /** إعدادات مزود الذكاء الاصطناعي — قابلة للتعديل بالكامل من شاشة الإعدادات. */

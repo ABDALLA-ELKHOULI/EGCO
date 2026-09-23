@@ -48,11 +48,16 @@ export function State({ children }: { children: ReactNode }) {
 /**
  * حالة خطأ قابلة للتعافي — رسالة الخطأ مع زر «إعادة المحاولة» يعيد الجلب.
  * يمنع خطأً عابراً (انقطاع اتصال مؤقت مثلاً) من تجميد الشاشة لبقية الجلسة.
+ * م-٧: كانت تُبنى بـ`.state` + `style={{marginBottom:12}}` سطرياً بهيكل مختلف
+ * عن EmptyState (أيقونة/عنوان/وصف/إجراء) رغم أنها نفس فئة الحالات الثلاث —
+ * وُحِّدت على هيكل `.empty-state` نفسه بدل الأسلوب السطري الحر.
  */
 export function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="state" role="alert">
-      <div style={{ marginBottom: 12 }}>{message}</div>
+    <div className="empty-state" role="alert">
+      <div className="empty-icon red">✕</div>
+      <div className="empty-title">حدث خطأ</div>
+      <div className="empty-body">{message}</div>
       <button className="btn primary" onClick={onRetry}>إعادة المحاولة</button>
     </div>
   );

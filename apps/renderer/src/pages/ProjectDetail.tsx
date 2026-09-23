@@ -27,6 +27,7 @@ export function ProjectDetail() {
   if (!d) return <State>جارٍ التحميل…</State>;
 
   const suppliers = d.suppliers ?? [];
+  const contractors = d.contractors ?? [];
   const schedule = d.schedule ?? [];
   const maxBar = Math.max(1, ...schedule.map((x: any) => x.amount || 0));
 
@@ -45,12 +46,45 @@ export function ProjectDetail() {
              explain={<ExplainDot metric="projectDetailOutstanding" values={{ projectOutstanding: d.outstanding }} />} />
         <Kpi label="المتأخر" value={sar(d.overdue ?? 0)} unit="ر.س" tone="red" alert={(d.overdue ?? 0) > 0}
              explain={<ExplainDot metric="overdue" values={{ overdue: d.overdue }} />} />
-        <Kpi label="خلال ٧ أيام" value={sar(d.dueWithin7 ?? 0)} unit="ر.س" tone="gold"
-             explain={<ExplainDot metric="dueWithin7" values={{ dueWithin7: d.dueWithin7 }} />} />
-        <Kpi label="عدد الموردين" value={ar(d.supplierCount ?? suppliers.length)} />
+        <Kpi label="مستحق للمقاولين" value={sar(d.contractorsOwed ?? 0)} unit="ر.س" tone="red" />
+        <Kpi label="مستحق لنا من المقاولين" value={sar(d.contractorsOwedToUs ?? 0)} unit="ر.س" tone="ok" />
+        <Kpi label="إجمالي الالتزام" value={sar(d.totalCommitment ?? 0)} unit="ر.س" hero />
+        <Kpi label="تأخر الموازنة" value={d.budgetDelayPct !== null && d.budgetDelayPct !== undefined
+          ? `${(d.budgetDelayPct * 100).toFixed(1)}٪` : '—'} />
       </div>
+      {d.mergedSpellingAlert && (
+        <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+          دُمجت مديونية المقاولين من صيغ الاسم: {(d.contractorProjectNames ?? []).join('، ')} —
+          يتجاهل مُطبِّع المطابقة أداة التعريف والمسافات فقط، لا يُعيد تسمية أي بيانات.
+        </p>
+      )}
 
       <div className="stack">
+        {contractors.length > 0 && (
+          <Card title="مقاولو المشروع">
+            <table>
+              <thead>
+                <tr>
+                  <th>المقاول</th><th>الكود</th>
+                  <th className="ltr">الرصيد</th><th className="ltr">مستحق له</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contractors.map((c: any) => (
+                  <tr key={c.code}>
+                    <td><Link to={`/contractors/${c.code}`}>{c.name}</Link></td>
+                    <td className="num muted">{c.code}</td>
+                    <td className="ltr">
+                      <Money v={Math.abs(c.balance ?? 0)}
+                             cls={c.balance < 0 ? 'red' : c.balance > 0 ? 'ok' : ''} />
+                    </td>
+                    <td>{c.balance < 0 ? 'لنا عليه' : c.balance > 0 ? 'له علينا' : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        )}
         <Card title="الموردون">
           {suppliers.length === 0 ? (
             <State>لا يوجد موردون بهذا المشروع.</State>

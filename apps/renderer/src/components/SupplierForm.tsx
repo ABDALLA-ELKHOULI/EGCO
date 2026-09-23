@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 /**
  * تطبيع عربي محلي للمقارنة فقط (لا يُخزَّن ولا يُعرض) — نفس قواعد
@@ -28,13 +28,16 @@ export interface SupplierFormValues {
 }
 
 /** نموذج إضافة/تعديل مورد. */
-export function SupplierForm({ initial, knownProjects, onSubmit, busy, error }: {
+export function SupplierForm({ initial, knownProjects, onSubmit, busy, error, onDirtyChange }: {
   initial?: Partial<SupplierFormValues>;
   /** أسماء المشاريع المعروفة — للاختيار السريع بدل كتابة الاسم من جديد في كل مرة. */
   knownProjects?: string[];
   onSubmit: (values: SupplierFormValues) => void;
   busy?: boolean;
   error?: string | null;
+  /** م-٣٤: يُبلَّغ عند كل تغيّر في «هل يختلف النموذج عن قيمته الأولية» — الصفحة
+   * الحاوية تمرّره لـ Modal.dirty، فيُسأل المستخدم قبل ضياع ما كتبه. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const isEdit = Boolean(initial?.account);
   const [account, setAccount] = useState(initial?.account ?? '');
@@ -42,11 +45,22 @@ export function SupplierForm({ initial, knownProjects, onSubmit, busy, error }: 
   const [term, setTerm] = useState(initial?.term ?? '');
   // لائحة المشاريع — الأول هو «الأساسي» وهو ما تعرضه بقية الشاشات (التقارير،
   // التصدير، شاشة الميزانية) التي لا تزال تقرأ عمود project المفرد.
-  const [projects, setProjects] = useState<string[]>(
-    initial?.projects && initial.projects.length > 0
+  const initialProjects = initial?.projects && initial.projects.length > 0
       ? initial.projects
-      : initial?.project ? [initial.project] : []);
+      : initial?.project ? [initial.project] : [];
+  const [projects, setProjects] = useState<string[]>(initialProjects);
   const [newProject, setNewProject] = useState('');
+
+  useEffect(() => {
+    const dirty = account.trim() !== (initial?.account ?? '')
+      || name.trim() !== (initial?.name ?? '')
+      || term.trim() !== (initial?.term ?? '')
+      || projects.length !== initialProjects.length
+      || projects.some((p, i) => p !== initialProjects[i])
+      || newProject.trim() !== '';
+    onDirtyChange?.(dirty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account, name, term, projects, newProject]);
 
   const canSubmit = account.trim() && name.trim() && !busy;
 

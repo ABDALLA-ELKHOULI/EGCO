@@ -58,27 +58,41 @@ export function ColumnMenu({ sortKey, sort, onSort, filter, active,
   // موضع ثابت محسوب من الزر، لا موضع نسبي: البطاقة الحاوية تقصّ ما يفيض عنها
   // (‏.card { overflow: hidden })، فقائمة منسدلة داخلها تُقتطع نصفها. الحساب هنا
   // يُبقيها داخل الشاشة أفقياً أيضاً حين يكون العمود عند الحافة.
-  useLayoutEffect(() => {
+  const reposition = () => {
     const el = panel.current;
     const btn = wrap.current;
-    if (!open || !el || !btn) return;
+    if (!el || !btn) return;
     const b = btn.getBoundingClientRect();
     el.style.top = `${b.bottom + 6}px`;
     const w = el.offsetWidth;
     const left = Math.min(Math.max(8, b.right - w), window.innerWidth - w - 8);
     el.style.left = `${left}px`;
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    reposition();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // إغلاقها عند التمرير — قائمة معلّقة بموضع ثابت تنفصل عن عمودها إن تحرّك الجدول.
+  // م-٣٩: كانت تُغلق عند أي تمرير — بما فيه تمرير القائمة نفسها (حقل تصفية طويل
+  // بقائمة select كبيرة) أو تمرير الجدول الذي يحمل زرّها. القائمة موضعها ثابت
+  // (position: fixed) محسوب من مستطيل الزرّ، فأبسط حلّ آمن هو إعادة حساب هذا
+  // الموضع عند أي تمرير بدل الإغلاق — تتبع الزرّ بدل مطاردته. التمرير داخل
+  // القائمة نفسها (لا يُحرّك الزرّ) يُستثنى فلا يُعاد حساب موضع لا حاجة له.
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
-    return () => {
-      window.removeEventListener('scroll', close, true);
-      window.removeEventListener('resize', close);
+    const onScroll = (e: Event) => {
+      if (panel.current?.contains(e.target as Node)) return;
+      reposition();
     };
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const set = (d: SortDir) => {

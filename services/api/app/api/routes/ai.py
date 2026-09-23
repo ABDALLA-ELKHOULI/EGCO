@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import parse_date
+from app.api.errors import friendly_http_error
 from app.db import models
 from app.db.session import get_session
 from app.domain import contractors as C
@@ -107,8 +108,8 @@ def extract(body: ExtractBody, db: Session = Depends(get_session)) -> dict:
 
     try:
         result = ai_service.extract_rows(p)
-    except ai_service.AiError as e:
-        raise HTTPException(502, detail=str(e))
+    except Exception as e:
+        raise friendly_http_error(e, 502) from e
 
     result['source'] = 'ai'
     result['tokensSaved'] = 0
@@ -312,8 +313,8 @@ def ask(body: AskBody, db=Depends(get_session)) -> dict:
     _require_enabled()
     try:
         return F.ask(ai_service.chat, body.question)
-    except ai_service.AiError as e:
-        raise HTTPException(502, detail=str(e))
+    except Exception as e:
+        raise friendly_http_error(e, 502) from e
 
 
 @router.post('/remind')
@@ -329,8 +330,8 @@ def remind(body: RemindBody, db=Depends(get_session)) -> dict:
         raise HTTPException(404, detail='لا يوجد طرف بهذا المفتاح')
     try:
         message = F.remind_message(ai_service.chat, facts)
-    except ai_service.AiError as e:
-        raise HTTPException(502, detail=str(e))
+    except Exception as e:
+        raise friendly_http_error(e, 502) from e
     return {'message': message}
 
 
@@ -348,8 +349,8 @@ def budget_notes(body: BudgetNotesBody, db=Depends(get_session)) -> dict:
     deltas = F.budget_deltas(detail)
     try:
         notes = F.budget_notes(ai_service.chat, deltas)
-    except ai_service.AiError as e:
-        raise HTTPException(502, detail=str(e))
+    except Exception as e:
+        raise friendly_http_error(e, 502) from e
     return {'notes': notes}
 
 
@@ -365,8 +366,8 @@ def summary(body: SummaryBody, db=Depends(get_session)) -> dict:
                                       body.contractor, date_from, date_to)
     try:
         text = F.executive_summary(ai_service.chat, numbers)
-    except ai_service.AiError as e:
-        raise HTTPException(502, detail=str(e))
+    except Exception as e:
+        raise friendly_http_error(e, 502) from e
     return {'summary': text}
 
 
@@ -381,8 +382,8 @@ def brief(body: BriefBody, db=Depends(get_session)) -> dict:
     digest = F.build_brief_digest(db, days)
     try:
         text = F.brief_text(ai_service.chat, digest)
-    except ai_service.AiError as e:
-        raise HTTPException(502, detail=str(e))
+    except Exception as e:
+        raise friendly_http_error(e, 502) from e
     return {'brief': text}
 
 
@@ -399,8 +400,8 @@ def anomalies(body: AnomaliesBody, db=Depends(get_session)) -> dict:
         return {'items': []}
     try:
         items = F.phrase_anomalies(ai_service.chat, candidates)
-    except ai_service.AiError as e:
-        raise HTTPException(502, detail=str(e))
+    except Exception as e:
+        raise friendly_http_error(e, 502) from e
     return {'items': items}
 
 
@@ -417,8 +418,8 @@ def parse_text(body: ParseTextBody, db=Depends(get_session)) -> dict:
     _require_enabled()
     try:
         proposal = F.parse_text_proposal(ai_service.chat, db, body.text)
-    except ai_service.AiError as e:
-        raise HTTPException(502, detail=str(e))
+    except Exception as e:
+        raise friendly_http_error(e, 502) from e
     return {'proposal': proposal}
 
 
@@ -438,8 +439,8 @@ def what_if(body: WhatIfBody, db=Depends(get_session)) -> dict:
     try:
         narrative = F.what_if_narrative(ai_service.chat, result['before'], result['after'],
                                         body.shiftDays)
-    except ai_service.AiError as e:
-        raise HTTPException(502, detail=str(e))
+    except Exception as e:
+        raise friendly_http_error(e, 502) from e
     return {'narrative': narrative, 'before': result['before'], 'after': result['after']}
 
 
@@ -456,6 +457,6 @@ def priorities(body: PrioritiesBody, db=Depends(get_session)) -> dict:
     result = F.build_priorities(db, budget)
     try:
         narrative = F.priorities_narrative(ai_service.chat, result)
-    except ai_service.AiError as e:
-        raise HTTPException(502, detail=str(e))
+    except Exception as e:
+        raise friendly_http_error(e, 502) from e
     return {'items': result['items'], 'narrative': narrative}

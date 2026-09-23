@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api, apiBase, ApiError } from '@/lib/api';
 import type { ImportHistoryRow, ImportHistoryResponse } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
@@ -1242,6 +1242,25 @@ const RECONCILED_FILTER_OPTIONS = [
 ];
 
 /**
+ * «فشل» — تقريب: لا يوجد حقل صريح في /import/history يفصح عن فشل الاستيراد
+ * نفسه (imports.py ممنوع لمسه هنا)؛ إن لم يُضَف شيء ولم يُطابَق شيء ولم يكن
+ * سجلاً قديماً، فالأرجح أن الملف لم يُعالَج أصلاً لا أنه طابق كل شيء بنجاح.
+ * ملف يطابق كل حركاته (٦٩/٦٩ مثلاً) سيُظهر skipped > 0 فلا يُصنَّف فشلاً.
+ */
+function isImportFailed(r: ImportHistoryRow): boolean {
+  return !r.legacy && r.added === 0 && r.skipped === 0;
+}
+
+/** بادئة الحساب تحسم النوع (قاعدة ثابتة في المشروع): ٢١١ مورد · ٢١٢ مقاول. */
+function partyLink(r: ImportHistoryRow) {
+  const label = r.partyName ?? r.account ?? '—';
+  if (!r.account) return label;
+  if (r.account.startsWith('211')) return <Link to={`/suppliers/${r.account}`}>{label}</Link>;
+  if (r.account.startsWith('212')) return <Link to={`/contractors/${r.account}`}>{label}</Link>;
+  return label;
+}
+
+/**
  * «الملفات المرفوعة» — كل استيراد سابق مع ما أضافه، وحذف واحد منها يحذف حركاته فقط
  * (البيانات اليدوية لا تُمس). السجلات القديمة (قبل هذه الميزة) لا تحمل ربطاً مباشراً
  * بحركاتها فتُحذف تقريبياً بموافقة إضافية.
@@ -1430,11 +1449,16 @@ function UploadedFilesSection({ reloadToken, onPickFiles }: {
                             active={Boolean(party)}
                             filter={{ kind: 'text', value: party, onChange: setParty,
                                       placeholder: 'اسم الطرف أو رقم الحساب…' }} />
-                        <Th label="الحركات" className="ltr" sortKey="linkedRows" sort={sort} onSort={setSort}
+                        {/* عمودان بدل «الحركات» — صفر قد تعني «كلها مطابقة مسبقاً» (سليم)
+                            أو «فشل الاستيراد» (عطب)، وعمود واحد كان يخفي الفرق تماماً
+                            (م-٣٧). الفرز يبقى على نفس مفتاح الخادم linkedRows — لا
+                            مفتاح فرز منفصل لعمود «مطابق مسبقاً» لأن imports.py ممنوع لمسه. */}
+                        <Th label="مضاف" className="ltr" sortKey="linkedRows" sort={sort} onSort={setSort}
                             ascLabel="الأقل أولاً" descLabel="الأكثر أولاً"
                             active={Boolean(minMoves || maxMoves)}
                             filter={{ kind: 'range', min: minMoves, max: maxMoves,
                                       onMin: setMinMoves, onMax: setMaxMoves }} />
+                        <th className="ltr">مطابق مسبقاً</th>
                         <Th label="مطابق" sortKey="reconciled" sort={sort} onSort={setSort}
                             active={Boolean(reconciled)}
                             filter={{ kind: 'select', value: reconciled, onChange: setReconciled,
@@ -1451,13 +1475,19 @@ function UploadedFilesSection({ reloadToken, onPickFiles }: {
                           <td title={r.path} className="truncate">
                             {r.fileName || <span className="muted">— بلا اسم ملف —</span>}
                           </td>
-                          <td className="muted">{r.detected}</td>
-                          <td>{r.partyName ?? r.account ?? '—'}</td>
+                          <td className="muted">
+                            {r.detected}
+                            {isImportFailed(r) && (
+                              <span style={{ marginInlineStart: 6 }}><Pill kind="red">فشل</Pill></span>
+                            )}
+                          </td>
+                          <td>{partyLink(r)}</td>
                           <td className="ltr num">
                             {r.legacy
                               ? <>{ar(r.added)} <Pill kind="warn">قديم</Pill></>
                               : ar(r.linkedRows)}
                           </td>
+                          <td className="ltr num muted">{ar(r.skipped)}</td>
                           <td>
                             <Pill kind={r.reconciled ? 'ok' : 'red'}>{r.reconciled ? '✓' : '✕'}</Pill>
                           </td>
@@ -1579,7 +1609,7 @@ function DuplicatesSection({ reloadToken }: { reloadToken: number }) {
             <p className="muted" style={{ fontSize: 12, margin: '10px 0', lineHeight: 1.8 }}>
               نفس الطرف والتاريخ والمبلغ والسند. راجع الوصفين واحذف الصفّ الزائد —
               لا يُحذف شيء تلقائياً، وبعض الأزواج قد تكون حركتين مشروعتين فعلاً.
-              الحذف ناعم ويمكن التراجع عنه من قاعدة البيانات.
+              يمكن استرجاع ما حُذف من الإعدادات ← المحذوفات.
             </p>
             {err && <div className="callout bad" style={{ marginBottom: 10 }}>{err}</div>}
             {data.groups.map((g: any, gi: number) => (

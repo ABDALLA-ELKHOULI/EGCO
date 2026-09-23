@@ -26,6 +26,21 @@ def db_session(tmp_path, monkeypatch):
     db.close()
 
 
+def _add_contractor_entry(db, models_mod, code, name, project, credit=0.0, debit=0.0,
+                          date=TODAY):
+    contractor = db.query(models_mod.Contractor).filter_by(code=code).one_or_none()
+    if contractor is None:
+        contractor = models_mod.Contractor(code=code, name=name)
+        db.add(contractor)
+        db.commit()
+        db.refresh(contractor)
+    db.add(models_mod.ContractorEntry(contractor_id=contractor.id, date=date,
+                                      debit=debit, credit=credit, project=project,
+                                      kind='claim' if credit else 'payment'))
+    db.commit()
+    return contractor
+
+
 def _add_supplier(db, models_mod, account, name, project, term_raw='30 يوم'):
     from app.domain.payables import parse_term
     term = parse_term(term_raw)
@@ -90,3 +105,70 @@ def test_project_detail_includes_suppliers_and_schedule(db_session):
     assert 'schedule' in detail
 
     assert projects_service_mod.project_detail(db, 'لا يوجد', today=TODAY) is None
+
+
+def test_project_row_shows_contractor_debt_not_just_suppliers(db_session):
+    """م-٢٩: صفّ المشروع كان يُخفي مديونية المقاولين كلياً — outstanding=0.00
+    بينما مقاولو المشروع مدينون بمبلغ كبير. الآن يظهران معاً في نفس الصفّ."""
+    db, payables_service_mod, projects_service_mod = db_session
+    from app.db import models
+
+    _add_supplier(db, models, '3001', 'مورد سدايم', 'سدايم')
+    # مقاولان على نفس المشروع، مستحق لهما (رصيد سالب) — لا فواتير موردين إطلاقاً.
+    _add_contractor_entry(db, models, '2120001', 'مقاول أ', 'سدايم', credit=1500000.0)
+    _add_contractor_entry(db, models, '2120002', 'مقاول ب', 'سدايم', credit=585958.76)
+
+    result = projects_service_mod.list_projects(db, today=TODAY)
+    row = next(r for r in result['rows'] if r['project'] == 'سدايم')
+
+    assert row['outstanding'] == pytest.approx(0.0)  # موردون: لا فواتير
+    assert row['contractorsOwed'] == pytest.approx(2085958.76)
+    assert row['contractorCount'] == 2
+    assert row['totalCommitment'] == pytest.approx(2085958.76)
+
+    # المجموع الكلي يطابق /contractors دون ازدواج
+    from app.services import contractors_service as CS
+    contractors_totals = CS.contractors_list_json(db, TODAY)['totals']
+    assert result['totals']['contractorsOwed'] == pytest.approx(
+        contractors_totals['owedToContractors'])
+
+
+def test_project_merges_spelling_variants_with_and_without_al(db_session):
+    """م-٣٠: «سدن» (مقاولون، بلا أل) و«السدن» (موردون، بأل) نفس المشروع — يجب أن
+    يجتمعا في صفّ واحد لا صفّين، مع إظهار الصيغتين للمستخدم."""
+    db, payables_service_mod, projects_service_mod = db_session
+    from app.db import models
+
+    _add_supplier(db, models, '4001', 'مورد السدن', 'السدن')
+    _add_contractor_entry(db, models, '2120010', 'مقاول السدن', 'سدن', credit=212850.74)
+
+    result = projects_service_mod.list_projects(db, today=TODAY)
+    matching = [r for r in result['rows'] if r['project'] in ('السدن', 'سدن')]
+    assert len(matching) == 1, 'يجب ألا ينقسم مشروع واحد إلى صفّين بسبب أل التعريف'
+    row = matching[0]
+    assert row['contractorsOwed'] == pytest.approx(212850.74)
+    assert row['mergedSpellingAlert'] is True
+    assert set(row['contractorProjectNames']) == {'سدن'}
+
+    detail = projects_service_mod.project_detail(db, 'السدن', today=TODAY)
+    assert detail is not None
+    assert detail['contractorsOwed'] == pytest.approx(212850.74)
+    assert len(detail['contractors']) == 1
+    assert detail['contractors'][0]['code'] == '2120010'
+
+
+def test_project_only_contractor_project_still_appears(db_session):
+    """مشروع بلا موردين إطلاقاً لكن له مقاولون — لا يجوز أن يختفي من الشاشة."""
+    db, payables_service_mod, projects_service_mod = db_session
+    from app.db import models
+
+    _add_contractor_entry(db, models, '2120020', 'مقاول جـ', 'المدينة', credit=2391112.39)
+
+    result = projects_service_mod.list_projects(db, today=TODAY)
+    row = next(r for r in result['rows'] if r['project'] == 'المدينة')
+    assert row['outstanding'] == pytest.approx(0.0)
+    assert row['contractorsOwed'] == pytest.approx(2391112.39)
+
+    detail = projects_service_mod.project_detail(db, 'المدينة', today=TODAY)
+    assert detail is not None
+    assert detail['contractorsOwed'] == pytest.approx(2391112.39)

@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.db import models
-from app.utils.arabic import normalize_ar
+from app.utils.arabic import normalize_ar, project_key
 
 SUPPLIER = 'supplier'
 CONTRACTOR = 'contractor'
@@ -111,6 +111,33 @@ def parties_in_project(db: Session, party_type: str, project: str) -> set:
     return {r[0] for r in db.query(models.PartyProject.party_id).filter(
         models.PartyProject.party_type == party_type,
         models.PartyProject.project.in_(variants)).all()}
+
+
+def raw_project_names(db: Session) -> List[str]:
+    """واجهة عامة لـ_raw_project_names — تُستعمل من routes/project_admin.py
+    (م-٣٠، أداة الدمج) دون كسر التغليف بالوصول لدالة تبدأ بشرطة سفلية."""
+    return _raw_project_names(db)
+
+
+def resolve_to_known_project(db: Session, name: str) -> str:
+    """يُرجع الاسم كما هو **مكتوب في القاعدة فعلاً** لو طابق مشروعاً قائماً على
+    project_key (يتجاهل أل التعريف مع تطبيع normalize_ar)، وإلا يُرجع الاسم
+    الخام كما ورد.
+
+    نداء الاستيراد الوحيد الذي يكتب صيغة أل التعريف: «سدن» في عمود «تبويب» من
+    كشف المقاولين يجب أن يُخزَّن كما ظهر «السدن» في شاشة الموردين لو كان هو
+    نفس المشروع فعلاً — وإلا فشلت كل تصفية تجمع بالمشروع بين الوحدتين. **لا يُنشئ
+    صفاً جديداً ولا يُعدِّل صفاً قائماً** — مجرد اختيار أي نص يُكتب عند الحفظ.
+    """
+    if not name or not name.strip():
+        return name
+    key = project_key(name)
+    for existing in _raw_project_names(db):
+        if existing == name:
+            return existing               # مطابقة حرفية أصلاً — لا حاجة لبحث
+        if project_key(existing) == key:
+            return existing
+    return name
 
 
 def suggest_existing_project(db: Session, name: str) -> Optional[str]:

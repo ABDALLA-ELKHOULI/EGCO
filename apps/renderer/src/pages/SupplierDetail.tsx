@@ -169,6 +169,8 @@ export function SupplierDetail() {
   const [deletePayment, setDeletePayment] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
+  // م-٣٤: يمرَّر لـ Modal.dirty — انظر تعليقه في Suppliers.tsx.
+  const [formDirty, setFormDirty] = useState(false);
   const [dueDateInvoice, setDueDateInvoice] = useState<any>(null);
   const [dueDateValue, setDueDateValue] = useState('');
   const [remindOpen, setRemindOpen] = useState(false);
@@ -455,7 +457,11 @@ export function SupplierDetail() {
       <div className="kpi-row">
         <Kpi label="إجمالي المفوتر" value={sar(d.totalInvoiced)} unit="ر.س" />
         <Kpi label="المسدد" value={sar(d.totalPaid)} unit="ر.س" tone="ok" />
-        <Kpi label="المتبقي" value={sar(d.outstanding)} unit="ر.س" hero
+        {/* م-١٨: «المديونية المفتوحة» — نفس اسم Dashboard.tsx وCoverage.tsx لنفس
+            الرقم (d.outstanding)، بدل «المتبقي» التي كانت اسماً رابعاً له. لا صلة
+            بعمود «المتبقي» في جدول الفواتير أدناه — ذاك رصيد فاتورة واحدة، رقم
+            مختلف لا يوحَّد معه هنا. */}
+        <Kpi label="المديونية المفتوحة" value={sar(d.outstanding)} unit="ر.س" hero
              explain={<ExplainDot metric="outstanding" values={{ totalInvoiced: d.totalInvoiced, totalPaid: d.totalPaid, outstanding: d.outstanding }} />} />
         <Kpi label="متأخر" value={sar(d.overdue)} unit="ر.س" tone="red" alert={d.overdue > 0}
              explain={<ExplainDot metric="overdue" values={{ overdue: d.overdue }} />} />
@@ -684,19 +690,21 @@ export function SupplierDetail() {
       </div>
 
       {addInvoiceOpen && (
-        <Modal title="إضافة مديونية" onClose={() => setAddInvoiceOpen(false)}>
-          <ManualEntryForm mode="invoice" onSubmit={handleAddInvoice} busy={busy} error={formErr} />
+        <Modal title="إضافة مديونية" onClose={() => setAddInvoiceOpen(false)} dirty={formDirty}>
+          <ManualEntryForm mode="invoice" onSubmit={handleAddInvoice} busy={busy} error={formErr}
+                           onDirtyChange={setFormDirty} />
         </Modal>
       )}
 
       {addPaymentOpen && (
-        <Modal title="تسجيل دفعة" onClose={() => setAddPaymentOpen(false)}>
-          <ManualEntryForm mode="payment" onSubmit={handleAddPayment} busy={busy} error={formErr} />
+        <Modal title="تسجيل دفعة" onClose={() => setAddPaymentOpen(false)} dirty={formDirty}>
+          <ManualEntryForm mode="payment" onSubmit={handleAddPayment} busy={busy} error={formErr}
+                           onDirtyChange={setFormDirty} />
         </Modal>
       )}
 
       {editInvoice && (
-        <Modal title="تعديل مديونية" onClose={() => setEditInvoice(null)}>
+        <Modal title="تعديل مديونية" onClose={() => setEditInvoice(null)} dirty={formDirty}>
           <ManualEntryForm
             mode="invoice"
             initial={{
@@ -707,6 +715,7 @@ export function SupplierDetail() {
               reference: editInvoice.doc,
             }}
             onSubmit={handleEditInvoice}
+            onDirtyChange={setFormDirty}
             busy={busy}
             error={formErr}
           />

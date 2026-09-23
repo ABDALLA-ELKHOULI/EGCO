@@ -183,7 +183,8 @@ export function CoveragePage() {
                 <Th label="الفواتير" className="ltr" sortKey="invoiceCount" sort={sort} onSort={setSort}
                     ascLabel="الأقل أولاً" descLabel="الأكثر أولاً" active={Boolean(invMin || invMax)}
                     filter={{ kind: 'range', min: invMin, max: invMax, onMin: setInvMin, onMax: setInvMax }} />
-                <Th label="المديونية (ر.س)" className="ltr" sortKey="outstanding" sort={sort} onSort={setSort}
+                {/* م-١٨: نفس اسم Dashboard.tsx وSupplierDetail.tsx لهذا الرقم. */}
+                <Th label="المديونية المفتوحة (ر.س)" className="ltr" sortKey="outstanding" sort={sort} onSort={setSort}
                     ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً" active={Boolean(outMin || outMax)}
                     filter={{ kind: 'range', min: outMin, max: outMax, onMin: setOutMin, onMax: setOutMax, unit: 'ر.س' }} />
                 <Th label="الحالة" sortKey="state" sort={sort} onSort={setSort}

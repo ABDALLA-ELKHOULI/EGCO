@@ -89,12 +89,14 @@ export function Dashboard() {
         </select>
       </div>
 
-      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
+      <div className="kpi-row">
         <Kpi label="متأخر عن موعده" value={sar(s.overdue)} unit="ر.س" tone="red" alert={s.overdue > 0}
              explain={<ExplainDot metric="overdue" values={{ overdue: s.overdue }} />} />
         <Kpi label="مستحق خلال ٧ أيام" value={sar(s.dueWithin7)} unit="ر.س" tone="gold"
              explain={<ExplainDot metric="dueWithin7" values={{ dueWithin7: s.dueWithin7 }} />} />
-        <Kpi label="إجمالي المديونية" value={sar(s.outstanding)} unit="ر.س"
+        {/* م-١٨: «المديونية المفتوحة» — نفس الاسم في كل الشاشات لنفس الرقم
+            (Coverage.tsx، SupplierDetail.tsx)، بدل «إجمالي المديونية» هنا وحدها. */}
+        <Kpi label="المديونية المفتوحة" value={sar(s.outstanding)} unit="ر.س"
              explain={<ExplainDot metric="outstanding" values={{ totalInvoiced: s.totalPaid + s.outstanding, totalPaid: s.totalPaid, outstanding: s.outstanding }} />} />
       </div>
 

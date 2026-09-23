@@ -226,3 +226,57 @@ def test_guarantees_next_release_is_soonest_unreleased(api_client):
     d = api_client.get(OVERVIEW).json()['guarantees']
     assert d['nextRelease']['date'] == '2026-09-01'
     assert d['nextRelease']['amount'] == 20000.0
+
+
+# ---------------------------------------------------------------- م-٣٢: عجز نقدي بلا تحصيلات
+
+def test_deficit_alert_flags_missing_receivables_and_raises_that_alert_level(api_client):
+    """بلا بيانات تحصيلات: نصّ تنبيه العجز يُوسم صراحة، وتنبيه غياب التحصيلات
+    يُرفع من info إلى warning — كلاهما كانا يوهمان بدقة/خطورة غير موجودة فعلياً."""
+    _mk_supplier(api_client, 'S1')
+    _mk_invoice(api_client, 'S1', '2026-08-10', 500000)  # مصروف كبير بلا أي تحصيل مقابل
+
+    d = api_client.get(OVERVIEW).json()
+    assert d['cash']['hasReceivables'] is False
+
+    alerts_by_kind = {}
+    for a in d['alerts']:
+        if 'عجز نقدي متوقع' in a['text']:
+            alerts_by_kind['deficit'] = a
+        if a['text'] == 'لم تُرفع بيانات التحصيلات بعد':
+            alerts_by_kind['no_receivables'] = a
+
+    if 'deficit' in alerts_by_kind:
+        assert 'محسوب بلا بيانات تحصيلات' in alerts_by_kind['deficit']['text']
+        assert alerts_by_kind['deficit']['level'] == 'danger'
+    assert 'no_receivables' in alerts_by_kind
+    assert alerts_by_kind['no_receivables']['level'] == 'warning'
+
+
+# ---------------------------------------------------------------- م-٣٢: coverageSummary
+
+def test_coverage_summary_reports_riyal_amounts_covered_and_not(api_client):
+    _mk_supplier(api_client, 'S1', name='مورد له كشف')
+    _mk_invoice(api_client, 'S1', '2026-01-01', 100000)
+    _mk_supplier(api_client, 'S2', name='مورد بلا كشف')  # لا فواتير ولا دفعات
+
+    _mk_contractor(api_client, 'C1', name='مقاول له كشف')
+    _mk_contractor_claim(api_client, 'C1', '2026-01-01', 'م1', 200000, 0, 200000)
+
+    _mk_revenue(api_client, 'م1', 50000, status='open')
+
+    d = api_client.get(OVERVIEW).json()
+    cs = d['coverageSummary']
+
+    assert cs['suppliers']['withStatementCount'] == d['payables']['withData']
+    assert cs['suppliers']['withoutStatementCount'] == d['coverage']['withoutData']
+    assert cs['suppliers']['outstandingCovered'] == d['payables']['outstanding']
+
+    assert cs['contractors']['withoutStatementCount'] == d['contractors']['withoutStatementCount']
+    assert cs['contractors']['owedCovered'] == d['contractors']['owedToContractors']
+    assert cs['contractors']['owedNotCovered'] == d['contractors']['withoutStatementOwed']
+
+    assert cs['receivables']['hasData'] == d['cash']['hasReceivables']
+    assert cs['receivables']['open'] == d['revenues']['open']
+
+    assert cs['guarantees']['heldTotal'] == d['guarantees']['heldTotal']

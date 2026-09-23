@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, ApiError, AiSettings, ImportClassification, LearnedLayout } from '@/lib/api';
 import { Card, ErrorState, Pill, State } from '@/components/ui';
 import type { UpdateStatus } from '@/types/global';
@@ -104,6 +105,20 @@ export function Settings() {
               <button className="btn" onClick={toggleTheme}>
                 {theme === 'dark' ? 'الوضع النهاري' : 'الوضع الليلي'}
               </button>
+            </div>
+          </div>
+        </Card>
+
+        <Card title="المحذوفات وإدارة المشاريع">
+          <div className="card-body">
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 0 }}>
+              حذف مورد أو مقاول أو استيراد لا يمحو شيئاً فعلياً — يبقى في السلّة
+              قابلاً للاسترجاع مع فواتيره وحركاته، حتى تحذفه نهائياً بنفسك.
+              ومن نفس المكان: دمج مشروعين ظهرا باسمين مختلفين لنفس الموقع.
+            </p>
+            <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+              <Link className="btn" to="/settings/trash">المحذوفات</Link>
+              <Link className="btn" to="/settings/projects">المشاريع والدمج</Link>
             </div>
           </div>
         </Card>

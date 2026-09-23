@@ -23,6 +23,8 @@ import { CalendarPage } from '@/pages/Calendar';
 import { ImportPage } from '@/pages/Import';
 import { ReportPage } from '@/pages/Report';
 import { Settings } from '@/pages/Settings';
+import { Trash } from '@/pages/Trash';
+import { ProjectAdmin } from '@/pages/ProjectAdmin';
 import { WhatsNewModal } from '@/components/WhatsNewModal';
 import { toursSince, type VersionTour } from '@/lib/whatsNew';
 
@@ -190,6 +192,8 @@ function RoutedPages() {
             <Route path="/import" element={<ImportPage />} />
             <Route path="/report" element={<ReportPage />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/settings/trash" element={<Trash />} />
+            <Route path="/settings/projects" element={<ProjectAdmin />} />
       </Routes>
     </ErrorBoundary>
   );

@@ -66,6 +66,23 @@ jobs:
             echo "> التشغيل المرجعي الكامل يقع محلياً قبل الوسم." >> $GITHUB_STEP_SUMMARY
           fi
 
+      # ‏م-٣٣: يمنع شحن نسخة فيها ميزة جديدة بلا مدخل في whatsNew.ts — القاعدة
+      # ‏الورقية في CLAUDE.md §٨ لم تصمد يوماً واحداً (v0.11.0 وv0.11.1 وصلتا
+      # ‏بلا إعلان). shell: bash إلزامي لنفس سبب خطوة اختبارات الخادم أعلاه —
+      # ‏المصفوفة تشمل windows-latest.
+      - name: تحقّق من جولة «ما الجديد»
+        shell: bash
+        run: node scripts/check-whats-new.mjs
+
+      # ‏م-٣٨-٢: أول تشغيل لـESLint في هذا المشروع وجد ٢٣٤ خطأ (٢٢٧ منها
+      # ‏no-explicit-any) و١٠ تحذيرات في src/ — ليست ملفاً ملكنا لنصلحه هنا.
+      # ‏continue-on-error: true عمداً حتى تُنظَّف الشيفرة في موجة لاحقة؛ الخطوة
+      # ‏موجودة فقط لتُظهر العدد في كل تشغيل بدل أن يبقى مجهولاً.
+      - name: ESLint (تحذير فقط — لا يُفشل البناء بعد)
+        shell: bash
+        continue-on-error: true
+        run: npm --workspace apps/renderer run lint
+
       - name: Build and publish installers
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

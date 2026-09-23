@@ -32,14 +32,21 @@ export function Projects() {
         </div>
       </div>
 
-      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
-        <Kpi label="إجمالي المديونية" value={sar(d.totals?.outstanding ?? 0)} unit="ر.س" hero
+      {/* لا أعمدة ثابتة هنا: `repeat(5,1fr)` مكتوبة في JSX كانت تتغلّب على auto-fit في
+          tokens.css فتُقصّ البطاقة الطرفية عند ١٢٨٠px (مُشاهَد بلقطة). الشبكة تلتفّ بنفسها. */}
+      <div className="kpi-row">
+        <Kpi label="مديونية الموردين المفتوحة" value={sar(d.totals?.outstanding ?? 0)} unit="ر.س"
              explain={<ExplainDot metric="projectsTotals" values={{ projectsOutstanding: d.totals?.outstanding }} />} />
         <Kpi label="المتأخر" value={sar(d.totals?.overdue ?? 0)} unit="ر.س" tone="red" alert={(d.totals?.overdue ?? 0) > 0}
              explain={<ExplainDot metric="overdue" values={{ overdue: d.totals?.overdue }} />} />
-        <Kpi label="مستحق خلال ٧ أيام" value={sar(d.totals?.dueWithin7 ?? 0)} unit="ر.س" tone="gold"
-             explain={<ExplainDot metric="dueWithin7" values={{ dueWithin7: d.totals?.dueWithin7 }} />} />
+        <Kpi label="مستحق للمقاولين" value={sar(d.totals?.contractorsOwed ?? 0)} unit="ر.س" />
+        <Kpi label="مستحق لنا من المقاولين" value={sar(d.totals?.contractorsOwedToUs ?? 0)} unit="ر.س" tone="ok" />
+        <Kpi label="إجمالي الالتزام (موردون + مقاولون)" value={sar(d.totals?.totalCommitment ?? 0)} unit="ر.س" hero />
       </div>
+      <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+        «مستحق للمقاولين» و«مستحق لنا» هما نفس أرقام شاشة <b>المقاولون</b> بالضبط، و«تأخر الموازنة»
+        من شاشة <b>الموازنة</b> (آخر شهر مُدخَل إن وُجد) — لا حساب جديد هنا. الأحمر للمتأخر عن موعده فقط.
+      </p>
 
       <div className="stack">
         <Card>
@@ -50,8 +57,9 @@ export function Projects() {
               <thead>
                 <tr>
                   <th>المشروع</th><th>الموردون</th>
-                  <th className="ltr">المفوتر (ر.س)</th><th className="ltr">المسدد (ر.س)</th>
                   <th className="ltr">المديونية المفتوحة (ر.س)</th><th className="ltr">المتأخر (ر.س)</th>
+                  <th className="ltr">مستحق للمقاولين (ر.س)</th><th className="ltr">مستحق لنا منهم (ر.س)</th>
+                  <th className="ltr">إجمالي الالتزام (ر.س)</th><th>تأخر الموازنة ٪</th>
                 </tr>
               </thead>
               <tbody>
@@ -59,6 +67,11 @@ export function Projects() {
                   <tr key={r.project}>
                     <td>
                       <Link to={`/projects/${encodeURIComponent(r.project)}`}>{r.project}</Link>
+                      {r.mergedSpellingAlert && (
+                        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                          يضم صيغ الاسم: {(r.contractorProjectNames ?? []).join('، ')}
+                        </div>
+                      )}
                     </td>
                     <td>
                       {ar(r.supplierCount ?? 0)}
@@ -66,8 +79,6 @@ export function Projects() {
                         {ar(r.suppliersWithData ?? 0)} منهم لديهم كشوفات
                       </div>
                     </td>
-                    <td className="ltr muted"><Money v={r.totalInvoiced ?? 0} /></td>
-                    <td className="ltr"><Money v={r.totalPaid ?? 0} cls="ok" /></td>
                     <td className="ltr">
                       {r.outstanding > 0
                         ? <Money v={r.outstanding} cls={r.overdue > 0 ? 'red' : ''} />
@@ -75,6 +86,24 @@ export function Projects() {
                     </td>
                     <td className="ltr">
                       {r.overdue > 0 ? <Money v={r.overdue} cls="red" /> : <span className="muted">—</span>}
+                    </td>
+                    <td className="ltr">
+                      {r.contractorsOwed > 0
+                        ? <Money v={r.contractorsOwed} />
+                        : <span className="muted">—</span>}
+                    </td>
+                    <td className="ltr">
+                      {r.contractorsOwedToUs > 0
+                        ? <Money v={r.contractorsOwedToUs} cls="ok" />
+                        : <span className="muted">—</span>}
+                    </td>
+                    <td className="ltr"><Money v={r.totalCommitment ?? 0} /></td>
+                    <td>
+                      {r.budgetDelayPct !== null && r.budgetDelayPct !== undefined
+                        ? <span className={r.budgetDelayPct > 0 ? 'red' : 'ok'}>
+                            {(r.budgetDelayPct * 100).toFixed(1)}٪
+                          </span>
+                        : <span className="muted">لا موازنة</span>}
                     </td>
                   </tr>
                 ))}

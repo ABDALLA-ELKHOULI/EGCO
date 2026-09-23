@@ -46,7 +46,7 @@ export function Guarantees() {
       </div>
 
       {d && (
-        <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <div className="kpi-row">
           <Kpi label="المحتجز حسب الكشوف" value={sar(d.totals.statementsHeld)} unit="ر.س" hero
                explain={<ExplainDot metric="guaranteeStatementsHeld"
                                     values={{ guaranteeStatementsHeld: d.totals.statementsHeld }} />} />
@@ -171,7 +171,7 @@ function GuaranteeAccountModal({ account, onClose }:
         : !d ? <State>جارٍ التحميل…</State>
         : (
         <>
-          <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginBottom: 12 }}>
+          <div className="kpi-row">
             <Kpi label="الرصيد" value={sar(d.account.balance)} unit="ر.س" />
             {/* «فرق كذا ر.س» بلا شرح رقمٌ لا يُتحقَّق منه: لا يقول أي رقمين قُورنا
                 ولا أين يُبحث عن السبب. */}

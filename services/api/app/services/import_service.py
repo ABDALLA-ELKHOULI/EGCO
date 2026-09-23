@@ -730,14 +730,31 @@ def preview_debts_report(path: str, db: Session) -> dict:
     )
 
 
-def preview_contractors_balance(path: str) -> dict:
+def preview_contractors_balance(db: Session, path: str) -> dict:
     """معاينة بلا حفظ لكشف رصيد المقاولين — أرقام الملف كما هي، لا بوابة مطابقة
-    (لا كشف حساب فردي هنا يُقارَن به، اللقطة نفسها هي المصدر)."""
+    (لا كشف حساب فردي هنا يُقارَن به، اللقطة نفسها هي المصدر).
+
+    projectMatches: لكل «تبويب» خام يطابق مشروعاً قائماً بصيغة مختلفة (أل
+    التعريف)، يُبلَّغ «سدن → السدن (مطابقة على مشروع قائم)» قبل الحفظ — م-٣٠.
+    """
     parsed = contractors_balance_xls.parse(path)
+    project_matches = []
+    seen = set()
+    for r in parsed['rows']:
+        raw = r['project']
+        if not raw or raw in seen:
+            continue
+        seen.add(raw)
+        matched = PP.resolve_to_known_project(db, raw)
+        if matched != raw:
+            project_matches.append(dict(raw=raw, matched=matched,
+                                        message='%s ← %s (مطابقة على مشروع قائم)' % (
+                                            matched, raw)))
     return dict(kind='contractors_balance', asOfDate=parsed['asOfDate'],
                fromDate=parsed['fromDate'], sheets=parsed['sheets'],
                totals=parsed['totals'], rowCount=len(parsed['rows']),
-               parseIssues=parsed['issues'], reconciled=True)
+               parseIssues=parsed['issues'], reconciled=True,
+               projectMatches=project_matches)
 
 
 def commit_debts_report(db: Session, path: str, backup: bool = True) -> dict:
@@ -898,6 +915,11 @@ def commit_contractors_balance(db: Session, path: str, backup: bool = True) -> d
     superseded_by_statement = 0
 
     for r in parsed['rows']:
+        # «تبويب» في هذا الملف يُكتب أحياناً بلا أل التعريف («سدن») بينما نفس
+        # المشروع قائم في القاعدة بأل («السدن») من شاشة الموردين — استُخدم اسمه
+        # القائم كما هو مكتوب فعلاً، لا صيغة جديدة (م-٣٠، لا هجرة تعيد التسمية).
+        if r['project']:
+            r['project'] = PP.resolve_to_known_project(db, r['project'])
         contractor = db.query(models.Contractor).filter_by(code=r['account']).one_or_none()
         if contractor is None:
             contractor = models.Contractor(code=r['account'], name=r['name'], status='active')

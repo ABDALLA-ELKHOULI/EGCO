@@ -60,7 +60,7 @@ export function CommandCentre() {
         )}
       </div>
 
-      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
+      <div className="kpi-row">
         <Kpi label="المديونية المفتوحة" value={sar(payables.outstanding ?? 0)} unit="ر.س" hero
              explain={<ExplainDot metric="outstanding" values={{ outstanding: payables.outstanding }} />} />
         <Kpi

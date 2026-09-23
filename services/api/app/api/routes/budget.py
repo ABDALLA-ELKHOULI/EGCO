@@ -15,8 +15,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.errors import friendly_http_error
 from app.db.session import get_session
-from app.ingest.budget_xlsx import BudgetParseError
 from app.schemas.budget import BudgetSnapshotIn, CommentIn, ProjectCityIn
 from app.services import budget_service
 from app.services import export_service as ES
@@ -91,8 +91,8 @@ def budget_update(snapshot_id: str, body: BudgetSnapshotIn,
             [c.model_dump() for c in body.claims], body.docNo, body.issuedOn,
             body.notes, snapshot_id=snapshot_id, force_conflict=body.forceConflict,
             attachment=body.attachment)
-    except ValueError as e:
-        raise HTTPException(404, detail=str(e))
+    except Exception as e:
+        raise friendly_http_error(e, 404) from e
 
 
 @router.delete('/{snapshot_id}')
@@ -136,8 +136,8 @@ def budget_import(req: ImportRequest, db: Session = Depends(get_session)) -> dic
         raise HTTPException(404, detail=f'الملف غير موجود: {req.path}')
     try:
         return budget_service.import_budget(db, req.path)
-    except BudgetParseError as e:
-        raise HTTPException(422, detail=str(e))
+    except Exception as e:
+        raise friendly_http_error(e, 422) from e
 
 
 @router.get('/export.xlsx')

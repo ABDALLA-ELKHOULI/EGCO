@@ -224,12 +224,19 @@ def overview(db: Session, today: Optional[dt.date] = None) -> dict:
         alerts.append(dict(level='warning',
                            text=f"{_suppliers(coverage['stale'])} بلا حركة منذ فترة طويلة — قد تكون البيانات قديمة"))
     if next_deficit is not None:
+        # م-٣٢: نصف معادلة — بلا بيانات تحصيلات فالعجز محسوب من المصروفات وحدها
+        # (لا «داخل» في المعادلة إطلاقاً)، فيبدو أسوأ مما هو عليه فعلاً؛ النص يقول
+        # ذلك صراحة بدل أن يوهم بدقة غير موجودة.
+        suffix = ('' if cash['hasReceivables'] else
+                 ' (محسوب بلا بيانات تحصيلات — الرقم الفعلي أفضل من هذا)')
         alerts.append(dict(level='danger',
                            text=f"عجز نقدي متوقع خلال {_ar_date(next_deficit['from'])} — "
                                 f"{_ar_date(next_deficit['to'])} بمقدار "
-                                f"{abs(next_deficit['amount']):,.2f} ر.س"))
+                                f"{abs(next_deficit['amount']):,.2f} ر.س{suffix}"))
     if not cash['hasReceivables']:
-        alerts.append(dict(level='info', text='لم تُرفع بيانات التحصيلات بعد'))
+        # كانت 'info' — أضعف مستوى، بينما الفجوة (غياب التحصيلات) هي نصف الأساس
+        # الذي يُبنى عليه تنبيه العجز أعلاه بمستوى 'danger'. نفس عائلة م-١٩.
+        alerts.append(dict(level='warning', text='لم تُرفع بيانات التحصيلات بعد'))
     if payables['dueWithin7'] > 0:
         alerts.append(dict(level='info',
                            text=f"مستحق خلال ٧ أيام: {payables['dueWithin7']:,.2f} ر.س"))
@@ -248,8 +255,29 @@ def overview(db: Session, today: Optional[dt.date] = None) -> dict:
     revenues = _revenues_block(db)
     guarantees = _guarantees_block(db, today)
 
+    # م-٣٢: إفصاح متناسب واحد بالريال بدل تنبيهات متفرقة — ماذا يغطّي التطبيق
+    # فعلاً وماذا لا يغطّيه، لكل جهة. كل رقم هنا منقول حرفياً من الكتل المحسوبة
+    # أعلاه (payables/coverage/contractors/cash/revenues/guarantees) — لا حساب
+    # جديد، فقط إعادة تسمية للعرض في مكان واحد.
+    coverage_summary = dict(
+        suppliers=dict(
+            withStatementCount=payables['withData'],
+            withoutStatementCount=coverage['withoutData'],
+            outstandingCovered=payables['outstanding']),
+        contractors=dict(
+            withStatementCount=contractors['count'] - contractors['withoutStatementCount'],
+            withoutStatementCount=contractors['withoutStatementCount'],
+            owedCovered=contractors['owedToContractors'],
+            owedNotCovered=contractors['withoutStatementOwed']),
+        receivables=dict(
+            hasData=cash['hasReceivables'],
+            open=revenues['open'],
+            collected=revenues['collected']),
+        guarantees=dict(heldTotal=guarantees['heldTotal']),
+    )
+
     return dict(asOf=today.isoformat(), payables=payables, coverage=coverage,
                needsTerm=needs_term,
                cash=cash, projects=projects, alerts=alerts,
                contractors=contractors, lastPayments=last_payments, lastPayment=last_payment,
-               revenues=revenues, guarantees=guarantees)
+               revenues=revenues, guarantees=guarantees, coverageSummary=coverage_summary)

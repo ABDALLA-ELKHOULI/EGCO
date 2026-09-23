@@ -263,14 +263,17 @@ def delete_contractor(code: str, force: bool = Query(False),
                       db: Session = Depends(get_session)) -> dict:
     """حذف مقاول (حذف منطقي). إن كانت له حركات مسجلة يُرفض إلا مع force=true."""
     row = _get_contractor(db, code)
-    has_entries = db.query(models.ContractorEntry).filter_by(
-        contractor_id=row.id, deleted_at=None).first() is not None
-    if has_entries and not force:
+    entry_count = db.query(models.ContractorEntry).filter_by(
+        contractor_id=row.id, deleted_at=None).count()
+    if entry_count and not force:
         raise HTTPException(409, detail='لا يمكن حذف المقاول لوجود حركات مسجلة له — '
                                         'استخدم force=true للحذف مع الإبقاء على السجلات')
+    # الحركات تبقى قائمة (deleted_at=None) — تختفي فقط لأن الشاشات تصفّي عبر
+    # المقاول. استرجاعه من سلّة المحذوفات يُعيدها. انظر ملاحظة suppliers.py المطابقة.
     row.deleted_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
-    return dict(deleted=True)
+    return dict(deleted=dict(kind='contractor', id=row.code,
+                             dependents=dict(entries=entry_count)))
 
 
 # ---------------------------------------------------------------- entries

@@ -470,15 +470,19 @@ def delete_supplier(account: str, force: bool = Query(False),
     if row is None:
         raise HTTPException(404, detail=f'لا يوجد مورد بالحساب {account}')
 
-    has_invoices = db.query(models.Invoice).filter_by(
-        supplier_id=row.id, deleted_at=None).first() is not None
-    has_payments = db.query(models.Payment).filter_by(
-        supplier_id=row.id, deleted_at=None).first() is not None
+    invoice_count = db.query(models.Invoice).filter_by(
+        supplier_id=row.id, deleted_at=None).count()
+    payment_count = db.query(models.Payment).filter_by(
+        supplier_id=row.id, deleted_at=None).count()
 
-    if (has_invoices or has_payments) and not force:
+    if (invoice_count or payment_count) and not force:
         raise HTTPException(409, detail='لا يمكن حذف المورد لوجود فواتير أو دفعات مسجلة له — '
                                         'استخدم force=true للحذف مع الإبقاء على السجلات')
 
+    # الفواتير والدفعات **لا تُحذف** — تبقى deleted_at=None في القاعدة، وتختفي فقط
+    # لأن كل شاشة تعرضها تصفّي عبر المورد (deleted_at is None). استرجاع المورد من
+    # سلّة المحذوفات (routes/trash.py) يُعيدها للظهور فوراً بلا أي خطوة إضافية.
     row.deleted_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
-    return dict(deleted=True)
+    return dict(deleted=dict(kind='supplier', id=row.account,
+                             dependents=dict(invoices=invoice_count, payments=payment_count)))

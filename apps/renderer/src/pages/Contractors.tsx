@@ -16,11 +16,16 @@ import { ExportMenu, StatementExportButton } from '@/components/ExportMenu';
 
 /**
  * المقاولون — قاعدة الإشارة (متفق عليها مع المستخدم):
- *   الرصيد سالب  = مستحق «له» (نحن مدينون للمقاول) → أحمر
+ *   الرصيد سالب  = مستحق «له» (نحن مدينون للمقاول)
  *   الرصيد موجب  = مستحق «لنا» (المقاول مدين لنا)   → أخضر
+ *
+ * م-٣٦: الأحمر في هذا التطبيق يعني «متأخر عن موعده» حصراً (الموردين). اتجاه
+ * رصيد المقاول ليس تأخراً — لا تاريخ استحقاق وراءه (انظر الملاحظة أعلى الصفحة)
+ * فتلوينه أحمر كان يُخلط «له» بـ«متأخر» في مسح سريع للجدول. لذا «له» محايد
+ * (بلا لون — نفس لون النص الافتراضي)، و«لنا» يبقى أخضر كما كان.
  */
 export function balanceView(balance: number): { cls: string; label: string } {
-  if (balance < 0) return { cls: 'red', label: 'له' };
+  if (balance < 0) return { cls: '', label: 'له' };
   if (balance > 0) return { cls: 'ok', label: 'لنا' };
   return { cls: 'muted', label: 'متوازن' };
 }
@@ -115,6 +120,8 @@ export function Contractors() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [editRow, setEditRow] = useState<ContractorRow | null>(null);
+  // م-٣٤: يمرَّر لـ Modal.dirty — انظر تعليقه في Suppliers.tsx.
+  const [formDirty, setFormDirty] = useState(false);
   const [deleteRow, setDeleteRow] = useState<ContractorRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
@@ -381,7 +388,7 @@ export function Contractors() {
       <div className="page-head">
         <div className="grow">
           <h1>المقاولون</h1>
-          <p>الرصيد السالب (بالأحمر) مستحق «له»، والموجب (بالأخضر) مستحق «لنا»</p>
+          <p>الرصيد السالب مستحق «له»، والموجب (بالأخضر) مستحق «لنا» — الأحمر هنا محجوز للتأخر عن الموعد فقط</p>
           {/* الغياب يُشرح ولا يُترك. صفحة الموردين تعرض عمود «التأخر» بارزاً، فخلوّ
               هذه الصفحة منه يُقرأ «البيانات ناقصة» لا «لا ينطبق هنا». وعرض صفرٍ
               بدلاً منه أسوأ: الصفر يعني «لا تأخر عليه» وهو ما لا نعلمه أصلاً. */}
@@ -396,8 +403,10 @@ export function Contractors() {
       </div>
 
       {d && (
-        <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-          <Kpi label="إجمالي مستحق للمقاولين" value={sar(d.totals.owedToContractors)} unit="ر.س" tone="red" hero
+        <div className="kpi-row">
+          {/* م-٣٦: بلا tone="red" — هذا اتجاه رصيد لا تأخر، والأحمر محجوز للتأخر
+              عن الموعد وحده. */}
+          <Kpi label="إجمالي مستحق للمقاولين" value={sar(d.totals.owedToContractors)} unit="ر.س" hero
                explain={<ExplainDot metric="contractorsOwed" values={{ contractorsOwed: d.totals.owedToContractors }} />} />
           <Kpi label="إجمالي مستحق لنا" value={sar(d.totals.owedToUs)} unit="ر.س" tone="ok"
                explain={<ExplainDot metric="contractorsOwedToUs" values={{ contractorsOwedToUs: d.totals.owedToUs }} />} />
@@ -507,7 +516,10 @@ export function Contractors() {
                 // مالي: إفراج عن ضمان غير معروف للنظام.
                 const hasStatement = r.hasStatement;
                 return (
-                  <tr key={r.code} className={r.balance < 0 ? 'row-overdue' : ''}>
+                  // لا row-overdue هنا: تلك تلوّن الصف كاملاً أحمر، وهو لون التأخر
+                  // الزمني حصراً (م-٣٦) — رصيد «له» ليس تأخراً، ولا تاريخ استحقاق
+                  // وراءه أصلاً (انظر الملاحظة أعلى الصفحة).
+                  <tr key={r.code}>
                     <td className="party">
                       <Link to={`/contractors/${r.code}`}>{r.name}</Link>
                       {r.releaseAlerts > 0 && (
@@ -614,18 +626,20 @@ export function Contractors() {
       </Card>
 
       {addOpen && (
-        <Modal title="إضافة مقاول" onClose={() => setAddOpen(false)}>
-          <ContractorForm onSubmit={handleAdd} busy={busy} error={formErr} knownProjects={projects} />
+        <Modal title="إضافة مقاول" onClose={() => setAddOpen(false)} dirty={formDirty}>
+          <ContractorForm onSubmit={handleAdd} busy={busy} error={formErr} knownProjects={projects}
+                          onDirtyChange={setFormDirty} />
         </Modal>
       )}
 
       {editRow && (
-        <Modal title="تعديل مقاول" onClose={() => setEditRow(null)}>
+        <Modal title="تعديل مقاول" onClose={() => setEditRow(null)} dirty={formDirty}>
           <ContractorForm
             initial={{ code: editRow.code, name: editRow.name, phone: editRow.phone ?? '',
                       projects: editRow.projects ?? [] }}
             codeLocked
             knownProjects={projects}
+            onDirtyChange={setFormDirty}
             onSubmit={handleEdit}
             busy={busy}
             error={formErr}
@@ -676,7 +690,7 @@ function ProjectGroupsView({ groups }: {
                   onClick={() => toggle(g.project)} style={{ cursor: 'pointer' }}>
                 <td><b>{open.has(g.project) ? '▾' : '◂'} {g.project}</b></td>
                 <td>{ar(g.rows.length)}</td>
-                <td className="ltr">{g.owed > 0 ? <Money v={g.owed} cls="red" /> : <span className="muted">—</span>}</td>
+                <td className="ltr">{g.owed > 0 ? <Money v={g.owed} /> : <span className="muted">—</span>}</td>
                 <td className="ltr">{g.owedToUs > 0 ? <Money v={g.owedToUs} cls="ok" /> : <span className="muted">—</span>}</td>
               </tr>
               {open.has(g.project) && g.rows
@@ -814,9 +828,10 @@ function ByProjectView({ rows }: { rows: any[] }) {
               <td className="ltr">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
                   <div style={{ width: 60, height: 6, borderRadius: 3, background: 'var(--tint)', overflow: 'hidden' }}>
-                    <div style={{ width: `${Math.max(4, ((r.owed || 0) / max) * 100)}%`, height: '100%', background: 'var(--red)' }} />
+                    {/* م-٣٦: لا أحمر — هذا مجموع اتجاه رصيد (له)، لا تأخر عن موعد. */}
+                    <div style={{ width: `${Math.max(4, ((r.owed || 0) / max) * 100)}%`, height: '100%', background: 'var(--ink)' }} />
                   </div>
-                  <Money v={r.owed} cls="red" />
+                  <Money v={r.owed} />
                 </div>
               </td>
               <td>{ar(r.contractorCount)}</td>
@@ -845,7 +860,8 @@ function TopOwedView({ rows }: { rows: any[] }) {
             <tr key={r.code}>
               <td><Link to={`/contractors/${r.code}`}>{r.name}</Link></td>
               <td>{(r.projects ?? []).length > 0 ? r.projects.join('، ') : <span className="muted">—</span>}</td>
-              <td className="ltr"><Money v={Math.abs(r.balance)} cls="red" /></td>
+              {/* م-٣٦: بلا cls="red" — قائمة اتجاه رصيد (له)، لا تأخر. */}
+              <td className="ltr"><Money v={Math.abs(r.balance)} /></td>
             </tr>
           ))}
         </tbody>
@@ -867,7 +883,7 @@ function Guarantees216View({ g }: { g: any }) {
   }
   return (
     <div style={{ padding: '4px 0 0' }}>
-      <div className="kpi-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
+      <div className="kpi-row">
         <Kpi label="إجمالي حسابات الضمان المستقلة (216)" value={sar(g.total)} unit="ر.س" hero={false} />
         <Kpi label="عدد الحسابات" value={ar(g.count)} hero={false} />
       </div>

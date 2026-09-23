@@ -73,6 +73,8 @@ export function Suppliers() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [editRow, setEditRow] = useState<any>(null);
+  // م-٣٤: يمرَّر لـ Modal.dirty — السؤال عند الإغلاق فقط إن كُتب شيء فعلاً.
+  const [formDirty, setFormDirty] = useState(false);
   const [deleteRow, setDeleteRow] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
@@ -96,10 +98,10 @@ export function Suppliers() {
       const st = STATUS[r.status] ?? { label: r.status, cls: '' };
       return <span className={`pill ${st.cls}`}>{st.label}</span>;
     } },
-    { key: 'outstanding', label: 'المديونية المفتوحة (ر.س)', ltr: true,
-      render: (r) => r.outstanding > 0 ? sar(r.outstanding) : '—' },
     { key: 'delay', label: 'التأخر (ر.س)', ltr: true,
       render: (r) => r.delay?.days > 0 ? sar(r.delay.amount) : '—' },
+    { key: 'outstanding', label: 'المديونية المفتوحة (ر.س)', ltr: true,
+      render: (r) => r.outstanding > 0 ? sar(r.outstanding) : '—' },
   ];
 
   const seq = useRef(0);
@@ -141,8 +143,8 @@ export function Suppliers() {
         rows={d.rows}
         totalsCells={[
           `الإجمالي (${ar(d.count)})`, '', '', '',
-          sar(d.totals.outstanding),
           sar(d.totals.delayed),
+          sar(d.totals.outstanding),
         ]}
         footNote={filterLine ? `متأخر ضمن التصفية: ${sar(d.totals.delayed)} ر.س` : undefined}
         onBack={() => setShowPrint(false)}
@@ -263,17 +265,18 @@ export function Suppliers() {
                     filter={{ kind: 'select', value: status, onChange: setStatus,
                               allLabel: 'كل الحالات',
                               options: Object.keys(STATUS).map((k) => ({ value: k, label: STATUS[k].label })) }} />
+                {/* م-٣٥: التأخر قبل المفتوح — هو ما يجب دفعه فعلاً، لا مجرد ما لم يُسدَّد بعد. */}
+                <Th label="التأخر" className="ltr" sortKey="delay" sort={sort} onSort={setSort}
+                    ascLabel="الأقل تأخراً" descLabel="الأكثر تأخراً" active={Boolean(delay)}
+                    filter={{ kind: 'select', value: delay, onChange: setDelay,
+                              allLabel: 'كل الشرائح',
+                              options: DELAY_BUCKETS.map((b) => ({ value: b.value, label: b.label, hint: b.hint })) }} />
                 <Th label="المديونية المفتوحة" className="ltr" sortKey="outstanding"
                     sort={sort} onSort={setSort}
                     ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً"
                     active={Boolean(minOut || maxOut)}
                     filter={{ kind: 'range', min: minOut, max: maxOut,
                               onMin: setMinOut, onMax: setMaxOut, unit: 'ر.س' }} />
-                <Th label="التأخر" className="ltr" sortKey="delay" sort={sort} onSort={setSort}
-                    ascLabel="الأقل تأخراً" descLabel="الأكثر تأخراً" active={Boolean(delay)}
-                    filter={{ kind: 'select', value: delay, onChange: setDelay,
-                              allLabel: 'كل الشرائح',
-                              options: DELAY_BUCKETS.map((b) => ({ value: b.value, label: b.label, hint: b.hint })) }} />
                 <Th label="آخر دفعة" className="ltr" sortKey="lastPaymentDate"
                     sort={sort} onSort={setSort}
                     ascLabel="الأقدم أولاً" descLabel="الأحدث أولاً"
@@ -325,11 +328,8 @@ export function Suppliers() {
                     </td>
                     <td><Pill kind={st.cls}>{st.label}</Pill></td>
                     <td className="ltr">
-                      {r.outstanding > 0
-                        ? <Money v={r.outstanding} cls={r.overdue > 0 ? 'red' : ''} />
-                        : <span className="muted">—</span>}
-                    </td>
-                    <td className="ltr">
+                      {/* م-٣٥: النقر يفتح توزيع المتأخر — نفس تفاعل عمود «المتأخر» في
+                          الترتيب القديم، انتقل هنا معه إذ صار العمود الأول. */}
                       {r.delay?.days > 0 ? (
                         // الرقم المعروض أسوأ تأخر عنده — والنقر يفتح توزيع المبلغ على
                         // الشرائح، لأن مورداً واحداً نادراً ما يكون تأخره رقماً واحداً.
@@ -342,6 +342,13 @@ export function Suppliers() {
                           </div>
                         </button>
                       ) : <span className="muted">—</span>}
+                    </td>
+                    <td className="ltr">
+                      {/* م-٣٥: المفتوح محايد — الأحمر هنا كان يُقرأ خطأً كأنه المبلغ
+                          الواجب دفعه الآن، بينما المتأخر (العمود السابق) هو ذاك. */}
+                      {r.outstanding > 0
+                        ? <Money v={r.outstanding} />
+                        : <span className="muted">—</span>}
                     </td>
                     <td className="ltr">
                       {r.lastPayment ? (
@@ -368,20 +375,29 @@ export function Suppliers() {
           </table>
           </div>
         )}
+        {/* م-٣٥: الجدول يبرز «المتأخر» الآن، لكن قرار السداد اليومي يحتاج أيضاً ما
+            يقترب استحقاقه قبل أن يتأخر — ذاك في «المستحقات القادمة»، لا هنا. */}
+        {d && d.rows.length > 0 && (
+          <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+            للسداد اليومي: <Link to="/payables">المستحقات القادمة</Link>
+          </p>
+        )}
       </Card>
 
       {addOpen && (
-        <Modal title="إضافة مورد" onClose={() => setAddOpen(false)}>
-          <SupplierForm onSubmit={handleAdd} busy={busy} error={formErr} knownProjects={projects} />
+        <Modal title="إضافة مورد" onClose={() => setAddOpen(false)} dirty={formDirty}>
+          <SupplierForm onSubmit={handleAdd} busy={busy} error={formErr} knownProjects={projects}
+                        onDirtyChange={setFormDirty} />
         </Modal>
       )}
 
       {editRow && (
-        <Modal title="تعديل مورد" onClose={() => setEditRow(null)}>
+        <Modal title="تعديل مورد" onClose={() => setEditRow(null)} dirty={formDirty}>
           <SupplierForm
             initial={{ account: editRow.account, name: editRow.name, project: editRow.project,
                       term: editRow.term, projects: editRow.projects }}
             onSubmit={handleEdit}
+            onDirtyChange={setFormDirty}
             busy={busy}
             error={formErr}
             knownProjects={projects}

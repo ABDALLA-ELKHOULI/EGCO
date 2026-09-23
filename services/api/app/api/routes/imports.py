@@ -63,7 +63,7 @@ def preview(body: PreviewRequest, db: Session = Depends(get_session)) -> dict:
         if body.source == 'debts_report_xls':
             return import_service.preview_debts_report(body.path, db)
         if body.source == 'contractors_balance_xls':
-            return import_service.preview_contractors_balance(body.path)
+            return import_service.preview_contractors_balance(db, body.path)
         raise HTTPException(400, detail='المعاينة متاحة لكشف الحساب أو تقرير المديونيات المجمّع فقط')
     except _PARSE_ERRORS as e:
         raise HTTPException(422, detail=str(e))

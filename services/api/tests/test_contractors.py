@@ -349,7 +349,7 @@ def test_contractor_crud(client):
     assert r.status_code == 200
     assert r.json()['phone'] == '0555555555'
 
-    assert client.delete('/contractors/C1').json()['deleted'] is True
+    assert client.delete('/contractors/C1').json()['deleted']['kind'] == 'contractor'
     assert client.get('/contractors/C1').status_code == 404
 
     # soft-deleted code is resurrected, not 409
