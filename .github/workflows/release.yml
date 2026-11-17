@@ -66,6 +66,31 @@ jobs:
             echo "> التشغيل المرجعي الكامل يقع محلياً قبل الوسم." >> $GITHUB_STEP_SUMMARY
           fi
 
+      # ‏م-٤٧: اختبارات الواجهة (Playwright) — تُفشل البناء. الخادم المؤقت يُبذر
+      # ‏ببيانات مصنوعة (EGCO_SEED=1، قاعدة مؤقتة) فلا يحتاج عيّنات حقيقية.
+      # ‏اللقطات البصرية المرجعية مولَّدة على macOS وتُقارَن هناك فقط (الخطوط تختلف)؛
+      # ‏على ويندوز تُتخطّى visual.spec.ts نفسها (test.skip داخلها) ويعمل الباقي.
+      # ‏shell: bash إلزامي — المصفوفة تشمل windows-latest.
+      - name: تثبيت متصفح Playwright
+        shell: bash
+        run: npx playwright install --with-deps chromium
+
+      - name: اختبارات الواجهة
+        shell: bash
+        env:
+          CI: 'true'
+          E2E_CHANNEL: bundled
+        run: npm run e2e
+
+      - name: أثر اختبارات الواجهة عند الفشل
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.os }}
+          path: apps/renderer/e2e/.results/
+          if-no-files-found: ignore
+          retention-days: 7
+
       # ‏م-٣٣: يمنع شحن نسخة فيها ميزة جديدة بلا مدخل في whatsNew.ts — القاعدة
       # ‏الورقية في CLAUDE.md §٨ لم تصمد يوماً واحداً (v0.11.0 وv0.11.1 وصلتا
       # ‏بلا إعلان). shell: bash إلزامي لنفس سبب خطوة اختبارات الخادم أعلاه —

@@ -79,13 +79,21 @@ def _contractors_block(db: Session, today: dt.date) -> dict:
     cl = CS.contractors_list_json(db, today)
     release_alerts = sum(r['releaseAlerts'] for r in cl['rows'])
     without_statement = CS._reported_without_ledger(db)
+    t = cl['totals']
     return dict(count=cl['count'],
-               owedToContractors=cl['totals']['owedToContractors'],
-               owedToUs=cl['totals']['owedToUs'],
-               retentionHeld=cl['totals']['retentionHeld'],
+               owedToContractors=t['owedToContractors'],
+               owedToUs=t['owedToUs'],
+               retentionHeld=t['retentionHeld'],
                releaseAlerts=release_alerts,
                withoutStatementCount=without_statement['count'],
-               withoutStatementOwed=without_statement['owed'])
+               withoutStatementOwed=without_statement['owed'],
+               #: م-٤٦ — متأخر المقاولين (لمن له مدة سداد فقط) مع عدد من هم خارج
+               #: الحساب. يُعرض منفصلاً عن payables.overdue ولا يُجمع معه بصمت.
+               overdue=t['overdueTotal'],
+               overdueContractorCount=t['overdueContractorCount'],
+               dueWithin7=t['dueWithin7Total'],
+               withTermCount=t['withTermCount'],
+               withoutTermCount=t['withoutTermCount'])
 
 
 def _last_payments(db: Session, limit: int = 6) -> list:
@@ -250,6 +258,24 @@ def overview(db: Session, today: Optional[dt.date] = None) -> dict:
                                 f"بلا كشف حركات (رصيد مُبلَّغ فقط) بقيمة "
                                 f"{contractors['withoutStatementOwed']:,.2f} ر.س — "
                                 f"غير مُحتسبة ضمن المستحق للمقاولين أعلاه"))
+    # م-٤٦ — متأخر المقاولين بجانب متأخر الموردين، لا مدمجاً فيه: مصدران مختلفان
+    # (مدة يضبطها المستخدم مقابل مدة الفاتورة). الإفصاح عن من هم خارج الحساب جزء من
+    # النص نفسه، فلا يبدو الرقم كاملاً وهو يصف من له مدة فقط (قاعدة م-١٩).
+    if contractors['withTermCount'] > 0 or contractors['withoutTermCount'] > 0:
+        without = (f" — و{_ar_num(contractors['withoutTermCount'])} مقاولاً بلا مدة سداد خارج الحساب"
+                   if contractors['withoutTermCount'] > 0 else '')
+        if contractors['overdue'] > 0:
+            alerts.append(dict(level='danger', kind='contractors_overdue',
+                               text=f"متأخر للمقاولين: {contractors['overdue']:,.2f} ر.س "
+                                    f"({_ar_num(contractors['overdueContractorCount'])} مقاولاً){without}"))
+        elif contractors['withTermCount'] == 0:
+            alerts.append(dict(level='info', kind='contractors_overdue',
+                               text=f"لا يُحسب تأخر للمقاولين: {_ar_num(contractors['withoutTermCount'])} "
+                                    f"مقاولاً بلا مدة سداد — اضبط المدة في بطاقة المقاول ليظهر تأخره"))
+        elif contractors['withoutTermCount'] > 0:
+            alerts.append(dict(level='info', kind='contractors_overdue',
+                               text=f"لا متأخرات على {_ar_num(contractors['withTermCount'])} مقاولاً "
+                                    f"لهم مدة سداد{without}"))
     last_payments = _last_payments(db, limit=6)
     last_payment = last_payments[0] if last_payments else None
     revenues = _revenues_block(db)

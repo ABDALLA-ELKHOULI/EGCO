@@ -1,0 +1,264 @@
+/* EGCO tokens v2 — «أرخبيل» (Archipelago) · 2026-11
+   مواصفة: docs/product/DESIGN-DIRECTION-2026-11.md
+   قاعدة: لا لون/مسافة/مدة خارج هذا الملف. الحركة transform/opacity فقط. */
+
+:root {
+  color-scheme: light;
+
+  /* ── الهوية ───────────────────────────── */
+  --brand-gold: #D9943C;          /* تعبئة فقط (أزرار، مؤشر، نبض) — ليس نصاً على فاتح */
+  --brand-gold-hover: #C8842E;
+  --brand-gold-press: #B4752A;
+  --brand-bronze: #8F5E1D;        /* نص ذهبي على فاتح — 5.55:1 */
+  --brand-ink: #211D16;
+  --brand-tint: #EFE1CB;
+  --on-gold: #211D16;             /* نص فوق الذهبي — 7.6:1 */
+
+  /* ── السطوح (٣ طبقات + لوح) ───────────── */
+  --canvas: #F6F3EE;              /* خلفية النافذة: البحر الذي تطفو فوقه الجزر */
+  --surface-1: #FFFFFF;           /* جزيرة / بطاقة */
+  --surface-2: #FAF8F4;           /* داخل الجزيرة: رأس جدول، حقل */
+  --surface-3: #F1ECE3;           /* hover صف، شريحة مختارة */
+  --surface-sunken: #EDE8DF;      /* مسار شريط تقدم، هيكل عظمي */
+  --surface-glass: rgba(33, 29, 22, .86); /* جزيرة الحالة (داكنة في الوضعين) */
+  --overlay: rgba(33, 29, 22, .40);
+
+  /* ── النص ─────────────────────────────── */
+  --text-1: #211D16;              /* 16.2:1 */
+  --text-2: #5C564B;              /* 7.0:1 */
+  --text-3: #706B5F;              /* 5.3:1 — أدنى نص مسموح */
+  --text-disabled: #A9A398;       /* غير نصي/معطّل فقط */
+  --text-link: #8F5E1D;
+  --text-link-hover: #6E4815;
+
+  /* ── الحدود ───────────────────────────── */
+  --border-1: #E7E1D6;            /* حد الجزيرة 1px */
+  --border-2: #D6CEC0;            /* حد الحقل */
+  --border-strong: #B9B0A0;       /* حد hover للحقل */
+  --divider: #EFEAE2;             /* بين صفوف الجدول */
+  --focus-ring: 0 0 0 2px var(--surface-1), 0 0 0 4px #D9943C;
+
+  /* ── الدلالات (fg = نص، bg = خلفية خفيفة، solid = نقطة/شريط) ── */
+  --danger-fg: #B3261E;  --danger-bg: #FBEAE8;  --danger-solid: #D93A2F;  --danger-border: #F2C7C2;
+  --warn-fg: #8A5300;    --warn-bg: #FDF1DC;    --warn-solid: #E5A33B;    --warn-border: #F3D9A8;
+  --ok-fg: #1F6B35;      --ok-bg: #E7F4EA;      --ok-solid: #2F9E52;      --ok-border: #BFE2C9;
+  --info-fg: #1F5A8A;    --info-bg: #E6F0F8;    --info-solid: #3A7FC1;    --info-border: #BFD6EC;
+  --neutral-fg: #5C564B; --neutral-bg: #F1ECE3; --neutral-solid: #8A8478;
+
+  /* ── المخططات (٦ — ترتيب ثابت، سلسلة ١ دائماً ذهبي) ── */
+  --chart-1: #D9943C;  /* ذهبي — الفعلي / الرئيسي */
+  --chart-2: #3D5A80;  /* نيلي — المقارنة / المتوقع */
+  --chart-3: #4E9A7A;  /* أخضر بحري — التحصيلات */
+  --chart-4: #B5553C;  /* طيني — المدفوعات */
+  --chart-5: #8C6BB1;  /* بنفسجي — الضمانات */
+  --chart-6: #8A8478;  /* رمادي دافئ — أخرى */
+  --chart-grid: #ECE6DC;
+  --chart-axis: #706B5F;
+  --chart-neg: #D93A2F;
+  --chart-pos: #2F9E52;
+
+  /* ── الشريط الجانبي (داكن في الوضعين) ─── */
+  --sidebar-bg: #1A1712;
+  --sidebar-fg: #CFC4B1;
+  --sidebar-fg-strong: #FFFFFF;
+  --sidebar-section: #8B8170;
+  --sidebar-hover: rgba(255, 255, 255, .06);
+  --sidebar-indicator: #D9943C;    /* المؤشر المنزلق */
+  --sidebar-active-bg: rgba(217, 148, 60, .14);
+  --sidebar-active-fg: #F2C27F;
+  --sidebar-rule: rgba(255, 255, 255, .08);
+  --sidebar-w: 248px;
+  --sidebar-w-collapsed: 72px;
+
+  /* ── الخط ─────────────────────────────── */
+  --font: "Cairo", "SF Arabic", "Segoe UI", Tahoma, sans-serif;
+  --num: "tnum" 1, "lnum" 1;      /* font-feature-settings للأرقام */
+
+  /* نص (٤) */
+  --t-title: 600 22px/30px var(--font);    /* عنوان صفحة */
+  --t-heading: 600 15px/22px var(--font);  /* عنوان جزيرة/قسم */
+  --t-body: 400 14px/22px var(--font);     /* متن، خلايا الجدول */
+  --t-caption: 500 12px/16px var(--font);  /* تسميات، رؤوس أعمدة، شارات */
+  /* أرقام (٣) — دائماً مع font-feature-settings: var(--num) */
+  --n-hero: 700 40px/48px var(--font);     /* رقم hero واحد لكل شاشة */
+  --n-kpi: 700 26px/34px var(--font);      /* KPI عادي */
+  --n-inline: 600 14px/22px var(--font);   /* المبالغ داخل الجداول */
+  --ls-num: -0.01em;
+  --currency-scale: .5;                    /* «ر.س» = 50% من حجم الرقم، text-3 */
+
+  /* ── الشبكة ٤/٨ ───────────────────────── */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
+  --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px; --s-16: 64px;
+  --page-pad-x: 32px;
+  --page-pad-top: 72px;            /* يترك مكاناً لجزيرة الحالة (36 + 2×18) */
+  --island-gap: 16px;
+  --island-pad: 20px;
+  --content-max: 1360px;
+
+  /* ── نصف القطر (٤ أدوار فقط) ─────────── */
+  --r-control: 8px;    /* زر، حقل، شارة مربعة، صف قائمة */
+  --r-card: 14px;      /* جزيرة محتوى، نافذة صغيرة */
+  --r-island: 20px;    /* جزيرة الحالة المتمددة، درج، نافذة كبيرة */
+  --r-pill: 999px;     /* حبة، جزيرة الحالة الساكنة، شارة رقمية */
+  /* قاعدة التداخل: r(داخلي) = r(خارجي) − الحشو، ولا يقل عن 4px */
+
+  /* ── الأحجام ─────────────────────────── */
+  --h-control-sm: 28px;
+  --h-control-md: 36px;
+  --h-control-lg: 44px;
+  --h-row-comfy: 48px;
+  --h-row-compact: 36px;
+  --icon-sm: 16px; --icon-md: 20px;
+
+  /* ── العمق (٣ مستويات) ───────────────── */
+  --e-1: 0 1px 2px rgba(33,29,22,.04), 0 1px 1px rgba(33,29,22,.03);              /* جزيرة ساكنة */
+  --e-2: 0 4px 12px -2px rgba(33,29,22,.08), 0 2px 4px rgba(33,29,22,.04);        /* hover، قائمة */
+  --e-3: 0 24px 48px -12px rgba(33,29,22,.22), 0 8px 16px -8px rgba(33,29,22,.10);/* درج، نافذة، toast */
+  --e-island: 0 10px 30px -6px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.08);
+  --blur-island: saturate(160%) blur(20px);
+  --blur-overlay: blur(4px);
+
+  /* ── الحركة ──────────────────────────── */
+  --d-instant: 80ms;   /* press */
+  --d-fast: 140ms;     /* hover، لون */
+  --d-base: 220ms;     /* قوائم، شارات، مؤشر */
+  --d-slow: 320ms;     /* أدراج، نوافذ، دخول صفحة */
+  --d-count: 700ms;    /* عدّاد الأرقام */
+  --d-chart: 900ms;    /* رسم خط المخطط */
+  --d-flash: 1600ms;   /* وميض تغيّر الرقم */
+  --stagger: 40ms;     /* بين البطاقات، أقصى 8 عناصر = 280ms */
+
+  --ease-out: cubic-bezier(.22, 1, .36, 1);       /* دخول */
+  --ease-in: cubic-bezier(.4, 0, 1, 1);           /* خروج */
+  --ease-inout: cubic-bezier(.65, 0, .35, 1);     /* تحرّك داخل الصفحة */
+  --ease-press: cubic-bezier(.3, 0, .5, 1);
+  /* تقريب CSS للـ spring (stiffness 380, damping 30, mass 1) */
+  --ease-spring: linear(0, .009, .035 2.1%, .141 4.4%, .723 12.9%, .938 16.7%, 1.017 19.4%, 1.067, 1.089 26.6%, 1.085 29.4%, 1.026 38.3%, 1.004 42.8%, .994 50%, 1);
+  --d-spring: 480ms;
+  /* JS (framer-motion): island {stiffness:380,damping:30,mass:1} · indicator {stiffness:500,damping:40} · toast {stiffness:420,damping:34} */
+
+  --z-sidebar: 20; --z-island: 60; --z-drawer: 70; --z-modal: 80; --z-toast: 90;
+}
+
+/* ───────────── الوضع الداكن ───────────── */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --brand-bronze: #E3B071;
+  --on-gold: #1A1712;
+
+  --canvas: #12100D;
+  --surface-1: #1C1915;
+  --surface-2: #231F1A;
+  --surface-3: #2C2721;
+  --surface-sunken: #0E0C0A;
+  --surface-glass: rgba(10, 9, 7, .82);
+  --overlay: rgba(0, 0, 0, .55);
+
+  --text-1: #F3EEE5;
+  --text-2: #C3BAAB;
+  --text-3: #9C9383;
+  --text-disabled: #5F584D;
+  --text-link: #E3B071;
+  --text-link-hover: #F2C995;
+
+  --border-1: #2E2923;
+  --border-2: #3A342C;
+  --border-strong: #554D42;
+  --divider: #26221D;
+  --focus-ring: 0 0 0 2px var(--surface-1), 0 0 0 4px #E3B071;
+
+  --danger-fg: #FF8A80;  --danger-bg: rgba(217,58,47,.14);  --danger-solid: #F0574B; --danger-border: rgba(240,87,75,.32);
+  --warn-fg: #F5C26B;    --warn-bg: rgba(229,163,59,.14);   --warn-solid: #F0B04F;   --warn-border: rgba(240,176,79,.32);
+  --ok-fg: #7FD69A;      --ok-bg: rgba(47,158,82,.14);      --ok-solid: #45B86A;     --ok-border: rgba(69,184,106,.32);
+  --info-fg: #8EC1EE;    --info-bg: rgba(58,127,193,.16);   --info-solid: #5A9BD8;   --info-border: rgba(90,155,216,.32);
+  --neutral-fg: #C3BAAB; --neutral-bg: #2C2721;             --neutral-solid: #8A8478;
+
+  --chart-1: #E3A355; --chart-2: #7E9CC6; --chart-3: #6FBF9B;
+  --chart-4: #D9775C; --chart-5: #B095D4; --chart-6: #9C9383;
+  --chart-grid: #2A251F; --chart-axis: #9C9383;
+  --chart-neg: #F0574B; --chart-pos: #45B86A;
+
+  --sidebar-bg: #0E0C0A;
+  --sidebar-rule: rgba(255,255,255,.06);
+
+  --e-1: 0 0 0 1px rgba(255,255,255,.04);
+  --e-2: 0 8px 20px -4px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.05);
+  --e-3: 0 28px 56px -12px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.06);
+  --e-island: 0 10px 30px -6px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.10);
+}
+/* يتبع النظام: ThemeProvider يضبط data-theme="dark" عند matchMedia("(prefers-color-scheme: dark)") ما لم يختر المستخدم وضعاً. */
+
+/* ───────────── الأرقام ───────────── */
+.num { font-feature-settings: var(--num); letter-spacing: var(--ls-num); direction: ltr; unicode-bidi: isolate; }
+td.num, th.num { text-align: right; } /* م-٤٤: المبالغ بمحاذاة يمين جدولية */
+
+/* ───────────── keyframes ───────────── */
+@keyframes egco-page-in    { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes egco-island-in  { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes egco-fade-in    { from { opacity: 0; } to { opacity: 1; } }
+@keyframes egco-fade-out   { from { opacity: 1; } to { opacity: 0; } }
+@keyframes egco-drawer-in-left  { from { transform: translateX(-100%); } to { transform: none; } }
+@keyframes egco-drawer-out-left { from { transform: none; } to { transform: translateX(-100%); } }
+@keyframes egco-modal-in   { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes egco-modal-out  { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.98); } }
+@keyframes egco-toast-in   { from { opacity: 0; transform: translateY(16px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes egco-toast-out  { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-24px); } }
+@keyframes egco-menu-in    { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes egco-skeleton   { from { transform: translateX(100%); } to { transform: translateX(-100%); } } /* RTL: يمين ← يسار */
+@keyframes egco-pulse-ok   { 0%,100% { opacity: .55; transform: scale(1); } 50% { opacity: 1; transform: scale(1.25); } }
+@keyframes egco-pulse-danger { 0% { opacity: .6; transform: scale(1); } 70%,100% { opacity: 0; transform: scale(2.4); } }
+@keyframes egco-flash-up   { 0% { opacity: 0; } 12% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes egco-arrow-up   { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes egco-arrow-down { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes egco-badge-pop  { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes egco-progress-indeterminate { from { transform: translateX(100%) scaleX(.3); } to { transform: translateX(-100%) scaleX(.3); } }
+@keyframes egco-shake      { 0%,100% { transform: none; } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+
+/* ───────────── فئات الحركة ───────────── */
+.m-page   { animation: egco-page-in var(--d-slow) var(--ease-out) both; }
+.m-island { animation: egco-island-in var(--d-slow) var(--ease-out) both;
+            animation-delay: calc(var(--i, 0) * var(--stagger) + 60ms); } /* style="--i:0..7" */
+.m-menu   { animation: egco-menu-in var(--d-base) var(--ease-out) both; transform-origin: top right; }
+.m-modal-in  { animation: egco-modal-in var(--d-slow) var(--ease-spring) both; }
+.m-modal-out { animation: egco-modal-out 160ms var(--ease-in) both; }
+.m-drawer-in  { animation: egco-drawer-in-left var(--d-slow) var(--ease-out) both; }
+.m-drawer-out { animation: egco-drawer-out-left 240ms var(--ease-in) both; }
+.m-overlay-in { animation: egco-fade-in var(--d-base) linear both; }
+.m-toast-in   { animation: egco-toast-in var(--d-spring) var(--ease-spring) both; }
+.m-toast-out  { animation: egco-toast-out 200ms var(--ease-in) both; }
+.m-badge  { animation: egco-badge-pop var(--d-base) var(--ease-out) both; }
+.m-shake  { animation: egco-shake 240ms var(--ease-inout) 1; }
+
+.m-skeleton { position: relative; overflow: hidden; background: var(--surface-sunken); border-radius: var(--r-control); }
+.m-skeleton::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent);
+  animation: egco-skeleton 1400ms var(--ease-inout) infinite; }
+:root[data-theme="dark"] .m-skeleton::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,.06), transparent); }
+
+.m-pulse-ok     { animation: egco-pulse-ok 2400ms var(--ease-inout) infinite; }
+.m-pulse-danger { position: relative; }
+.m-pulse-danger::after { content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: var(--danger-solid); animation: egco-pulse-danger 1800ms var(--ease-out) infinite; }
+
+/* وميض تغيّر الرقم: طبقة pseudo تتلاشى (opacity فقط) */
+.m-changed { position: relative; }
+.m-changed::before { content: ""; position: absolute; inset: -2px -6px; border-radius: var(--r-control);
+  background: var(--warn-bg); animation: egco-flash-up var(--d-flash) var(--ease-out) both; z-index: -1; }
+.m-changed.is-up::before   { background: var(--ok-bg); }
+.m-changed.is-down::before { background: var(--danger-bg); }
+
+.m-press { transition: transform var(--d-instant) var(--ease-press); }
+.m-press:active { transform: scale(.97); }
+.m-lift  { transition: transform var(--d-fast) var(--ease-out), box-shadow var(--d-fast) var(--ease-out); }
+.m-lift:hover { transform: translateY(-2px); box-shadow: var(--e-2); }
+
+/* ───────────── احترام تقليل الحركة ───────────── */
+@media (prefers-reduced-motion: reduce) {
+  :root { --d-slow: 1ms; --d-base: 1ms; --d-fast: 1ms; --d-count: 1ms; --d-chart: 1ms;
+          --d-spring: 1ms; --stagger: 0ms; }
+  *, *::before, *::after { animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+  .m-pulse-ok, .m-pulse-danger::after, .m-skeleton::after { animation: none !important; }
+  .m-changed::before { animation-duration: 1ms; opacity: 0; }
+  .m-lift:hover { transform: none; }
+  /* البديل: تُعرض الحالة لوناً وأيقونة ثابتة؛ الوميض يصبح حدّاً 2px لمدة 1600ms */
+}

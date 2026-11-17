@@ -2,9 +2,9 @@
 """تسجيل المسارات — the one place a new feature plugs its endpoints in."""
 from fastapi import APIRouter
 
-from app.api.routes import (ai, budget, cashflow, contractors, coverage,
+from app.api.routes import (ai, backups, budget, cashflow, contractors, coverage,
                             dashboard, guarantees, imports, invoices, manual,
-                            overview, project_admin, projects, reports,
+                            overview, project_admin, projects, reports, reset,
                             revenues, suppliers, trash)
 from app.core.config import settings
 
@@ -30,3 +30,7 @@ api_router.include_router(guarantees.router, prefix='/guarantees', tags=['guaran
 # ---- م-٣٠ · م-٣١
 api_router.include_router(trash.router, prefix='/trash', tags=['trash'])
 api_router.include_router(project_admin.router, prefix='/project-admin', tags=['project-admin'])
+# ---- م-٤٥ · م-١٣
+api_router.include_router(backups.router, prefix='/backups', tags=['backups'])
+# ---- تصفير البيانات
+api_router.include_router(reset.router, prefix='/reset', tags=['reset'])

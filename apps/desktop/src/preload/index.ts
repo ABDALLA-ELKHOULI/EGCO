@@ -42,6 +42,14 @@ contextBridge.exposeInMainWorld('egco', {
   importData: (): Promise<{ok: boolean; error?: string; canceled?: boolean}> =>
     ipcRenderer.invoke('data:import'),
   revealDataDir: (): Promise<string> => ipcRenderer.invoke('shell:revealDataDir'),
+  /* ---- النسخ الاحتياطي (م-٤٥) ---- */
+  /** يفتح مجلد النسخ في Finder/Explorer. */
+  revealBackupsDir: (): Promise<string> => ipcRenderer.invoke('backup:revealDir'),
+  /** حوار اختيار مجلد خارجي — المسار يُحفظ عبر API. */
+  pickExternalBackupDir: (): Promise<string | null> => ipcRenderer.invoke('backup:pickExternalDir'),
+  /** تأكيد أصلي ← إيقاف الخدمة ← نسخة before-restore ← استبدال ← إعادة تشغيل. */
+  restoreBackup: (name: string): Promise<{ ok: boolean; error?: string; canceled?: boolean }> =>
+    ipcRenderer.invoke('backup:restore', name),
   /** حفظ الصفحة الحالية PDF عبر حوار حفظ أصلي — بديل window.print داخل التطبيق. */
   exportPdf: (opts: { filename: string; landscape?: boolean }):
     Promise<{ saved?: boolean; path?: string; canceled?: boolean; error?: string }> =>

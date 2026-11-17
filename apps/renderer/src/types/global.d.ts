@@ -36,6 +36,10 @@ declare global {
       exportData(): Promise<{ ok: boolean; path?: string; error?: string; canceled?: boolean }>;
       importData(): Promise<{ ok: boolean; error?: string; canceled?: boolean }>;
       revealDataDir(): Promise<string>;
+      // النسخ الاحتياطي (م-٤٥)
+      revealBackupsDir(): Promise<string>;
+      pickExternalBackupDir(): Promise<string | null>;
+      restoreBackup(name: string): Promise<{ ok: boolean; error?: string; canceled?: boolean }>;
       exportPdf(opts: { filename: string; landscape?: boolean }):
         Promise<{ saved?: boolean; path?: string; canceled?: boolean; error?: string }>;
       checkForUpdates(): Promise<UpdateStatus>;

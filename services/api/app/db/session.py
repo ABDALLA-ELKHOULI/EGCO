@@ -153,6 +153,9 @@ def init_db() -> None:
         # من الرصيد كان سيصنّف كل مسدَّد «مغلقاً» وهو قرار ليس للأرقام أن تتخذه.
         _migrate_add_column(conn, 'contractors', 'status', 'VARCHAR(20)', "'active'")
         _migrate_add_column(conn, 'contractors', 'status_note', 'TEXT', "''")
+        # مدة سداد المستخلصات (م-٤٦) — NULL للصفوف القائمة عمداً: لا افتراض عام
+        # للمدة، فالمقاول بلا مدة يبقى «غير محدّد» ولا يُحسب له تأخر.
+        _migrate_add_column(conn, 'contractors', 'payment_term_days', 'INTEGER', 'NULL')
         # الموازنة — تمييز المصدر ورقم الوثيقة والمرفق. الافتراضي 'file' للصفّين
         # القائمين: كلاهما جاء من ملف xlsx فعلاً، فالقيمة صادقة لا تخمين.
         _migrate_add_column(conn, 'budget_snapshots', 'entry_source', 'VARCHAR(20)', "'file'")
@@ -168,6 +171,7 @@ def init_db() -> None:
     _migrate_211_contractors_to_suppliers()
     _backfill_import_log_id()
     _strip_branch_prefix_from_descriptions()
+    _reclassify_persian_heh_entries()
 
 
 #: marker for the one-time backfill below.
@@ -428,3 +432,26 @@ def get_session() -> Iterator[Session]:
         yield db
     finally:
         db.close()
+
+
+def _reclassify_persian_heh_entries() -> None:
+    """م-٤٩ — إعادة تصنيف القيود التي حملت الهاء الفارسية (ھ/ہ/ۀ) في وصفها.
+
+    `kind` مخزَّن لحظة الاستيراد، فإصلاح `_norm_ar` وحده لا يمسّ ما استُورد قبله:
+    «دفعھ» القائمة تبقى «أخرى» فيبقى تقرير المقاول يعدّها خصماً لا دفعة. نعيد
+    حساب `kind` و`claim_no` لهذه الصفوف فقط — لا تغيير على المبالغ ولا على غيرها،
+    ومتكرِّرة بأمان (تشغيلها مرتين لا يغيّر شيئاً).
+    """
+    from app.domain.contractors import classify_entry, extract_claim_no
+    with engine.begin() as conn:
+        rows = conn.execute(text(
+            "SELECT id, description, kind, claim_no FROM contractor_entries "
+            "WHERE description LIKE '%ھ%' OR description LIKE '%ہ%' OR description LIKE '%ۀ%'"
+        )).fetchall()
+        for rid, desc, kind, claim_no in rows:
+            new_kind = classify_entry(desc or '')
+            new_claim = extract_claim_no(desc or '') if new_kind == 'claim' else claim_no
+            if new_kind != kind or new_claim != claim_no:
+                conn.execute(text(
+                    "UPDATE contractor_entries SET kind = :k, claim_no = :c WHERE id = :i"
+                ), {'k': new_kind, 'c': new_claim, 'i': rid})

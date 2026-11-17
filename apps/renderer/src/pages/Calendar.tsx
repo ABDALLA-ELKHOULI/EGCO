@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { api, apiBase } from '@/lib/api';
 import { ar, arDate, invoiceCount, k, sar } from '@/lib/format';
 import { Card, ErrorState, Money, Pill, State } from '@/components/ui';
 
@@ -13,6 +13,14 @@ interface DayDetail {
   guarantees: { code: string; name: string; project: string; amount: number;
                 status: string }[];
   totals: { due: number; guarantees: number };
+}
+
+/** م-٤٦: استحقاق مستخلص لمقاول له مدة سداد — من GET /api/v1/contractors/claims-due.
+ * المبلغ هو المتبقي بعد الدفعات (محسوب في الخادم)، لا مبلغ المستخلص الأصلي. */
+interface ClaimEvent {
+  type: 'contractor_claim'; date: string; code: string; name: string;
+  claimNo: string | null; doc: string; project: string; claimDate: string;
+  amount: number; daysLate: number; overdue: boolean;
 }
 
 /** التقويم المالي — الاستحقاقات موزعة على أيام الشهر، وكل يوم قابل للنقر لعرض تفاصيله. */
@@ -28,6 +36,18 @@ export function CalendarPage() {
   const project = params.get('project') || '';
   const seq = useRef(0);
   const detailSeq = useRef(0);
+  // أحداث المستخلصات كلها (متأخرة وقادمة) بطلب واحد؛ تُوزَّع على الأيام محلياً
+  // بالعدّ والجمع فقط — لا حساب مالي هنا. lib/api.ts مملوك لوكيل آخر، فنبني
+  // الرابط عبر apiBase() كما تفعل Contractors.tsx.
+  const [claims, setClaims] = useState<ClaimEvent[]>([]);
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (project) p.set('project', project);
+    fetch(apiBase() + '/api/v1/contractors/claims-due' + (p.toString() ? '?' + p.toString() : ''))
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((r) => setClaims(r.rows ?? []))
+      .catch(() => setClaims([]));
+  }, [project]);
 
   const load = () => {
     const my = ++seq.current;
@@ -74,6 +94,17 @@ export function CalendarPage() {
     }
   }
 
+  // مستخلصات المقاولين تُضاف إلى نفس خلايا الأيام (المبلغ والعدّ)؛ الأحمر لخلية
+  // اليوم يبقى للتأخر الزمني حصراً — سواء كان مورداً أو مستخلص مقاول.
+  for (const c of claims) {
+    const dt = new Date(c.date + 'T00:00:00');
+    if (dt.getFullYear() === year && dt.getMonth() === month) {
+      const cur = byDay[dt.getDate()] ?? { amount: 0, count: 0, overdue: false };
+      byDay[dt.getDate()] = { amount: cur.amount + c.amount, count: cur.count + 1,
+                              overdue: cur.overdue || c.overdue };
+    }
+  }
+
   const iso = (day: number) =>
     `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
@@ -83,6 +114,7 @@ export function CalendarPage() {
   const weeks: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
+  const dayClaims = selected ? claims.filter((c) => c.date === selected) : [];
   const monthName = arDate(`${year}-${String(month + 1).padStart(2, '0')}-01`).split(' ').slice(1).join(' ');
   const monthTotal = Object.values(byDay).reduce((a, b) => a + b.amount, 0);
 
@@ -154,8 +186,45 @@ export function CalendarPage() {
           <div style={{ padding: '4px 20px 16px' }}>
             {detailErr && <ErrorState message={detailErr} onRetry={loadDetail} />}
             {!detail && !detailErr && <State>جارٍ التحميل…</State>}
-            {detail && detail.suppliers.length === 0 && detail.guarantees.length === 0 && (
+            {detail && detail.suppliers.length === 0 && detail.guarantees.length === 0
+              && dayClaims.length === 0 && (
               <p className="muted">لا استحقاقات في هذا اليوم.</p>
+            )}
+
+            {detail && dayClaims.length > 0 && (
+              <>
+                <p style={{ margin: '10px 0 6px', fontWeight: 600 }}>
+                  مستخلصات مقاولين تستحق · {sar(dayClaims.reduce((a, c) => a + c.amount, 0))} ر.س
+                </p>
+                <table>
+                  <thead>
+                    <tr><th>المستخلص</th><th>المشروع</th>
+                        <th className="ltr">المتبقي</th><th>الحالة</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {dayClaims.map((c, i) => (
+                      <tr key={c.code + i} className={c.overdue ? 'row-overdue' : ''}>
+                        <td>
+                          <Link to={`/contractors/${c.code}`}>مستخلص — {c.name}</Link>
+                          {c.claimNo && <span className="muted num" style={{ fontSize: 11 }}> رقم {ar(c.claimNo)}</span>}
+                        </td>
+                        <td className="muted">{c.project || '—'}</td>
+                        <td className="ltr"><Money v={c.amount} cls={c.overdue ? 'red' : ''} /></td>
+                        <td>{c.overdue
+                          ? <Pill kind="red">متأخر {ar(c.daysLate)} يوماً</Pill>
+                          : <Pill kind="gold">مستحق</Pill>}</td>
+                        <td>
+                          <Link to={`/contractors/${c.code}`}>
+                            <button className="btn" style={{ padding: '4px 10px', fontSize: 12 }}>
+                              فتح كشف المقاول
+                            </button>
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             )}
 
             {detail && detail.suppliers.length > 0 && (

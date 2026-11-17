@@ -231,7 +231,8 @@ function ProjectSummarySheet({ d }: { d: any }) {
       <div className="rpt-kpis" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         <RKpi label="المفوتر في هذا المشروع" value={sar(t.totalInvoiced)} />
         <RKpi label="المسدد في هذا المشروع" value={sar(t.totalPaid)} cls="ok" />
-        <RKpi label="المتبقي في هذا المشروع" value={sar(t.outstanding)} />
+        {/* م-١٨: «المديونية المفتوحة» بدل «المتبقي» — نفس اسم الرقم في كل الشاشات */}
+        <RKpi label="المديونية المفتوحة في هذا المشروع" value={sar(t.outstanding)} />
         <RKpi label="المتأخر في هذا المشروع (موردون فقط)"
               value={sar(t.delayedAmount)} cls="red" />
       </div>
@@ -241,7 +242,7 @@ function ProjectSummarySheet({ d }: { d: any }) {
           <thead><tr>
             <th>اسم الشركة</th><th>رقم الحساب</th><th>النوع</th>
             <th className="ltr">إجمالي المفوتر (ر.س)</th><th className="ltr">المسدد (ر.س)</th>
-            <th className="ltr">المتبقي (ر.س)</th><th className="ltr">المتأخر (ر.س)</th>
+            <th className="ltr">المديونية المفتوحة (ر.س)</th><th className="ltr">المتأخر (ر.س)</th>{/* م-١٨ */}
             <th>أقصى تأخر</th><th>آخر دفعة</th>
           </tr></thead>
           <tbody>
@@ -603,7 +604,7 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
 
         {showSuppliers && (
           <>
-            <Section num={sn(2)} title="أعمار الديون" sub="المتبقي موزعاً حسب عدد الأيام منذ الاستحقاق"
+            <Section num={sn(2)} title="أعمار الديون" sub="المديونية المفتوحة موزعةً حسب عدد الأيام منذ الاستحقاق" /* م-١٨ */
                      explain={<ExplainDot metric="reportAgeing" values={{}} />} />
             <div className="table-scroll">
               <table className="rpt-table">
@@ -634,7 +635,7 @@ function PeriodSheet({ d, from, to, scopeP, parties }:
                     </tr>
                   )}
                   <tr>
-                    <td><b>المتبقي كاملاً</b></td><td />
+                    <td><b>المديونية المفتوحة كاملةً</b></td><td />{/* م-١٨ */}
                     <td className="ltr num"><b>{sar(s.outstanding)}</b></td><td />
                   </tr>
                 </tfoot>
@@ -1074,7 +1075,7 @@ function reportSlides(d: any, parties: PartyScope = 'suppliers'): Slide[] {
   if (d.ageing?.length) {
     slides.push({
       title: 'أعمار الديون',
-      subtitle: `${scope} — المتبقي موزعاً حسب الأيام منذ الاستحقاق`,
+      subtitle: `${scope} — المديونية المفتوحة موزعةً حسب الأيام منذ الاستحقاق` /* م-١٨ */,
       body: (
         <div className="table-scroll">
           <table>
@@ -1135,7 +1136,7 @@ function reportSlides(d: any, parties: PartyScope = 'suppliers'): Slide[] {
       body: (
         <div className="table-scroll">
           <table>
-            <thead><tr><th>المورد</th><th>المشروع</th><th className="ltr">المديونية</th><th className="ltr">المتأخر</th></tr></thead>
+            <thead><tr><th>المورد</th><th>المشروع</th><th className="ltr">المديونية المفتوحة</th><th className="ltr">المتأخر</th></tr></thead>{/* م-١٨ */}
             <tbody>
               {d.suppliers.slice(0, 8).map((x: any) => (
                 <tr key={x.account}>

@@ -54,6 +54,15 @@ const DIRECTIONS: { value: string; label: string }[] = [
   { value: 'balanced', label: 'متوازن' },
 ];
 
+/** م-٤٦: حقول التأخر التي يضيفها الخادم لسطر القائمة — خارج ContractorRow في
+ * lib/api.ts (مملوك لوكيل آخر). overdue/dueSoon = null لمن لا مدة سداد له: «غير
+ * محسوب» لا «صفر»، والعمود يعرض «—» مع تلميح يقول أين تُضبط المدة. */
+export type ContractorRowX = ContractorRow & {
+  paymentTermDays?: number | null;
+  overdue?: { amount: number; count: number; maxDays: number } | null;
+  dueSoon?: { within7: number; within30: number } | null;
+};
+
 /** مفتاح localStorage للصفحة الفعالة في شريط «نظرة المقاولين» — نفس نمط تسمية
  * مفاتيح Sidebar.tsx وKPI_VIEW_STORAGE_KEY في CashFlow.tsx. */
 const OVERVIEW_STORAGE_KEY = 'egco.contractors.overviewView';
@@ -119,7 +128,7 @@ export function Contractors() {
   ].filter(Boolean) as { k: string; label: string; clear: () => void }[];
 
   const [addOpen, setAddOpen] = useState(false);
-  const [editRow, setEditRow] = useState<ContractorRow | null>(null);
+  const [editRow, setEditRow] = useState<ContractorRowX | null>(null);
   // م-٣٤: يمرَّر لـ Modal.dirty — انظر تعليقه في Suppliers.tsx.
   const [formDirty, setFormDirty] = useState(false);
   const [deleteRow, setDeleteRow] = useState<ContractorRow | null>(null);
@@ -209,7 +218,7 @@ export function Contractors() {
 
   // صفحة العرض من المجموعة المصفّاة كاملةً — d.rows نفسها لا تتغيّر، فأي حساب
   // لاحق (تجميع بالمشروع، تصدير) يستعمل d.rows كاملة لا pageRows.
-  const allRows: ContractorRow[] = d?.rows ?? [];
+  const allRows: ContractorRowX[] = d?.rows ?? [];
   const pageCount = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE));
   const pageRows = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -389,12 +398,12 @@ export function Contractors() {
         <div className="grow">
           <h1>المقاولون</h1>
           <p>الرصيد السالب مستحق «له»، والموجب (بالأخضر) مستحق «لنا» — الأحمر هنا محجوز للتأخر عن الموعد فقط</p>
-          {/* الغياب يُشرح ولا يُترك. صفحة الموردين تعرض عمود «التأخر» بارزاً، فخلوّ
-              هذه الصفحة منه يُقرأ «البيانات ناقصة» لا «لا ينطبق هنا». وعرض صفرٍ
-              بدلاً منه أسوأ: الصفر يعني «لا تأخر عليه» وهو ما لا نعلمه أصلاً. */}
+          {/* م-٤٦: التأخر يُحسب لمن ضُبطت له مدة سداد فقط (استحقاق المستخلص = تاريخه
+              + المدة). بلا مدة يبقى العمود «—» لا صفراً: الصفر يعني «لا تأخر عليه»
+              وهو ما لا نعلمه أصلاً. */}
           <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-            لا يُحسب «التأخر» للمقاولين: حركاتهم قيود مدين/دائن بلا تواريخ استحقاق،
-            بخلاف فواتير الموردين. يظهر التأخر لهم عند إدخال المستخلصات بتواريخها.
+            «متأخر» يُحسب على المستخلصات لمن ضُبطت له مدة سداد في بطاقته؛ من لا مدة له
+            يظهر «—» ولا يدخل الإجمالي.
           </p>
         </div>
         <button className="btn primary" onClick={() => { setFormErr(null); setAddOpen(true); }}>
@@ -412,7 +421,17 @@ export function Contractors() {
                explain={<ExplainDot metric="contractorsOwedToUs" values={{ contractorsOwedToUs: d.totals.owedToUs }} />} />
           <Kpi label="الضمانات المحتجزة" value={sar(d.totals.retentionHeld)} unit="ر.س"
                explain={<ExplainDot metric="contractorsRetention" values={{ contractorsRetention: d.totals.retentionHeld }} />} />
+          {/* م-٤٦/م-٣٦: الأحمر هنا تأخر زمني حقيقي (مستخلصات تجاوزت استحقاقها) —
+              يُلوَّن فقط حين > ٠، ويصف من له مدة فقط؛ الإفصاح أسفله يقول كم خارج الحساب. */}
+          <Kpi label="متأخر (لمن له مدة سداد)" value={sar(d.totals.overdueTotal ?? 0)} unit="ر.س"
+               tone={(d.totals.overdueTotal ?? 0) > 0 ? 'red' : ''} alert={(d.totals.overdueTotal ?? 0) > 0} />
         </div>
+      )}
+      {d && (d.totals.withoutTermCount ?? 0) > 0 && (
+        <p className="muted text-caption-micro" style={{ margin: '-10px 4px 14px' }}>
+          {ar(d.totals.withoutTermCount)} مقاولاً بلا مدة سداد — تأخرهم غير محسوب
+          {(d.totals.withTermCount ?? 0) > 0 && <> · المتأخر أعلاه على {ar(d.totals.withTermCount)} مقاولاً لهم مدة</>}
+        </p>
       )}
 
       <ContractorsOverview data={overview} error={overviewErr} onRetry={loadOverview} onImport={() => nav('/import')} />
@@ -495,6 +514,9 @@ export function Contractors() {
                     filter={{ kind: 'select', value: status, onChange: setStatus,
                               allLabel: 'كل الحالات',
                               options: CONTRACTOR_STATUSES.map((x) => ({ value: x.value, label: x.label })) }} />
+                <Th label="متأخر" className="ltr" sortKey="overdue"
+                    sort={sort} onSort={setSort}
+                    ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً" />
                 <Th label="الضمان المحتجز" className="ltr" sortKey="retentionHeld"
                     sort={sort} onSort={setSort}
                     ascLabel="الأصغر أولاً" descLabel="الأكبر أولاً" />
@@ -507,7 +529,7 @@ export function Contractors() {
               </tr>
             </thead>
             <tbody>
-              {pageRows.map((r: ContractorRow) => {
+              {pageRows.map((r: ContractorRowX) => {
                 const v = balanceView(r.balance);
                 // hasStatement من الخادم مباشرة (لا entryCount>0 — كانت خاطئة: تُصفَّر
                 // أيضاً بعد فلترة الفترة فلا تظهر أبداً بعد الاستيراد، عطب م-٢٦).
@@ -568,6 +590,22 @@ export function Contractors() {
                                                         textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {r.statusNote}
                         </div>
+                      )}
+                    </td>
+                    <td className="ltr">
+                      {/* م-٤٦ — الأحمر للتأخر الزمني حصراً (م-٣٦): يظهر فقط حين
+                          overdue > ٠. بلا مدة: «—» مع تلميح يقول أين تُضبط. */}
+                      {r.overdue == null ? (
+                        <span className="muted" title="اضبط مدة السداد في بطاقة المقاول">—</span>
+                      ) : r.overdue.amount > 0 ? (
+                        <>
+                          <Money v={r.overdue.amount} cls="red" />
+                          <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                            {ar(r.overdue.count)} مستخلص · أقدمها {ar(r.overdue.maxDays)} يوماً
+                          </div>
+                        </>
+                      ) : (
+                        <span className="muted" title={`مدة السداد ${ar(r.paymentTermDays ?? 0)} يوماً — لا مستخلص تجاوز استحقاقه`}>لا تأخر</span>
                       )}
                     </td>
                     <td className="ltr">
@@ -636,6 +674,7 @@ export function Contractors() {
         <Modal title="تعديل مقاول" onClose={() => setEditRow(null)} dirty={formDirty}>
           <ContractorForm
             initial={{ code: editRow.code, name: editRow.name, phone: editRow.phone ?? '',
+                      paymentTermDays: editRow.paymentTermDays ?? null,
                       projects: editRow.projects ?? [] }}
             codeLocked
             knownProjects={projects}

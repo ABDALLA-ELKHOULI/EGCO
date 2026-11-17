@@ -55,13 +55,21 @@ def _commit_or_409(db: Session, detail: str) -> None:
 
 _VALID_DIRECTIONS = ('owed_to_them', 'owed_to_us', 'balanced')
 
-# لا توجد شريحة «تأخر» للمقاولين: حركات دفتر المقاول قيود مدين/دائن (مستخلصات
-# ودفعات) بلا تاريخ استحقاق يُقاس منه التأخر — بخلاف فواتير الموردين التي لها
-# مدة سداد وتاريخ استحقاق مشتق. compute_delay في app/domain/payables.py يعمل على
-# Invoice.due_date، وهذا الحقل غير موجود أصلاً في app/domain/contractors.py.
-# افتراع تاريخ استحقاق من لا شيء كان يُخرج رقماً كاذباً، فتُركت التصفية هنا مقتصرة
-# على ما تدعمه البيانات فعلاً: البحث والمشروع والاتجاه والضمانات، بالإضافة للترتيب.
+# «تأخر» المقاولين (م-٤٦): حركات دفتر المقاول قيود مدين/دائن بلا تاريخ استحقاق
+# مطبوع، فلا يُخترع تاريخ من لا شيء. ما يوجد اليوم: مدة سداد يضبطها المستخدم
+# صراحةً على بطاقة المقاول (Contractor.payment_term_days) — لمن له مدة فقط يُشتق
+# استحقاق كل مستخلص (claim) = تاريخه + المدة، ويُحسب التأخر منه
+# (compute_contractor_delay في app/domain/contractors.py). مقاول بلا مدة يبقى
+# overdue=null (لا صفر)، وتصفية status=overdue تُطابق من له مدة وتأخر > ٠ حصراً.
 CS_VALID_SORT = tuple(CS.CONTRACTOR_SORT_KEYS.keys())
+
+#: أقصى مدة سداد مقبولة بالأيام — سنة؛ ما فوقها خطأ إدخال لا مدة حقيقية.
+_MAX_TERM_DAYS = 365
+
+
+def _validate_term_days(v: Optional[int]) -> None:
+    if v is not None and not (0 <= v <= _MAX_TERM_DAYS):
+        raise HTTPException(422, detail=f'مدة السداد يجب أن تكون بين ٠ و{_MAX_TERM_DAYS} يوماً')
 
 
 def _validate_status_filter(status: Optional[str]) -> None:
@@ -69,7 +77,8 @@ def _validate_status_filter(status: Optional[str]) -> None:
     if status is None:
         return
     bad = [s.strip() for s in status.split(',') if s.strip()
-           and s.strip() not in CS.CONTRACTOR_STATUSES]
+           and s.strip() not in CS.CONTRACTOR_STATUSES
+           and s.strip() != CS.OVERDUE_STATUS_FILTER]
     if bad:
         raise HTTPException(422, detail=f'قيمة حالة غير صالحة: {", ".join(bad)} — '
                                         f'المسموح: {", ".join(CS.CONTRACTOR_STATUSES)}')
@@ -194,6 +203,19 @@ def export_contractors_xlsx(q: Optional[str] = Query(None),
     )
 
 
+@router.get('/claims-due')
+def claims_due(date_from: Optional[str] = Query(None), date_to: Optional[str] = Query(None),
+               project: Optional[str] = Query(None),
+               db: Session = Depends(get_session)) -> dict:
+    """استحقاقات المستخلصات للتقويم (م-٤٦) — نوع `contractor_claim`، للمقاولين ذوي
+    مدة السداد فقط. مُعرَّف قبل `/{code}` وإلا التقطه مسار الكشف كرمز مقاول."""
+    from app.services import calendar_service
+    df = _date(date_from) if date_from else None
+    dtt = _date(date_to) if date_to else None
+    return calendar_service.contractor_claim_events_json(db, date_from=df, date_to=dtt,
+                                                         project=project)
+
+
 @router.get('/{code}')
 def contractor_detail(code: str, db: Session = Depends(get_session)) -> dict:
     """كشف مقاول كامل — الحركات والمستخلصات والضمانات وتوزيع المشاريع."""
@@ -220,6 +242,8 @@ def create_contractor(body: ContractorIn, db: Session = Depends(get_session)) ->
     row.notes = body.notes
     row.default_retention_rate = body.defaultRetentionRate
     row.default_guarantee_days = body.defaultGuaranteeDays
+    _validate_term_days(body.paymentTermDays)
+    row.payment_term_days = body.paymentTermDays
     db.flush()  # نحتاج row.id قبل set_projects
     projects = PP.set_projects(db, PP.CONTRACTOR, row.id, body.projects)
     db.commit()
@@ -242,6 +266,10 @@ def update_contractor(code: str, body: ContractorUpdate,
         row.default_retention_rate = body.defaultRetentionRate
     if body.defaultGuaranteeDays is not None:
         row.default_guarantee_days = body.defaultGuaranteeDays
+    # مدة السداد: الغياب = لا تغيير، وnull الصريح = مسح المدة (يعود «غير محدّد»).
+    if 'paymentTermDays' in body.model_fields_set:
+        _validate_term_days(body.paymentTermDays)
+        row.payment_term_days = body.paymentTermDays
     if body.status is not None:
         # قيمة غير صالحة هنا تكسر totals.byStatus بصمت (تفتح مجموعة بلا اسم عربي
         # معروف) — تُرفض بوضوح بدل أن تُقبل وتُفسد التجميع لاحقاً.

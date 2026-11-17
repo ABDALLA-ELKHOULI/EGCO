@@ -49,16 +49,20 @@ function backupBeforeUpdate(version: string): void {
     fs.mkdirSync(dir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     fs.copyFileSync(src, path.join(dir, `before-update-${version}-${stamp}.db`));
-    pruneUpdateBackups(dir);
+    pruneBackups(dir, 'before-update-', 10);
   } catch (e) {
     console.error('[update] تعذّرت النسخة الاحتياطية قبل التحديث:', e);
   }
 }
 
-/** يُبقي آخر عشر نسخ تحديث فقط — القاعدة تُقاس بالميغابايتات وتتراكم بلا سقف. */
-function pruneUpdateBackups(dir: string, keep = 10): void {
+/**
+ * يُبقي آخر `keep` نسخة بالبادئة المعطاة — القاعدة تُقاس بالميغابايتات وتتراكم بلا سقف.
+ * م-١٣: كانت مقصورة على `before-update-`، فتراكمت نسخ `before-import-*` بلا حدّ؛
+ * الآن البادئة معامل، والأسقف نفسها التي يطبّقها الخادم (backup_service.KEEP).
+ */
+function pruneBackups(dir: string, prefix: string, keep: number): void {
   const files = fs.readdirSync(dir)
-    .filter((f) => f.startsWith('before-update-') && f.endsWith('.db'))
+    .filter((f) => f.startsWith(prefix) && f.endsWith('.db'))
     .sort();                      // الطابع الزمني ISO يجعل الترتيب الأبجدي زمنياً
   for (const f of files.slice(0, Math.max(0, files.length - keep))) {
     try { fs.unlinkSync(path.join(dir, f)); } catch { /* نسخة عالقة لا تستحق تعطيل شيء */ }
@@ -404,6 +408,25 @@ ipcMain.handle('dialog:pickDirectory', async () => {
  */
 const dbPath = () => path.join(app.getPath('userData'), 'egco.db');
 
+/** طابع زمني صالح لاسم ملف — نفس شكل الخادم (`2026-09-24T10-30-05`). */
+const fileStamp = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+/**
+ * م-٤٥: التصدير كان ينسخ `egco.db` وهو مفتوح للكتابة (نسخة قد لا تُفتح). الآن
+ * يطلب من الخدمة نسخة يدوية متّسقة (`VACUUM INTO`) ثم ينسخ ذلك الملف المغلق
+ * إلى المسار الذي اختاره المستخدم. فشل الخدمة لا يُسقط للنسخ الحيّ — يُعرض كخطأ.
+ */
+async function requestManualBackup(): Promise<{ path: string; name: string }> {
+  const res = await fetch(`${backendUrl()}/api/v1/backups`, { method: 'POST' });
+  if (!res.ok) {
+    let detail = `خطأ ${res.status}`;
+    try { detail = String((await res.json()).detail ?? detail); } catch { /* نص الحالة يكفي */ }
+    throw new Error(detail);
+  }
+  const data = (await res.json()) as { backup: { path: string; name: string } };
+  return data.backup;
+}
+
 ipcMain.handle('data:export', async () => {
   const src = dbPath();
   if (!fs.existsSync(src)) return { ok: false, error: 'لا توجد قاعدة بيانات بعد' };
@@ -415,10 +438,11 @@ ipcMain.handle('data:export', async () => {
   });
   if (r.canceled || !r.filePath) return { ok: false, canceled: true };
   try {
-    fs.copyFileSync(src, r.filePath);
+    const backup = await requestManualBackup();
+    fs.copyFileSync(backup.path, r.filePath);
     return { ok: true, path: r.filePath };
   } catch (e) {
-    return { ok: false, error: String(e) };
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 });
 
@@ -446,8 +470,8 @@ ipcMain.handle('data:import', async () => {
     if (fs.existsSync(dest)) {
       const backups = path.join(app.getPath('userData'), 'backups');
       fs.mkdirSync(backups, { recursive: true });
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      fs.copyFileSync(dest, path.join(backups, `before-import-${stamp}.db`));
+      fs.copyFileSync(dest, path.join(backups, `before-import-${fileStamp()}.db`));
+      pruneBackups(backups, 'before-import-', 10);   // م-١٣
     }
     fs.copyFileSync(r.filePaths[0], dest);
   } catch (e) {
@@ -460,6 +484,88 @@ ipcMain.handle('data:import', async () => {
 });
 
 ipcMain.handle('shell:revealDataDir', () => shell.openPath(app.getPath('userData')));
+
+/* ---------------------------------------------------------------- النسخ الاحتياطي (م-٤٥) */
+
+const backupsDir = () => path.join(app.getPath('userData'), 'backups');
+
+/** نفس النمط الصارم الذي يفرضه الخادم — لا شرطة مائلة ولا `..` تصل إلى المسار. */
+const BACKUP_NAME_RE = /^(daily|manual|before-update|before-import|before-restore|egco)-[A-Za-z0-9._-]+\.db$/;
+
+ipcMain.handle('backup:revealDir', () => {
+  fs.mkdirSync(backupsDir(), { recursive: true });
+  return shell.openPath(backupsDir());
+});
+
+/** حوار اختيار مجلد خارجي (iCloud/Drive) — المسار يُحفظ عبر API من الواجهة. */
+ipcMain.handle('backup:pickExternalDir', async () => {
+  const r = await dialog.showOpenDialog({
+    title: 'اختيار مجلد خارجي للنسخ الاحتياطي',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
+});
+
+/** ينتظر حتى تتوقف الخدمة فعلاً (health يفشل) — kill() لا ينتظر خروج العملية. */
+async function waitForBackendStop(maxMs = 5000): Promise<void> {
+  const url = `${backendUrl()}/health`;
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    try {
+      await fetch(url, { signal: AbortSignal.timeout(500) });
+    } catch {
+      return;                     // لم تعد تستجيب — توقفت
+    }
+    await new Promise((res) => setTimeout(res, 150));
+  }
+}
+
+/**
+ * الاستعادة: تأكيد أصلي → إيقاف الخدمة (تمسك الملف) → نسخة `before-restore-*` من
+ * القاعدة الحالية (وهي مغلقة الآن، فالنسخ المباشر آمن) → استبدال `egco.db` →
+ * إعادة تشغيل. ملفات `-wal`/`-shm` تُحذف إن وُجدت حتى لا يُطبَّق سجل قديم على
+ * الملف الجديد. الاسم يُتحقَّق منه ويُحلّ داخل مجلد النسخ فقط.
+ */
+ipcMain.handle('backup:restore', async (_e, name: string) => {
+  if (typeof name !== 'string' || !BACKUP_NAME_RE.test(name)) {
+    return { ok: false, error: 'اسم نسخة غير صالح' };
+  }
+  const src = path.join(backupsDir(), name);
+  if (path.dirname(path.resolve(src)) !== path.resolve(backupsDir()) || !fs.existsSync(src)) {
+    return { ok: false, error: 'النسخة غير موجودة' };
+  }
+  const confirm = await dialog.showMessageBox({
+    type: 'warning',
+    buttons: ['استعادة وإعادة التشغيل', 'إلغاء'],
+    defaultId: 1,
+    cancelId: 1,
+    message: 'استعادة هذه النسخة؟',
+    detail: `ستُستبدل بياناتك الحالية بمحتوى النسخة:\n${name}\n\n`
+          + 'تُؤخذ نسخة من بياناتك الحالية أولاً (before-restore) حتى يمكن التراجع، '
+          + 'ثم يُعاد تشغيل التطبيق.',
+  });
+  if (confirm.response !== 0) return { ok: false, canceled: true };
+
+  try {
+    stopBackend();
+    await waitForBackendStop();
+    const dest = dbPath();
+    if (fs.existsSync(dest)) {
+      fs.copyFileSync(dest, path.join(backupsDir(), `before-restore-${fileStamp()}.db`));
+      pruneBackups(backupsDir(), 'before-restore-', 5);
+    }
+    for (const suffix of ['-wal', '-shm', '-journal']) {
+      try { fs.rmSync(dest + suffix, { force: true }); } catch { /* غير موجود غالباً */ }
+    }
+    fs.copyFileSync(src, dest);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+
+  app.relaunch();
+  app.quit();
+  return { ok: true };
+});
 
 /**
  * تصدير PDF — بديل window.print() داخل التطبيق المحزوم.

@@ -157,6 +157,11 @@ class Contractor(TimestampMixin, Base):
     default_retention_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     #: default guarantee period in days — editable per project guarantee
     default_guarantee_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    #: مدة سداد المستخلص بالأيام (م-٤٦) — يضبطها المستخدم صراحةً في بطاقة المقاول.
+    #: NULL = «غير محدّدة»، ولا افتراض عام: بلا مدة لا يُحسب تأخر ولا يُعرض صفر
+    #: (الصفر يقول «لا تأخر عليه» وهو ما لا نعلمه). معها فقط: استحقاق كل مستخلص
+    #: = تاريخه + المدة، والتأخر يُقاس منه على المستخلصات (claim) حصراً.
+    payment_term_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     #: الرصيد كما ورد في تقرير المديونيات المجمّع — **مرجع للمقارنة لا مصدر حقيقة**.
     #: الرصيد المعروض في كشف المقاول يبقى مشتقاً من قيوده كما كان دائماً؛ هذا الحقل
     #: يخدم لوحة النظرة العامة (٣٢١ مقاولاً لا قيود لهم بعد) ويكشف الاختلاف بين ما

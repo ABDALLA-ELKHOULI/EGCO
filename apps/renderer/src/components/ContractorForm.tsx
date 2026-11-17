@@ -16,11 +16,14 @@ function normalizeArLocal(s: string): string {
     .trim();
 }
 
-export type ContractorFormValues = ContractorBody;
+/** م-٤٦: paymentTermDays خارج ContractorBody (lib/api.ts مملوك لوكيل آخر) —
+ * null صريح = «امسح المدة» (الخادم يميّزه عن الغياب)، فيعود المقاول «غير محدّد». */
+export type ContractorFormValues = ContractorBody & { paymentTermDays?: number | null };
 
 interface Initial {
   code?: string; name?: string; phone?: string; notes?: string;
   defaultRetentionRate?: number | null; defaultGuaranteeDays?: number | null;
+  paymentTermDays?: number | null;
   projects?: string[];
 }
 
@@ -44,6 +47,8 @@ export function ContractorForm({ initial, codeLocked = false, knownProjects, onS
   const [retention, setRetention] = useState(initialRetention);
   const initialDays = initial?.defaultGuaranteeDays != null ? String(initial.defaultGuaranteeDays) : '';
   const [days, setDays] = useState(initialDays);
+  const initialTerm = initial?.paymentTermDays != null ? String(initial.paymentTermDays) : '';
+  const [term, setTerm] = useState(initialTerm);
   const [notes, setNotes] = useState(initial?.notes ?? '');
   // لائحة المشاريع — نفس منطق SupplierForm بالحرف: الأول «الأساسي»، شرائح قابلة
   // للإزالة، وحقل حر + قائمة معروفة للإضافة. المقاول لا يملك عمود مشروع مفرد
@@ -58,13 +63,14 @@ export function ContractorForm({ initial, codeLocked = false, knownProjects, onS
       || phone.trim() !== (initial?.phone ?? '')
       || retention !== initialRetention
       || days !== initialDays
+      || term !== initialTerm
       || notes.trim() !== (initial?.notes ?? '')
       || projects.length !== initialProjects.length
       || projects.some((p, i) => p !== initialProjects[i])
       || newProject.trim() !== '';
     onDirtyChange?.(dirty);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code, name, phone, retention, days, notes, projects, newProject]);
+  }, [code, name, phone, retention, days, term, notes, projects, newProject]);
 
   // نفس اقتراح SupplierForm.tsx — مشروع قريب بإملاء مختلف بدل توأم صامت.
   const projectSuggestion = useMemo(() => {
@@ -92,6 +98,9 @@ export function ContractorForm({ initial, codeLocked = false, knownProjects, onS
     if (notes.trim()) v.notes = notes.trim();
     if (retention !== '') v.defaultRetentionRate = Number(retention);
     if (days !== '') v.defaultGuaranteeDays = Number(days);
+    // فارغ = null صريح لا حذف المفتاح: عند التعديل يجب أن يصل «امسح المدة» للخادم،
+    // وإلا بقيت مدة قديمة تُنتج تأخراً لا يثق به المستخدم.
+    v.paymentTermDays = term !== '' ? Number(term) : null;
     onSubmit(v);
   }
 
@@ -164,6 +173,12 @@ export function ContractorForm({ initial, codeLocked = false, knownProjects, onS
                  onChange={(e) => setDays(e.target.value)} dir="ltr" />
         </label>
       </div>
+      <label style={field}>
+        مدة السداد (يوماً)
+        <input type="number" min="0" max="365" value={term}
+               onChange={(e) => setTerm(e.target.value)} dir="ltr" />
+        <span className="muted">اتركه فارغاً إن لم تُتفق مدة — لن يُحسب تأخر</span>
+      </label>
       <label style={field}>
         ملاحظات
         <input value={notes} onChange={(e) => setNotes(e.target.value)} />

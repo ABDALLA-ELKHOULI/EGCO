@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import difflib
 import json
+import logging
 import os
 import re
 import shutil
@@ -28,6 +29,8 @@ from app.ingest import (contractor_statement, contractors_balance_xls, csv_state
                         receivables_legacy, suppliers_excel)
 from app.ingest.budget_xlsx import BudgetParseError
 from app.ingest.contractors_balance_xls import ContractorsBalanceParseError
+
+logger = logging.getLogger(__name__)
 from app.ingest.csv_statement import CsvStatementParseError
 from app.ingest.debts_report_xls import DebtsReportParseError
 from app.ingest.friendly_errors import FriendlyFileError, check_basic_file, check_scanned_pdf
@@ -481,26 +484,19 @@ def delete_duplicate_row(db: Session, kind: str, row_id: str) -> dict:
 def backup_db() -> None:
     """ينسخ قاعدة البيانات احتياطياً قبل أي عملية استيراد تكتب بيانات.
 
-    Skips silently if the DB does not exist yet (first run). Keeps the newest 20
-    backups and prunes older ones.
+    م-١٣ · م-٤٥: كانت تنسخ الملف بايتاً-بايتاً (`shutil.copy2`) وهو مفتوح للكتابة
+    — نسخة قد لا تُفتح — وتُبقي ٢٠ باسم `egco-*` لا يعرفها أحد. الآن تمرّ عبر
+    backup_service: لقطة متّسقة بـ`VACUUM INTO` باسم `before-import-<ISO>.db`،
+    سقفها ١٠، وتظهر في قائمة النسخ بالإعدادات. غياب القاعدة (أول تشغيل) يُخطّى
+    بصمت كما كان، وأي فشل آخر لا يوقف الاستيراد: النسخة احتياط لا بوابة.
     """
-    db_path = settings.DB_PATH
-    if not db_path.exists():
+    from app.services import backup_service
+    if not settings.DB_PATH.exists():
         return
-    backups_dir = settings.DATA_DIR / 'backups'
-    backups_dir.mkdir(parents=True, exist_ok=True)
-    stamp = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
-    dest = backups_dir / f'egco-{stamp}.db'
     try:
-        shutil.copy2(db_path, dest)
-    except OSError:
-        return
-    existing = sorted(backups_dir.glob('egco-*.db'))
-    for old in existing[:-20]:
-        try:
-            old.unlink()
-        except OSError:
-            pass
+        backup_service.create_backup('before-import')
+    except Exception:
+        logger.warning('تعذّرت نسخة ما قبل الاستيراد — الاستيراد يكمل بدونها', exc_info=True)
 
 
 def import_budget_file(db: Session, path: str, backup: bool = True) -> dict:

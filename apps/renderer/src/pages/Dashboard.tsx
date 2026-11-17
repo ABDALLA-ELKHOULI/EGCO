@@ -14,6 +14,10 @@ export function Dashboard() {
   const [err, setErr] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
   const [projects, setProjects] = useState<string[]>([]);
+  // م-٤٦: متأخر المقاولين يأتي من /overview (نفس مصدر مركز القيادة) — بطاقة «متأخر
+  // عن موعده» أعلاه موردون فقط، فيُعرض رقم المقاولين سطراً منفصلاً بإفصاحه ولا
+  // يُجمع مع رقم الموردين بصمت. فشل هذا الطلب لا يُسقط اللوحة: يبقى السطر غائباً.
+  const [ov, setOv] = useState<any>(null);
 
   const project = params.get('project') || '';
   const statusParam = params.get('status') || '';
@@ -28,6 +32,8 @@ export function Dashboard() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project]);
+
+  useEffect(() => { api.overview().then(setOv).catch(() => setOv(null)); }, []);
 
   // project options come from the always-unfiltered /projects list, fetched once.
   useEffect(() => { api.projects().then((r: any) => setProjects((r.rows ?? []).map((row: any) => row.project))).catch(() => {}); }, []);
@@ -99,6 +105,26 @@ export function Dashboard() {
         <Kpi label="المديونية المفتوحة" value={sar(s.outstanding)} unit="ر.س"
              explain={<ExplainDot metric="outstanding" values={{ totalInvoiced: s.totalPaid + s.outstanding, totalPaid: s.totalPaid, outstanding: s.outstanding }} />} />
       </div>
+
+      {ov?.contractors && (ov.contractors.withTermCount > 0 || ov.contractors.withoutTermCount > 0) && (
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: -8, marginBottom: 10 }}>
+          {ov.contractors.overdue > 0 ? (
+            <>+ <span className="num red">{sar(ov.contractors.overdue)}</span> ر.س متأخر للمقاولين
+              ({ar(ov.contractors.overdueContractorCount)} مقاولاً) — غير مجموع مع رقم الموردين أعلاه</>
+          ) : ov.contractors.withTermCount > 0 ? (
+            <>لا متأخرات على {ar(ov.contractors.withTermCount)} مقاولاً لهم مدة سداد</>
+          ) : null}
+          {ov.contractors.withoutTermCount > 0 && (
+            <>{ov.contractors.withTermCount > 0 ? ' · ' : ''}
+              <Link to="/contractors">{ar(ov.contractors.withoutTermCount)} مقاولاً بلا مدة سداد</Link> — تأخرهم غير محسوب</>
+          )}
+        </div>
+      )}
+      {(ov?.alerts ?? []).filter((a: any) => a.kind === 'contractors_overdue').map((a: any) => (
+        <div key={a.kind} className={'callout ' + (a.level === 'danger' ? 'bad' : '')} style={{ marginBottom: 12 }}>
+          {a.text}
+        </div>
+      ))}
 
       {s.totalPaid > 0 && (
         <div style={{ fontSize: 12, color: 'var(--muted)' }}>

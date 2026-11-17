@@ -408,6 +408,8 @@ td.num, th.num, td.ltr, th.ltr { display: table-cell; }
 /* ---------------- utility: أنماط متكررة إضافية (CashFlow وغيرها) ---------------- */
 /* زر شفاف يغلّف بطاقة KPI كاملة بلا تغيير شكلي — يفتح نافذة التفاصيل */
 .kpi-link-reset { all: unset; cursor: pointer; display: block; width: 100%; }
+/* ‏صار div بدور زر (م-٤٧) — all:unset يمحو حلقة التركيز، فمستخدم لوحة المفاتيح لا يرى أين هو */
+.kpi-link-reset:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: var(--r-card); }
 /* تسمية حقل توولبار صغيرة رمادية — 13px لا تطابق درجة في السلّم فتُركت رقماً صريحاً هنا فقط */
 .field-inline-label { font-size: 13px; color: var(--muted); }
 .callout-tight { margin-bottom: 14px; }

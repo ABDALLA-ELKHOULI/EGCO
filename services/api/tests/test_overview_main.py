@@ -102,9 +102,12 @@ def test_new_keys_present_even_with_no_data(api_client):
     assert d['lastPayments'] == []
     assert d['lastPayment'] is None
     # withoutStatementCount/Owed — م-١٩: مقاولون لهم رصيد مُبلَّغ بلا حركة دفتر بعد.
+    # م-٤٦: overdue/withTermCount/withoutTermCount — تأخر المقاولين لمن له مدة سداد.
     assert d['contractors'] == dict(count=0, owedToContractors=0.0, owedToUs=0.0,
                                     retentionHeld=0.0, releaseAlerts=0,
-                                    withoutStatementCount=0, withoutStatementOwed=0.0)
+                                    withoutStatementCount=0, withoutStatementOwed=0.0,
+                                    overdue=0.0, overdueContractorCount=0, dueWithin7=0.0,
+                                    withTermCount=0, withoutTermCount=0)
     assert d['revenues'] == dict(open=0.0, collected=0.0)
     assert d['guarantees']['heldTotal'] == 0.0
     assert d['guarantees']['nextRelease'] is None

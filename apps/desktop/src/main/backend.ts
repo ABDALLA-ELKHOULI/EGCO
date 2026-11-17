@@ -142,6 +142,11 @@ export async function startBackend(isRestart = false): Promise<void> {
 
   proc.on('exit', (code) => {
     proc = null;
+    // م-٤٥: الإيقاف المقصود (استعادة نسخة احتياطية، إغلاق التطبيق) يصل بإشارة
+    // SIGTERM فيكون code === null لا 0 — فكان يُقرأ «انهياراً» ويُعاد تشغيل الخدمة
+    // لحظة استبدال ملف القاعدة، فتُفتح القاعدة القديمة وسط الاستبدال. العلم يفرّق
+    // بين موت مفاجئ يستحق الإنعاش وإيقاف طلبناه نحن.
+    if (stoppingIntentionally) { stoppingIntentionally = false; return; }
     if (code === 0) return;
     if (!canRestart()) {
       const msg = `تجاوزت الخدمة عدد محاولات إعادة التشغيل المسموح (${RESTART_MAX_IN_WINDOW} خلال ٥ دقائق) — على الأغلب عطل متكرر لا مجرد انقطاع عابر.`;
@@ -167,7 +172,10 @@ export async function startBackend(isRestart = false): Promise<void> {
   await waitForHealth();
 }
 
+let stoppingIntentionally = false;
+
 export function stopBackend(): void {
+  if (proc) stoppingIntentionally = true;
   proc?.kill();
   proc = null;
 }

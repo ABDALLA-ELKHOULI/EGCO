@@ -1,4 +1,4 @@
-import { CSSProperties, KeyboardEvent as ReactKeyboardEvent, TouchEvent as ReactTouchEvent, useEffect, useRef, useState } from 'react';
+import { CSSProperties, KeyboardEvent as ReactKeyboardEvent, TouchEvent as ReactTouchEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, apiBase, ApiError } from '@/lib/api';
 import { ar, arDate, sar } from '@/lib/format';
@@ -713,6 +713,18 @@ function KpiCarousel({ d, summary, activeView, onViewChange, openBreakdown, onJu
   );
 }
 
+/** بطاقة KPI قابلة للنقر — `div` بدور زر لا `<button>`: بطاقة Kpi تحوي زر «اشرح»
+ * (ExplainDot)، وزر داخل زر HTML غير صالح يطلق خطأ React في الكونسول ويجعل النقر على
+ * «اشرح» يفتح التفكيك أيضاً. كشفه اختبار الواجهة الأول (م-٤٧). */
+function KpiLink({ onClick, title, children }: { onClick: () => void; title?: string; children: ReactNode }) {
+  return (
+    <div className="kpi-link-reset" role="button" tabIndex={0} onClick={onClick} title={title}
+         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}>
+      {children}
+    </div>
+  );
+}
+
 /** «الحالي» — نفس الخمس بطاقات التي كانت تُعرض ثابتة سابقاً، بلا أي تغيير في الحساب. */
 function CurrentKpiView({ d, summary, openBreakdown, onJumpToMinBalance }: {
   d: any; summary: any; openBreakdown: (req: BreakdownRequest) => void; onJumpToMinBalance: () => void;
@@ -720,35 +732,35 @@ function CurrentKpiView({ d, summary, openBreakdown, onJumpToMinBalance }: {
   return (
     <>
       <div className="kpi-row">
-        <button className="kpi-link-reset" onClick={() => openBreakdown({
+        <KpiLink onClick={() => openBreakdown({
           term: 'forecast', titleLabel: 'إجمالي الداخل (متوقّع)', amount: summary.totalInflow ?? 0,
           rule: 'كل تحصيل مفتوح (لم يُحصَّل بعد) له تاريخ استحقاق ضمن الأفق المعروض — هذا توقّع لا تاريخ.',
         })}>
           <Kpi label="إجمالي الداخل (متوقّع)" value={sar(summary.totalInflow ?? 0)} unit="ر.س" tone="ok" hero={false} />
-        </button>
-        <button className="kpi-link-reset" onClick={() => openBreakdown({
+        </KpiLink>
+        <KpiLink onClick={() => openBreakdown({
           term: 'collected', titleLabel: 'إجمالي المحصّل خلال المدى', amount: d.collections?.inWindow ?? 0,
           rule: 'كل تحصيل بحالة «محصَّل» وتاريخ تحصيله الفعلي يقع داخل الأفق المعروض — هذا تاريخ فعلي لا توقّع.',
         })}>
           <Kpi label="إجمالي المحصّل خلال المدى" value={sar(d.collections?.inWindow ?? 0)} unit="ر.س" tone="ok" hero={false} />
-        </button>
-        <button className="kpi-link-reset" onClick={() => openBreakdown({
+        </KpiLink>
+        <KpiLink onClick={() => openBreakdown({
           term: 'scheduled', titleLabel: 'إجمالي الخارج (مجدول)', amount: summary.totalOutflow ?? 0,
           rule: 'كل فاتورة/ضمان مستحق داخل الأفق المعروض من الجدول الزمني.',
         })}>
           <Kpi label="إجمالي الخارج" value={sar(summary.totalOutflow ?? 0)} unit="ر.س" hero={false} />
-        </button>
+        </KpiLink>
         <Kpi label="صافي الفترة" value={sar(summary.netTotal ?? 0)} unit="ر.س"
              tone={(summary.netTotal ?? 0) < 0 ? 'red' : 'ok'} hero
              explain={<ExplainDot metric="cashflowNetPeriod" values={{
                totalInflow: summary.totalInflow, totalOutflow: summary.totalOutflow, netTotal: summary.netTotal,
              }} />} />
-        <button className="kpi-link-reset" onClick={onJumpToMinBalance}
+        <KpiLink onClick={onJumpToMinBalance}
                 title="اضغط للانتقال إلى فترة أدنى رصيد في الجدول أدناه">
           <Kpi label="أدنى رصيد" value={sar(summary.minBalance ?? 0)} unit="ر.س" hero={false}
                tone={(summary.minBalance ?? 0) < 0 ? 'red' : ''} alert={(summary.minBalance ?? 0) < 0}
                explain={<ExplainDot metric="cashflowMinBalance" values={{ minBalance: summary.minBalance }} />} />
-        </button>
+        </KpiLink>
       </div>
       <p className="muted text-caption-micro" style={{ margin: '4px 0 0', lineHeight: 1.7, padding: '0 6px' }}>
         «إجمالي الداخل» توقّعٌ لتحصيلات لم تُحصَّل بعد ولها تاريخ استحقاق، أما «إجمالي المحصّل خلال المدى»

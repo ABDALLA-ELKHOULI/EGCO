@@ -65,7 +65,8 @@ export function Suppliers() {
     status && { k: 's', label: `الحالة: ${STATUS[status]?.label ?? status}`, clear: () => setStatus('') },
     delay && { k: 'd', label: `التأخر: ${DELAY_BUCKETS.find((b) => b.value === delay)?.label}`,
                clear: () => setDelay('') },
-    (minOut || maxOut) && { k: 'o', label: `المديونية: ${minOut || '—'} … ${maxOut || '—'}`,
+    // م-١٨: نفس اسم العمود «المديونية المفتوحة»
+    (minOut || maxOut) && { k: 'o', label: `المديونية المفتوحة: ${minOut || '—'} … ${maxOut || '—'}`,
                             clear: () => { setMinOut(''); setMaxOut(''); } },
     (payFrom || payTo) && { k: 'dt', label: `الفترة: ${payFrom || '—'} … ${payTo || '—'}`,
                             clear: () => { setPayFrom(''); setPayTo(''); } },

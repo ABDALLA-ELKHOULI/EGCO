@@ -28,6 +28,29 @@ const KIND: Record<string, { label: string; cls: string }> = {
   other:     { label: 'أخرى',    cls: '' },
 };
 
+/** م-٤٦: بطاقة «الاستحقاق» كما يرسلها الخادم — خارج ContractorDetailResponse في
+ * lib/api.ts (مملوك لوكيل آخر). delay = null كاملاً لمن لا مدة سداد له. */
+type ClaimDueRow = {
+  entryId: string | null; date: string; dueDate: string; amount: number; paid: number;
+  remaining: number; daysLate: number; doc: string; description: string;
+  claimNo: string | null; project: string;
+};
+type DetailWithDelay = ContractorDetailResponse & {
+  paymentTermDays?: number | null;
+  delay?: {
+    overdue: { amount: number; count: number; maxDays: number };
+    dueSoon: { within7: number; within30: number };
+    byBucket: Record<string, number>;
+    claims: ClaimDueRow[];
+  } | null;
+};
+
+/** شرائح الأعمار — نفس مفاتيح DELAY_BUCKETS في app/domain/payables.py. */
+const DELAY_BUCKETS: [string, string][] = [
+  ['m1', 'شهر'], ['m2', 'شهران'], ['m3', '٣ أشهر'], ['m4', '٤ أشهر'],
+  ['m5', '٥ أشهر'], ['m6', '٦ أشهر'], ['m6_plus', 'أكثر من ٦ أشهر'],
+];
+
 const DUE_STATUS: Record<GuaranteeDueStatus, { label: string; cls: string }> = {
   due:       { label: 'مستحق الصرف', cls: 'red' },
   upcoming:  { label: 'يقترب',       cls: 'gold' },
@@ -38,7 +61,7 @@ const DUE_STATUS: Record<GuaranteeDueStatus, { label: string; cls: string }> = {
 
 export function ContractorDetail() {
   const { code } = useParams();
-  const [d, setD] = useState<ContractorDetailResponse | null>(null);
+  const [d, setD] = useState<DetailWithDelay | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [projectFilter, setProjectFilter] = useState('');
 
@@ -217,6 +240,7 @@ export function ContractorDetail() {
             {d.phone && <> · <span className="num">{d.phone}</span></>}
             {d.defaultRetentionRate != null && <> · ضمان {ar(d.defaultRetentionRate)}٪</>}
             {d.defaultGuaranteeDays != null && <> · مدة الضمان {ar(d.defaultGuaranteeDays)} يوماً</>}
+            {d.paymentTermDays != null && <> · مدة السداد {ar(d.paymentTermDays)} يوماً</>}
           </p>
           {d.notes && <p className="muted" style={{ fontSize: 12 }}>{d.notes}</p>}
         </div>
@@ -255,6 +279,81 @@ export function ContractorDetail() {
           الرصيد = إجمالي المدين − إجمالي الدائن (المستخلصات) — لذا لا يساوي المدفوع ناقص المستخلصات بالضرورة
         </div>
       </div>
+
+      {/* م-٤٦ — بطاقة «الاستحقاق»: بلا مدة لا رقم (لا صفر)، بل جملة تقول أين تُضبط.
+          الأحمر للمتأخر الزمني فقط (م-٣٦)، وجدول المستخلصات يجعل كل رقم أعلاه
+          قابلاً للتتبّع إلى مستخلصه ومتبقيه بعد FIFO الدفعات. */}
+      <Card title="الاستحقاق"
+            sub={d.delay
+              ? `مدة السداد ${ar(d.paymentTermDays ?? 0)} يوماً — استحقاق كل مستخلص = تاريخه + المدة، والمتبقي بعد الدفعات بالأقدم أولاً`
+              : 'لا مدة سداد مضبوطة لهذا المقاول — لا يُحسب تأخر'}
+            actions={!d.delay
+              ? <button className="btn sm" onClick={() => { setFormErr(null); setEditOpen(true); }}>اضبط مدة السداد</button>
+              : undefined}>
+        {!d.delay ? (
+          <div className="card-body muted">
+            اضبط «مدة السداد (يوماً)» في بطاقة المقاول ليُشتق استحقاق كل مستخلص ويظهر تأخره
+            هنا وفي القائمة واللوحة والتقويم. بلا مدة يبقى العمود «—» عمداً — الصفر
+            كان سيعني «لا تأخر عليه» وهو ما لا تدعمه البيانات.
+          </div>
+        ) : (
+          <div className="card-body">
+            <div className="kpi-row">
+              <Kpi label="متأخر" value={sar(d.delay.overdue.amount)} unit="ر.س"
+                   tone={d.delay.overdue.amount > 0 ? 'red' : ''} alert={d.delay.overdue.amount > 0} hero={false} />
+              <Kpi label="خلال ٧ أيام" value={sar(d.delay.dueSoon.within7)} unit="ر.س" tone="gold" hero={false} />
+              <Kpi label="خلال ٣٠ يوماً" value={sar(d.delay.dueSoon.within30)} unit="ر.س" hero={false} />
+              <Kpi label="أقدم تأخر" value={d.delay.overdue.maxDays > 0 ? `${ar(d.delay.overdue.maxDays)} يوماً` : '—'}
+                   tone={d.delay.overdue.maxDays > 0 ? 'red' : ''} hero={false} />
+            </div>
+            {d.delay.overdue.amount > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                {DELAY_BUCKETS.map(([key, label]) => (
+                  <div className="age-row" key={key}>
+                    <span className="muted">{label}</span>
+                    {(d.delay!.byBucket[key] ?? 0) > 0
+                      ? <Money v={d.delay!.byBucket[key]} cls="red" />
+                      : <span className="muted">—</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {d.delay.claims.length === 0 ? (
+              <p className="muted">لا مستخلصات في دفتر هذا المقاول بعد.</p>
+            ) : (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>المستخلص</th><th>المشروع</th><th>التاريخ</th><th>الاستحقاق</th>
+                      <th className="ltr">المبلغ</th><th className="ltr">المسدَّد</th>
+                      <th className="ltr">المتبقي</th><th>التأخر</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d.delay.claims.map((c) => (
+                      <tr key={c.entryId ?? c.date + c.doc} className={c.daysLate > 0 ? 'row-overdue' : ''}>
+                        <td>{c.claimNo ? `مستخلص رقم ${ar(c.claimNo)}` : (c.description || '—')}</td>
+                        <td className="muted">{c.project || '—'}</td>
+                        <td>{arDate(c.date)}</td>
+                        <td>{arDate(c.dueDate)}</td>
+                        <td className="ltr"><Money v={c.amount} /></td>
+                        <td className="ltr">{c.paid > 0 ? <Money v={c.paid} cls="ok" /> : <span className="muted">—</span>}</td>
+                        <td className="ltr">{c.remaining > 0 ? <Money v={c.remaining} cls={c.daysLate > 0 ? 'red' : ''} /> : <span className="muted">مسدَّد</span>}</td>
+                        <td>
+                          {c.daysLate > 0
+                            ? <Pill kind="red">متأخر {ar(c.daysLate)} يوماً</Pill>
+                            : c.remaining > 0 ? <Pill kind="gold">لم يحن</Pill> : <Pill kind="ok">مسدَّد</Pill>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
 
       {d.perProject.length > 0 && (
         <div className="project-cards">
@@ -548,6 +647,7 @@ export function ContractorDetail() {
               code: d.code, name: d.name, phone: d.phone ?? '', notes: d.notes ?? '',
               defaultRetentionRate: d.defaultRetentionRate,
               defaultGuaranteeDays: d.defaultGuaranteeDays,
+              paymentTermDays: d.paymentTermDays ?? null,
             }}
             codeLocked
             onSubmit={(values: ContractorFormValues) => {

@@ -8,7 +8,7 @@ let base = '';
 
 export async function initApi(): Promise<string> {
   if (window.egco?.backendUrl) base = await window.egco.backendUrl();
-  else base = 'http://127.0.0.1:8756';
+  else base = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8756'; // م-٤٧: اختبارات Playwright تمرّ عبر وكيل Vite
   return base;
 }
 
@@ -101,6 +101,24 @@ export interface ContractorQuery {
   q?: string; project?: string; direction?: string; status?: string; has_guarantees?: boolean;
   sort?: string; dir?: 'asc' | 'desc';
   [k: string]: string | number | boolean | undefined;
+}
+
+export interface ResetRow { table: string; label: string; count: number }
+export interface ResetPreview {
+  wipes: ResetRow[];
+  keeps: ResetRow[];
+  totalRows: number;
+  /** العبارة التي يجب أن يكتبها المستخدم حرفياً — تأتي من الخادم فلا تتباعد النسختان */
+  confirmPhrase: string;
+  isEmpty: boolean;
+}
+export interface ResetResult {
+  reset: boolean;
+  deleted: Record<string, number>;
+  totalDeleted: number;
+  backup: string | null;
+  backupInfo?: BackupInfo;
+  before?: ResetPreview;
 }
 
 /** أنواع سلّة المحذوفات — يطابق _KINDS في services/api/app/api/routes/trash.py */
@@ -286,6 +304,24 @@ export const api = {
   /** نسخ ملف التقرير الأصلي (مرجع فقط) إلى مجلد مرفقات الموازنة — لا كتابة في القاعدة. */
   budgetUploadAttachment: (path: string) =>
     post<{ attachment: string }>('/api/v1/import/budget-attachment', { path }),
+
+  /* ---- م-٤٥: النسخ الاحتياطي ---- */
+  backups: () => call<BackupsResponse>('/api/v1/backups'),
+  createBackup: () => post<{ backup: BackupInfo }>('/api/v1/backups', {}),
+  /** نسخة يومية إن مضى يوم على آخر واحدة — تُستدعى عند فتح الإعدادات. */
+  backupDailyIfDue: () =>
+    post<{ taken: boolean; backup: BackupInfo | null; lastDaily: BackupInfo | null }>(
+      '/api/v1/backups/daily-if-due', {}),
+  backupSettings: () => call<{ externalDir: string | null }>('/api/v1/backups/settings'),
+  saveBackupSettings: (path: string | null) =>
+    put<{ externalDir: string | null }>('/api/v1/backups/settings', { path }),
+  deleteBackup: (name: string) => del<{ deleted: string }>(`/api/v1/backups/${encodeURIComponent(name)}`),
+
+  /* ---- تصفير البيانات ---- */
+  /** ماذا سيُحذف وماذا سيبقى — يُقرأ قبل عرض نافذة التأكيد، لا بعدها. */
+  resetPreview: () => call<ResetPreview>('/api/v1/reset/preview'),
+  /** يمحو بيانات الشركة. الخادم يأخذ نسخة احتياطية أولاً ويُلغي العملية إن فشلت. */
+  resetAll: (confirm: string) => post<ResetResult>('/api/v1/reset', { confirm }),
 
   /* ---- v0.5: مساعد الذكاء الاصطناعي (Ollama أو أي مزود متوافق مع OpenAI) ---- */
   aiSettings: () => call<AiSettings>('/api/v1/ai/settings'),
@@ -726,3 +762,23 @@ export interface ImportClassification {
 }
 
 export interface ImportClassificationsResponse { rows: ImportClassification[] }
+
+/* ---- م-٤٥: النسخ الاحتياطي ---- */
+export type BackupKind = 'daily' | 'manual' | 'before-update' | 'before-import' | 'before-restore' | 'legacy';
+
+export interface BackupInfo {
+  name: string;
+  kind: BackupKind;
+  size_bytes: number;
+  created_at: string;
+  path: string;
+  /** فشل النسخ إلى المجلد الخارجي فقط — النسخة المحلية نجحت. */
+  warning?: string;
+  pruned?: string[];
+}
+
+export interface BackupsResponse {
+  items: BackupInfo[];
+  dir: string;
+  keep: Record<string, number>;
+}

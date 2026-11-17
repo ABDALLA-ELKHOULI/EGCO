@@ -33,6 +33,13 @@ CONTRACTOR_STATUS_LABELS_AR = {
     'disputed': 'متنازع عليه', 'blacklisted': 'قائمة سوداء',
 }
 
+#: قيمة تصفية زائفة في status= (م-٤٦): «متأخر» ليست حالة إدارية بل شرط زمني —
+#: تُطابق من له مدة سداد **و** متأخر > ٠ حصراً. تُركَّب بـAND مع الحالات الإدارية
+#: الأخرى في نفس القائمة (status=active,overdue = نشط ومتأخر)، لأن «نشط أو متأخر»
+#: لا يجيب أي سؤال يطرحه المستخدم. لا تدخل CONTRACTOR_STATUSES حتى لا تُقبل قيمةً
+#: لحقل Contractor.status في PUT.
+OVERDUE_STATUS_FILTER = 'overdue'
+
 
 # ---------------------------------------------------------------- known projects
 
@@ -216,6 +223,38 @@ def _entry_dicts(entries) -> List[dict]:
             for e in entries]
 
 
+def _delay_entry_dicts(entries) -> List[dict]:
+    """حقول حساب الاستحقاق (م-٤٦) — التاريخ والهوية إضافةً إلى ما تحتاجه position().
+    حركتا اللقطة (balance_snapshot) تُستبعدان: رصيد مجمّع لا مستخلص له تاريخ."""
+    return [dict(id=e.id, date=e.date, debit=e.debit or 0, credit=e.credit or 0,
+                 kind=e.kind or 'other', doc=e.doc or '', description=e.description or '',
+                 claim_no=e.claim_no, project=e.project or '')
+            for e in _statement_entries(entries)]
+
+
+def _claim_due_json(c: C.ClaimDue) -> dict:
+    return dict(entryId=c.entry_id, date=c.date.isoformat(), dueDate=c.due_date.isoformat(),
+                amount=money(c.amount), paid=money(c.paid), remaining=money(c.remaining),
+                daysLate=c.days_late, doc=c.doc, description=c.description,
+                claimNo=c.claim_no, project=c.project)
+
+
+def _delay_summary_json(d: Optional[C.ContractorDelay]) -> dict:
+    """الحقلان اللذان يحملهما سطر القائمة — null صريح بلا مدة (لا صفر كاذب)."""
+    if d is None:
+        return dict(overdue=None, dueSoon=None)
+    return dict(overdue=dict(amount=money(d.overdue_amount), count=d.overdue_count,
+                             maxDays=d.max_days_late),
+                dueSoon=dict(within7=money(d.due_7d), within30=money(d.due_30d)))
+
+
+def contractor_delay(row: models.Contractor, entries: list,
+                     today: Optional[dt.date] = None) -> Optional[C.ContractorDelay]:
+    """تأخر المقاول من مستخلصاته — None لمن لا مدة سداد له."""
+    return C.compute_contractor_delay(_delay_entry_dicts(entries), row.payment_term_days,
+                                      today or dt.date.today())
+
+
 def contractor_row_json(row: models.Contractor, today: Optional[dt.date] = None,
                         projects: Optional[List[str]] = None) -> dict:
     """سطر شاشة القائمة — one dict per contractor.
@@ -238,10 +277,14 @@ def contractor_row_json(row: models.Contractor, today: Optional[dt.date] = None,
     if projects is None:
         projects = sorted({e.project for e in entries if e.project})
     statement_entries = _statement_entries(entries)
+    delay = contractor_delay(row, entries, today)
     return dict(
         code=row.code, name=row.name, phone=row.phone or '',
         projects=projects,
         balance=money(pos['balance']),
+        #: م-٤٦ — مدة السداد والتأخر المشتق منها؛ null لمن لا مدة له (لا صفر).
+        paymentTermDays=row.payment_term_days,
+        **_delay_summary_json(delay),
         duesTotal=money(pos['claims_total']),
         paidTotal=money(pos['payments_total']),
         deductionsTotal=money(pos['deductions_total']),
@@ -277,9 +320,10 @@ def _direction_of(balance: float) -> str:
 
 
 #: أعمدة الترتيب — نفس فكرة suppliers.py: مفتاح يرسله الجدول ودالة تستخرج قيمة
-#: الفرز. لا يوجد عمود «تأخر» هنا — حركات المقاول قيود مدين/دائن بلا تاريخ استحقاق،
-#: فلا معنى محاسبياً لحساب تأخر (انظر تعليق delay في routes/contractors.py).
+#: الفرز. عمود «متأخر» (م-٤٦): من لا مدة له يُرتَّب كصفر — لا رقم له أصلاً، فيقع
+#: مع غير المتأخرين لا فوقهم.
 CONTRACTOR_SORT_KEYS = {
+    'overdue': lambda r: (r['overdue'] or {}).get('amount') or 0,
     'name': lambda r: r['name'] or '',
     'code': lambda r: r['code'] or '',
     'balance': lambda r: r['balance'],
@@ -398,6 +442,10 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
     # فاصلة مفصولة اختيارياً — تصفية متعددة الاختيار أرخص من طلب واحد لكل حالة،
     # والواجهة تطلب غالباً «نشط + متوقف» معاً في شاشة متابعة واحدة.
     status_set = set(s.strip() for s in status.split(',') if s.strip()) if status else None
+    # «متأخر» شرط زمني منفصل يُركَّب بـAND — انظر OVERDUE_STATUS_FILTER.
+    only_overdue = bool(status_set and OVERDUE_STATUS_FILTER in status_set)
+    if status_set:
+        status_set = status_set - {OVERDUE_STATUS_FILTER}
     for r in all_rows:
         if q:
             # مقارنة مُطبَّعة عربياً — انظر app/utils/arabic.py وتعليق suppliers.py
@@ -414,6 +462,8 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
             if row_has != has_guarantees:
                 continue
         if status_set and r['status'] not in status_set:
+            continue
+        if only_overdue and not (r['overdue'] and r['overdue']['amount'] > 0):
             continue
         rows.append(r)
 
@@ -463,7 +513,20 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
     # القيمة عن تغطية كاملة كاذبة (م-٢٦). لا نُغيّر entryCount نفسه — جهات أخرى
     # قد تعتمده — hasStatement/statementEntryCount أعلاه هما الحقلان الجديدان.
     with_statement = len([r for r in rows if r['hasStatement']])
+    # م-٤٦ — الإجماليات الزمنية على من له مدة فقط، مع إفصاح صريح كم مقاولاً خارج
+    # الحساب (م-١٩): رقم متأخر بلا هذا العدّاد يبدو كاملاً وهو يصف بعض المقاولين.
+    with_term = [r for r in rows if r['paymentTermDays'] is not None]
+    overdue_total = sum((D(r['overdue']['amount']) for r in with_term if r['overdue']), zero)
+    due_7 = sum((D(r['dueSoon']['within7']) for r in with_term if r['dueSoon']), zero)
+    due_30 = sum((D(r['dueSoon']['within30']) for r in with_term if r['dueSoon']), zero)
+    overdue_count = len([r for r in with_term if r['overdue'] and r['overdue']['amount'] > 0])
     totals = dict(count=len(rows),
+                 overdueTotal=money(overdue_total),
+                 overdueContractorCount=overdue_count,
+                 dueWithin7Total=money(due_7),
+                 dueWithin30Total=money(due_30),
+                 withTermCount=len(with_term),
+                 withoutTermCount=len(rows) - len(with_term),
                  claimsTotal=money(claims_total),
                  paidTotal=money(paid_total),
                  deductionsTotal=money(deductions_total),
@@ -503,11 +566,19 @@ def contractor_detail_json(row: models.Contractor, today: Optional[dt.date] = No
     if projects is None:
         projects = sorted(p for p in per.keys() if p)
 
+    delay = contractor_delay(row, entries, today)
     return dict(
         code=row.code, name=row.name, phone=row.phone or '', notes=row.notes or '',
         projects=projects,
         defaultRetentionRate=row.default_retention_rate,
         defaultGuaranteeDays=row.default_guarantee_days,
+        paymentTermDays=row.payment_term_days,
+        #: م-٤٦ — بطاقة «الاستحقاق»: null كاملاً بلا مدة؛ معها المتأخر وخلال ٧/٣٠
+        #: يوماً والأعمار وجدول المستخلصات بتاريخ استحقاق كل منها ومتبقيه وأيام تأخره.
+        delay=None if delay is None else dict(
+            **_delay_summary_json(delay),
+            byBucket={k: money(v) for k, v in delay.by_bucket.items()},
+            claims=[_claim_due_json(c) for c in delay.claims]),
         balance=money(pos['balance']),
         debitTotal=money(pos['debit_total']), creditTotal=money(pos['credit_total']),
         duesTotal=money(pos['claims_total']), paidTotal=money(pos['payments_total']),

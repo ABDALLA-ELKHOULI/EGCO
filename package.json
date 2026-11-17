@@ -18,7 +18,8 @@
     "build:api": "node scripts/py.mjs -m PyInstaller egco-api.spec --clean --noconfirm --distpath dist --workpath build",
     "package": "npm run build && npm run build:api && electron-builder --config electron-builder.yml",
     "test:api": "node scripts/py.mjs -m pytest tests -q -rs",
-    "bundle": "node scripts/make-transfer-bundle.mjs"
+    "bundle": "node scripts/make-transfer-bundle.mjs",
+    "e2e": "npm --workspace apps/renderer run e2e"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -19,6 +19,8 @@ class ContractorIn(BaseModel):
     notes: str = ''
     defaultRetentionRate: Optional[float] = None
     defaultGuaranteeDays: Optional[int] = None
+    #: مدة سداد المستخلصات بالأيام (م-٤٦) — None = «غير محدّدة»، لا تأخر يُحسب.
+    paymentTermDays: Optional[int] = None
     #: مشاريع المقاول — اختياري عند الإنشاء؛ غيابه يعني «بلا مشاريع بعد».
     projects: Optional[List[str]] = None
 
@@ -30,6 +32,10 @@ class ContractorUpdate(BaseModel):
     notes: Optional[str] = None
     defaultRetentionRate: Optional[float] = None
     defaultGuaranteeDays: Optional[int] = None
+    #: مدة السداد — هنا وحدها «null صريح» يعني «امسح المدة» (يُميَّز عن الغياب عبر
+    #: model_fields_set في الراوت)، لأن المستخدم يحتاج فعلاً أن يُرجع مقاولاً إلى
+    #: «غير محدّد» فيختفي تأخره بدل أن يبقى رقماً قديماً لا يثق به.
+    paymentTermDays: Optional[int] = None
     #: None تعني «لا تغيّر» — نفس عقد SupplierUpdate.projects.
     projects: Optional[List[str]] = None
     #: الحالة الإدارية — تُتحقّق في الراوت مقابل CONTRACTOR_STATUSES (422 عربي
