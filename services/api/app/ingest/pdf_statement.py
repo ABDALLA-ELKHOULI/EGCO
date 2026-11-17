@@ -32,9 +32,13 @@ BLOCK_MARKER = r'(?=ID=0\dTrxType=)'
 #: نفسها بدل الاعتماد على عدد الأرقام — الترويسة تطبعه كسطر رقم يليه سطر «: الحساب»
 #: (RTL يقلب ترتيب الكلمة والنقطتين). هذا يمنع الوقوع في فخ التواريخ والمبالغ المجاورة
 #: (2025-01-01، 01-07-1446) التي كانت ستُلتقط لو وُسِّع عدد الأرقام بلا مرساة.
-ACCOUNT_RE = re.compile(r'(\d{4,9})\s*\n\s*:\s*الحساب')
+#: حتى ١٤ رقماً — رموز المقاولين في الكشوف المجمّعة تبلغ ١٢ رقماً (212122121301)
+ACCOUNT_RE = re.compile(r'(\d{4,20})\s*\n\s*:\s*الحساب')
 INVOICE_NO_RE = re.compile(r'رقم\s*(\d+)')
-TOTAL_RE = re.compile(r'اجمالي\s*الحساب\s*(-?[\d,]+\.\d{2})')
+#: الإجمالي السالب يُطبع بإحدى صيغتين: بإشارة ناقص (-64,565.45) في الكشوف المفردة،
+#: أو بين قوسين ((3.19)) في الكشوف المجمّعة. القوس وحده لا يطابق النمط القديم، فكان
+#: ١٤٠ حساباً من ٣٩٣ في «كشوفات الموردين» يُقرأ «بلا إجمالي» فلا تتم مطابقته.
+TOTAL_RE = re.compile(r'اجمالي\s*الحساب\s*(-?\(?[\d,]+\.\d{2}\)?)')
 
 
 class StatementParseError(Exception):
@@ -48,7 +52,11 @@ def _norm(s: str) -> str:
 
 def _money(s: str) -> float:
     s = s.strip().replace(',', '')
-    neg = s.startswith('(') and s.endswith(')')
+    # القوس الختامي وحده كافٍ علامةً للسالب: في الحسابات الطويلة جداً يُسقط استخراج النص
+    # القوس الافتتاحي من كل الأرصدة («3,848,020.98)» في شركة مدار، ١٧ صفحة) فكان
+    # الرصيد يُقرأ موجباً وينقلب الحساب كله. لا يصل إلى هنا إلا رقم معزول بنمط
+    # مرتبط بحقل رصيد/إجمالي — والقوس لا يظهر فيه لغير السالب.
+    neg = s.endswith(')')
     s = s.strip('()')
     v = float(s)
     return -v if neg else v
@@ -59,6 +67,11 @@ def _date(s: str) -> dt.date:
 
 
 def extract_text(path: str) -> str:
+    # حساب مقطوع من كشف مجمّع — نصّه في الذاكرة لا في ملف (انظر statement_bundle).
+    from app.ingest.statement_bundle import virtual_text
+    vt = virtual_text(path)
+    if vt is not None:
+        return vt
     try:
         import fitz  # PyMuPDF
     except ImportError as e:      # pragma: no cover
@@ -201,7 +214,12 @@ def _join_desc(tail_lines: List[str]) -> str:
 
 def parse(path: str) -> dict:
     """Return {account, invoices, payments, statement_balance, issues}."""
-    text = extract_text(path)
+    return parse_text(extract_text(path))
+
+
+def parse_text(text: str) -> dict:
+    """نفس parse لكن على نص جاهز — يُستعمل لكل حساب مقطوع من كشف مجمّع
+    (ingest/statement_bundle.py) حيث لا ملف مستقل لكل حساب."""
     norm = _norm(text)
     issues: list[dict] = []
 
@@ -276,6 +294,9 @@ def parse(path: str) -> dict:
             issues.append(dict(severity='warning', row=i, message='تعذّرت قراءة السطر'))
             continue
 
+        # المدين والدائن مستقلان: صفٌّ واحد قد يحمل الاثنين (تسوية جزء فاتورة وجزء دفعة،
+        # أو صفٌّ يُلغي نفسه مدين=دائن). كانت «elif» تُسقط المدين صامتةً — ١٠ حسابات في
+        # كشوفات الموردين، و«سمو البناء» وحده نقصت دفعته ١٣٬٧٩٩٫٠٧.
         if credit > 0:
             num = INVOICE_NO_RE.search(desc)
             invoices.append(Invoice(date=date, amount=credit,
@@ -284,9 +305,9 @@ def parse(path: str) -> dict:
             if not num:
                 issues.append(dict(severity='info', row=i,
                                    message='فاتورة بلا رقم في الوصف'))
-        elif debit > 0:
+        if debit > 0:
             payments.append(Payment(date=date, amount=debit, doc=doc, description=desc))
-        else:
+        if credit <= 0 and debit <= 0:
             issues.append(dict(severity='info', row=i, message='حركة بقيمة صفر — تم تجاهلها'))
 
     # The statement prints its own closing total; we use it to verify our parse.

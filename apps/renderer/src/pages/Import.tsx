@@ -493,7 +493,13 @@ export function ImportPage() {
           // preview_debts_report) فحالة واحدة فقط تعني «عُوين، جاهز للحفظ».
           patch(i, { status: 'debts_previewed', preview });
         } else {
-          patch(i, { status: preview?.reconciled ? 'reconciled' : 'unreconciled', preview });
+          // الكشف المجمّع «جاهز» متى طابق فيه حساب واحد على الأقل: الخادم يحفظ المطابق
+          // ويحجز غيره حساباً حساباً. معاملته كملف واحد كانت تُقصي ٣٩١ حساباً سليماً
+          // بسبب حسابين لا يطابقان.
+          const ok = preview?.bundle
+            ? (preview.counts?.reconciled ?? 0) > 0
+            : Boolean(preview?.reconciled);
+          patch(i, { status: ok ? 'reconciled' : 'unreconciled', preview });
         }
       } catch (e: any) {
         patch(i, { status: 'read_error', error: e?.message ?? String(e) });
@@ -530,6 +536,14 @@ export function ImportPage() {
           // كشف مطابق تماماً لحساب لم نره من قبل — هذا هو الخلل الأصلي: كانت الشاشة
           // تكتب «تم» بينما res.saved كان false ولم يتغيّر رقم واحد. الآن نميّزها
           // بحالة خاصة تعرض للمستخدم قراراً حقيقياً بدل الصمت.
+          // نتيجة الكشف المجمّع: saved عددٌ لا قيمة منطقية — صفرٌ يعني لم يُحفظ شيء.
+          if (res?.bundle) {
+            patch(i, res.saved > 0
+              ? { status: 'saved' as QueueStatus, saveResult: res }
+              : { status: 'save_error' as QueueStatus, saveResult: res,
+                  error: 'لم يُحفظ أي حساب من الملف — لا حساب يطابق إجماليه المطبوع' });
+            continue;
+          }
           if (res && res.saved === false && res.reason === 'unknown_supplier') {
             patch(i, { status: 'unknown_supplier' as QueueStatus, saveResult: res });
           } else if (res && res.saved === false) {
@@ -892,7 +906,12 @@ function QueueCard({ item, aiEnabled, onRescue, onConfirmNewSupplier, onDeclineN
           <DebtsReportPreview preview={preview} onClassify={onClassifyAccount} />
         )}
 
-        {!isDebts && (status === 'reconciled' || status === 'unreconciled') && preview && (
+        {(saveResult?.bundle || preview?.bundle) &&
+          (status === 'reconciled' || status === 'unreconciled' || status === 'saved' || status === 'save_error') && (
+          <BundleSummary data={saveResult?.bundle ? saveResult : preview} saved={Boolean(saveResult?.bundle)} />
+        )}
+
+        {!isDebts && !preview?.bundle && (status === 'reconciled' || status === 'unreconciled') && preview && (
           <div className="muted" style={{ fontSize: 12 }}>
             {/* اسم الشركة أولاً: كانت المعاينة تعرض رقم الحساب وأرقاماً فقط، فيرى
                 المستخدم «2110122» ويظنّ أن التطبيق لا يعرف الشركة وهو يعرفها.
@@ -1023,6 +1042,72 @@ const DEBTS_KIND_ORDER: Array<'contractor' | 'supplier' | 'guarantee'> = ['contr
  * بادئتها ليست ٢١١/٢١٢/٢١٦ (مثل ٢١٧) لا تُخمَّن أبداً — تُعرض هنا صراحة وتحتاج
  * قراره عبر نفس نافذة «تصنيف…» المستخدمة في جدول الرفع الجماعي (لا آلية موازية).
  */
+/** حالات الحسابات في الكشف المجمّع — بالتسمية التي يفهمها المستخدم لا رمز الخادم. */
+const BUNDLE_STATUS: Record<string, { label: string; cls: string }> = {
+  reconciled: { label: 'يطابق — سيُحفظ', cls: 'ok' },
+  saved: { label: 'حُفظ', cls: 'ok' },
+  not_reconciled: { label: 'لا يطابق إجماليه — لن يُحفظ', cls: 'red' },
+  needs_classification: { label: 'بادئة غير معروفة — تحتاج تصنيفك', cls: 'warn' },
+  read_error: { label: 'تعذّرت قراءته', cls: 'red' },
+};
+
+/**
+ * ملخّص كشف مجمّع — ملف واحد بمئات الحسابات.
+ *
+ * الأعداد أولاً لأنها الجواب على «هل قُرئ الملف؟»، ثم قائمة ما لن يُحفظ ولماذا:
+ * حسابٌ محجوز لا يجوز أن يختفي بصمت بين ٣٩١ حساباً محفوظاً. القائمة الكاملة بالحسابات
+ * لا تُعرض — مئات الصفوف تُغرق الحسابات القليلة التي تحتاج انتباهاً.
+ */
+function BundleSummary({ data, saved }: { data: any; saved: boolean }) {
+  const [open, setOpen] = useState(false);
+  const c = data?.counts ?? {};
+  const ok = saved ? (data?.saved ?? 0) : (c.reconciled ?? 0);
+  const problems: any[] = data?.problems ?? [];
+  return (
+    <div style={{ fontSize: 12 }}>
+      <div style={{ marginBottom: 6 }}>
+        <b style={{ color: 'var(--ink)' }}>كشف مجمّع</b>
+        {' '}— {ar(data?.accounts ?? 0)} حساباً
+        {data?.pages ? <> في {ar(data.pages)} صفحة</> : null}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <span className="pill ok">{saved ? 'حُفظ' : 'يطابق'}: {ar(ok)}</span>
+        {(c.not_reconciled ?? 0) > 0 && <span className="pill red">لا يطابق: {ar(c.not_reconciled)}</span>}
+        {(c.needs_classification ?? 0) > 0 && (
+          <span className="pill warn">يحتاج تصنيفاً: {ar(c.needs_classification)}</span>
+        )}
+        {(c.read_error ?? 0) > 0 && <span className="pill red">تعذّرت قراءته: {ar(c.read_error)}</span>}
+      </div>
+      {problems.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <button className="btn sm" onClick={() => setOpen((v) => !v)}>
+            {open ? 'إخفاء' : 'عرض'} الحسابات التي لن تُحفظ ({ar(problems.length)})
+          </button>
+          {open && (
+            <table style={{ marginTop: 8 }}>
+              <thead><tr><th>الحساب</th><th>الاسم</th><th>السبب</th><th className="ltr">الفرق</th></tr></thead>
+              <tbody>
+                {problems.map((p) => {
+                  const st = BUNDLE_STATUS[p.status] ?? { label: p.message || p.status, cls: '' };
+                  return (
+                    <tr key={p.account}>
+                      <td className="num">{p.account}</td>
+                      <td>{p.name || '—'}</td>
+                      <td><span className={'pill ' + st.cls}>{st.label}</span></td>
+                      <td className="ltr num">{p.difference != null ? sar(p.difference) : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function DebtsReportPreview({ preview, onClassify }: {
   preview: {
     rowCounts?: Record<string, number>;

@@ -36,12 +36,23 @@ from app.ingest.pdf_statement import (BLOCK_MARKER, StatementParseError, _date,
 #: dispatch for ALL pdf statements (see import_service.dispatch_kind), so it must
 #: recognise the shortest of the three too.
 ACCOUNT_RE = re.compile(r'\b(\d{5,9})\b')
+#: المرساة الموثوقة: الرقم في السطر الذي يسبق «: الحساب». ACCOUNT_RE وحده يلتقط أول
+#: عدد ٥–٩ أرقام في الترويسة — وفي الكشوف المجمّعة يسبق رقمَ الحساب رقمُ صفحة التقرير
+#: (5546)، وتبلغ رموز المقاولين ١٢ رقماً فلا تُطابَق أصلاً. يُجرَّب هذا أولاً.
+ANCHORED_ACCOUNT_RE = re.compile(r'(\d{4,20})\s*\n\s*:\s*الحساب')
 #: printed footer: debit-total \n credit-total اجمالي الحساب closing-balance
 TOTALS_RE = re.compile(r'([\d,]+\.\d{2})\s*\n\s*([\d,]+\.\d{2})\s*اجمالي\s*الحساب')
 CLOSING_RE = re.compile(r'اجمالي\s*الحساب\s*(-?\(?[\d,]+\.\d{2}\)?)')
 #: NFKC maps this PDF's yeh to Farsi ی — accept both (see pdf_statement.py).
 OPENING_RE = re.compile(
     r'([\d,]+\.\d{2})\s*\n\s*([\d,]+\.\d{2})\s*\n\s*\(?(-?[\d,]+\.\d{2})\)?\s*رص[يی]د\s*افتتاح')
+#: التخطيط الملتصق يطبع السطر بالترتيب المعكوس: التسمية أولاً ثم مدين ودائن والرصيد
+#: («رصيد افتتاحي0.00 \n 56,358.74 \n (56,358.74)»). نُقل إلى محلّل الموردين سابقاً ولم
+#: يُنقل هنا، فكان ١٥٨ حساباً من ٦٣٠ في «كشف المقاولين» يبدأ رصيده الجاري من الصفر —
+#: ومنها ٦٢ حساباً بلا حركات يُرفض كلياً وهو مجرد رصيد مُرحَّل.
+OPENING_RE_LABEL_FIRST = re.compile(
+    r'رص[يی]د\s*افتتاح[^\d\n]*([\d,]+\.\d{2})\s*\n\s*([\d,]+\.\d{2})'
+    r'\s*\n\s*\(?(-?[\d,]+\.\d{2})\)?')
 
 #: column-header words that must not be mistaken for the contractor name
 _HEADER_WORDS = {'الحساب', 'التاريخ', 'الوصف', 'مدين', 'دائن', 'الرقم', 'رصيد',
@@ -117,7 +128,11 @@ def parse(path: str) -> dict:
     rows: [{date, debit, credit, doc, description, kind?}] — the opening balance, when
     printed, is included as the first row with kind='opening'.
     """
-    text = extract_text(path)
+    return parse_text(extract_text(path))
+
+
+def parse_text(text: str) -> dict:
+    """نفس parse على نص جاهز — لكل حساب مقطوع من كشف مجمّع."""
     norm = _norm(text)
     issues: List[dict] = []
 
@@ -129,7 +144,7 @@ def parse(path: str) -> dict:
     header_norm = _norm(blocks[0])
 
     account = None
-    m = ACCOUNT_RE.search(header_norm)
+    m = ANCHORED_ACCOUNT_RE.search(header_norm) or ACCOUNT_RE.search(header_norm)
     if m:
         account = m.group(1)
     else:
@@ -147,7 +162,7 @@ def parse(path: str) -> dict:
 
     rows: List[dict] = []
     opening_debit = opening_credit = None
-    ob = OPENING_RE.search(header_norm)
+    ob = OPENING_RE.search(header_norm) or OPENING_RE_LABEL_FIRST.search(header_norm)
     if ob:
         opening_debit, opening_credit = _money(ob.group(1)), _money(ob.group(2))
 

@@ -26,7 +26,7 @@ from app.domain.payables import UNSET_TERM, D, money, parse_term
 from decimal import Decimal
 from app.ingest import (contractor_statement, contractors_balance_xls, csv_statement,
                         debts_report_xls, pdf_statement, receivables_excel,
-                        receivables_legacy, suppliers_excel)
+                        receivables_legacy, statement_bundle, suppliers_excel)
 from app.ingest.budget_xlsx import BudgetParseError
 from app.ingest.contractors_balance_xls import ContractorsBalanceParseError
 
@@ -1072,13 +1072,78 @@ def _needs_classification_preview(parsed: dict) -> dict:
 #: للإدخال اليدوي. القياس لا الامتداد هو الحكم — PDF نصّي عادي (شركة قنبر مثلاً)
 #: يمرّ بلا أثر.
 def _reject_if_scanned_pdf(source: str, path: str) -> None:
+    # الحساب المقطوع من كشف مجمّع لا ملف له يُفتح؛ الملف الكامل فُحص مرة قبل التقطيع.
+    if statement_bundle.virtual_text(path) is not None:
+        return
     if source == 'pdf_statement':
         check_scanned_pdf(path, BudgetParseError)
+
+
+def _is_real_bundle(path: str, source: str) -> bool:
+    """ملف PDF حقيقي (لا مسار حساب افتراضي) فيه أكثر من حساب."""
+    if source != 'pdf_statement' or statement_bundle.virtual_text(path) is not None:
+        return False
+    try:
+        return statement_bundle.is_bundle(path)
+    except Exception:
+        return False             # ملف لا يُفتح — يتولّاه المسار العادي برسالته الواضحة
+
+
+def preview_bundle(path: str, db: Optional[Session] = None) -> dict:
+    """معاينة كشف مجمّع بلا كتابة — كل حساب يُقرأ ويُطابَق ويُصنَّف بالبادئة.
+
+    تُعرض قبل الحفظ: كم حساباً، كم يطابق إجماليه المطبوع، كم يحتاج تصنيفاً، وما
+    الذي لن يُحفظ ولماذا. «موافق» على ١٣٩٦ حساباً دفعةً واحدة لا تُطلب إلا بعد
+    أن يرى المستخدم هذه الأعداد.
+    """
+    check_scanned_pdf(path, BudgetParseError)
+    sections = statement_bundle.split(path)
+    if not sections:
+        raise StatementParseError('لم يُعثر على أي كشف حساب في الملف المجمّع')
+    texts = {statement_bundle.section_path(path, sec.account): sec.text for sec in sections}
+    rows: List[dict] = []
+    with statement_bundle.serving(texts):
+        for sec in sections:
+            vpath = statement_bundle.section_path(path, sec.account)
+            row = dict(account=sec.account, pages=[sec.first_page, sec.last_page],
+                       kind=dispatch_kind(db, sec.account))
+            try:
+                pre = preview_statement(vpath, 'pdf_statement', db)
+            except Exception as e:
+                row.update(status='read_error', message=str(e))
+                rows.append(row)
+                continue
+            if row['kind'] is None:
+                status = 'needs_classification'
+            elif pre.get('reconciled'):
+                status = 'reconciled'
+            else:
+                status = 'not_reconciled'
+            # الاسم من الترويسة حين لا تعيده المعاينة (كشف المورد يعيد رقماً بلا اسم) —
+            # حسابٌ محجوز يُعرض برقمه وحده لا يعرفه المستخدم.
+            name = pre.get('name') or pre.get('suggestedName') or pre.get('supplierName') or \
+                pdf_statement.header_name(pdf_statement._norm(sec.text.split('ID=0')[0]), sec.account)
+            row.update(status=status, name=name, difference=pre.get('difference'))
+            rows.append(row)
+    counts: Dict[str, int] = {}
+    kinds: Dict[str, int] = {}
+    for r in rows:
+        counts[r['status']] = counts.get(r['status'], 0) + 1
+        k = r.get('kind') or 'unknown'
+        kinds[k] = kinds.get(k, 0) + 1
+    return dict(bundle=True, path=path, accounts=len(sections), counts=counts, kinds=kinds,
+                pages=sum(len(sec.pages) for sec in sections),
+                # المعاينة «مطابقة» فقط إن طابق كل حساب — وإلا تظهر الحسابات المعلّقة
+                reconciled=counts.get('reconciled', 0) == len(rows),
+                problems=[r for r in rows if r['status'] != 'reconciled'],
+                rows=rows)
 
 
 def preview_statement(path: str, source: str = 'pdf_statement',
                       db: Optional[Session] = None) -> dict:
     """قراءة بلا حفظ — powers the review screen (S5) before anything is written."""
+    if _is_real_bundle(path, source):
+        return preview_bundle(path, db)
     _reject_if_scanned_pdf(source, path)
     if source == 'pdf_statement':
         probe = contractor_statement.parse(path)
@@ -1164,6 +1229,9 @@ def commit_statement(db: Session, path: str, allow_unreconciled: bool = False,
     saved — reason='needs_classification' — so the caller (batch_import / the route)
     can surface the تصنيف flow instead of guessing.
     """
+    if _is_real_bundle(path, source):
+        # ملف بمئات الحسابات — يُحفظ حساباً حساباً، لا على الحساب الأول كما كان.
+        return import_bundle(db, path, allow_unreconciled=allow_unreconciled)
     _reject_if_scanned_pdf(source, path)
     if source == 'pdf_statement':
         probe = contractor_statement.parse(path)
@@ -1535,6 +1603,56 @@ DETECTED_LABELS = {
 }
 
 
+def import_bundle(db: Session, path: str, allow_unreconciled: bool = False) -> dict:
+    """كشف مجمّع — ملف واحد بمئات الحسابات — يُحفظ حساباً حساباً.
+
+    كل حساب يمرّ بـcommit_statement نفسه تحت مسار افتراضي (statement_bundle)، فتسري
+    عليه بوابة المطابقة والتكرار والتوجيه بالبادئة دون نسخة ثانية من أيٍّ منها. حسابٌ
+    لا يطابق إجماليه المطبوع **لا يُحفظ** ولا يوقف البقية — الملف لا يُرفض كله
+    بسبب حساب واحد، ولا يُقبل كله على حساب واحد.
+
+    نسخة احتياطية واحدة قبل البدء لا نسخة لكل حساب: ٦٣٠ نسخة لملف واحد تملأ القرص
+    وتمحو بالتقليم كل نسخة سابقة ذات قيمة.
+    """
+    check_scanned_pdf(path, BudgetParseError)
+    sections = statement_bundle.split(path)
+    if not sections:
+        raise StatementParseError('لم يُعثر على أي كشف حساب في الملف المجمّع')
+    backup_db()
+
+    texts = {statement_bundle.section_path(path, sec.account): sec.text for sec in sections}
+    rows: List[dict] = []
+    with statement_bundle.serving(texts):
+        for sec in sections:
+            vpath = statement_bundle.section_path(path, sec.account)
+            row = dict(account=sec.account, pages=[sec.first_page, sec.last_page])
+            try:
+                res = commit_statement(db, vpath, allow_unreconciled=allow_unreconciled,
+                                       source='pdf_statement', backup=False)
+            except Exception as e:  # حساب معطوب لا يُسقط ٦٢٩ حساباً سليماً
+                db.rollback()
+                row.update(status='read_error', message=str(e))
+                rows.append(row)
+                continue
+            row.update(
+                status='saved' if res.get('saved') else (res.get('reason') or 'not_saved'),
+                kind=dispatch_kind(db, sec.account),
+                name=res.get('name') or res.get('suggestedName') or '',
+                reconciled=res.get('reconciled'),
+                difference=res.get('difference'),
+                added=res.get('added', res.get('invoiceCount')),
+            )
+            rows.append(row)
+
+    counts: Dict[str, int] = {}
+    for r in rows:
+        counts[r['status']] = counts.get(r['status'], 0) + 1
+    return dict(bundle=True, path=path, accounts=len(sections), counts=counts,
+                saved=counts.get('saved', 0),
+                problems=[r for r in rows if r['status'] != 'saved'],
+                rows=rows)
+
+
 def batch_import(db: Session, paths: List[str], allow_unreconciled: bool = False) -> dict:
     """استيراد دفعة ملفات — one backup for the whole batch, suppliers files first,
     a bad file never aborts the rest. Every row reports what the file was DETECTED
@@ -1648,6 +1766,21 @@ def batch_import(db: Session, paths: List[str], allow_unreconciled: bool = False
             else:
                 res = commit_statement(db, path, allow_unreconciled=allow_unreconciled,
                                        source=source, backup=False)
+                if res.get('bundle'):
+                    # ملف مجمّع — صفّ واحد يلخّص مئات الحسابات بدل أن يُقرأ «حساباً واحداً»
+                    c = res.get('counts') or {}
+                    held = res['accounts'] - res['saved']
+                    row.update(bundle=True, accounts=res['accounts'], counts=c,
+                               problems=res.get('problems') or [],
+                               detected='كشف مجمّع (%d حساباً)' % res['accounts'],
+                               added=res['saved'])
+                    row['status'] = 'saved' if res['saved'] else 'not_reconciled'
+                    row['message'] = 'حُفظ %d حساباً من %d' % (res['saved'], res['accounts']) + (
+                        ' — %d لم يُحفظ (انظر التفاصيل)' % held if held else '')
+                    if res['saved']:
+                        saved += 1
+                    results.append(row)
+                    continue
                 row['account'] = res.get('account')
                 # تحذير التكرار المحتمل يُرافق الصف سواء حُفظ الملف أو رُفض — فهو
                 # وصف لما في الملف، لا نتيجة للحفظ، ولا يغيّر status أبداً.

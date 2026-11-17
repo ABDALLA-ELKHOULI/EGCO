@@ -9,6 +9,11 @@
 
 ## غير مُصنَّفة بعد
 
+### ١٧ نوفمبر ٢٠٢٦
+> "the app is not updating on the other side for some reason find why it is says update failed"
+
+السياق: جهاز ويندوز — التحديث إلى v0.13.0 يفشل. وصلت أثناء دراسة الكشوف المجمّعة.
+
 _(فارغ — كل ما وصل حتى ٢٨ أغسطس ٢٠٢٦ نُقل إلى BACKLOG.md)_
 
 ---
