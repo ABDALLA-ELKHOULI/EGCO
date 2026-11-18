@@ -55,6 +55,14 @@ contextBridge.exposeInMainWorld('egco', {
     Promise<{ saved?: boolean; path?: string; canceled?: boolean; error?: string }> =>
     ipcRenderer.invoke('export:pdf', opts),
   /** يبدأ فحصاً يدوياً؛ الرد الفوري «جارٍ الفحص» فقط — النتيجة الحقيقية تصل عبر onUpdateStatus. */
+  /** بلاغات الدعم: لقطة نافذة التطبيق، معلومات تقنية، وإرسال البلاغ. */
+  supportCapture: (): Promise<string | null> => ipcRenderer.invoke('support:capture'),
+  supportDiagnostics: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('support:diagnostics'),
+  supportSubmit: (r: {
+    description: string; screen: string; diagnostics: Record<string, unknown>;
+    screenshotJpegBase64?: string;
+  }): Promise<{ state: 'sent' | 'queued' | 'local-only'; issueNumber?: number; issueUrl?: string; message?: string }> =>
+    ipcRenderer.invoke('support:submit', r),
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check'),
   /** يعيد تشغيل التطبيق لتثبيت تحديث سبق تنزيله. */
   installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),

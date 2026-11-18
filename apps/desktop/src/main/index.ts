@@ -8,6 +8,7 @@ import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { backendErrorTail, backendUrl, onBackendRestart, startBackend, stopBackend } from './backend';
+import { captureWindow, flushQueue, submitReport, systemDiagnostics, type SupportReport } from './support';
 
 let win: BrowserWindow | null = null;
 
@@ -190,6 +191,8 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.whenReady().then(async () => {
+  // بلاغات حُفظت حين لم يكن هناك اتصال — تُرسل بصمت عند الإقلاع
+  setTimeout(() => { void flushQueue(); }, 15000);
   /**
    * التنزيلات (تصدير Excel مثلاً) — حوار حفظ دائماً بالاسم العربي الصحيح.
    *
@@ -240,6 +243,16 @@ app.on('before-quit', stopBackend);
 /* ---------------------------------------------------------------- IPC */
 
 ipcMain.handle('app:backendUrl', () => backendUrl());
+
+// ---- بلاغات الدعم (support.ts) ----
+/** لقطة نافذة التطبيق — الواجهة تموّه المبالغ والأسماء قبل الطلب وتعيدها بعده. */
+ipcMain.handle('support:capture', async () => (win ? captureWindow(win) : null));
+/** معلومات تقنية تُرفق بالبلاغ: الإصدار والنظام وآخر أخطاء الخدمة الخلفية. */
+ipcMain.handle('support:diagnostics', () => ({
+  ...systemDiagnostics(),
+  'آخر أخطاء الخدمة': backendErrorTail() || '—',
+}));
+ipcMain.handle('support:submit', (_e, report: SupportReport) => submitReport(report));
 
 ipcMain.handle('app:info', () => ({
   version: app.getVersion(),

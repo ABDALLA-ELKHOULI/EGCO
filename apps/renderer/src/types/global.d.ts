@@ -44,6 +44,12 @@ declare global {
         Promise<{ saved?: boolean; path?: string; canceled?: boolean; error?: string }>;
       checkForUpdates(): Promise<UpdateStatus>;
       installUpdate(): Promise<void>;
+      supportCapture?(): Promise<string | null>;
+      supportDiagnostics?(): Promise<Record<string, unknown>>;
+      supportSubmit?(r: { description: string; screen: string;
+                          diagnostics: Record<string, unknown>; screenshotJpegBase64?: string }):
+        Promise<{ state: 'sent' | 'queued' | 'local-only'; issueNumber?: number;
+                  issueUrl?: string; message?: string }>;
       onUpdateStatus(cb: (status: UpdateStatus) => void): () => void;
       onBackendRestarted(cb: (info: BackendRestartInfo) => void): () => void;
     };

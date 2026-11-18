@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Icon, type IconName } from '@/components/Icon';
+import { SupportModal, captureRedacted } from '@/components/SupportModal';
 import logoMark from '@/assets/logo-mark.png';
 
 const STORAGE_KEY = 'egco.sidebar.collapsed';
@@ -92,6 +93,13 @@ export function Sidebar() {
     () => localStorage.getItem(STORAGE_KEY) === '1',
   );
   const [alerts, setAlerts] = useState<Record<string, boolean>>({});
+  const [support, setSupport] = useState<{ open: boolean; shot: string | null }>({ open: false, shot: null });
+
+  async function openSupport() {
+    // اللقطة قبل النافذة — وإلا صوّرت النافذة نفسها بدل الشاشة التي فيها المشكلة
+    const shot = await captureRedacted();
+    setSupport({ open: true, shot });
+  }
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
@@ -165,6 +173,17 @@ export function Sidebar() {
       ))}
 
       <div className="grow" />
+      {/* الدعم — زرّ لا رابط: يفتح نافذة فوق الشاشة الحالية، لأن اللقطة يجب أن
+          تُظهر الشاشة التي حدثت فيها المشكلة لا صفحة جديدة. */}
+      <button type="button" className="nav-item" onClick={openSupport}
+              title={collapsed ? 'الدعم — الإبلاغ عن مشكلة' : undefined}
+              style={{ border: 0, background: 'none', width: '100%', cursor: 'pointer', font: 'inherit' }}>
+        <Icon name="support" />
+        <span className="nav-label">الدعم</span>
+      </button>
+      {support.open && (
+        <SupportModal screenshot={support.shot} onClose={() => setSupport({ open: false, shot: null })} />
+      )}
       <NavLink to="/settings" className={link} title={collapsed ? 'الإعدادات' : undefined}>
         <Icon name="settings" />
         <span className="nav-label">الإعدادات</span>

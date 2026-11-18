@@ -2,6 +2,10 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
 import './styles/tokens.css';
+import { installErrorCapture } from './lib/diagnostics';
+
+// أخطاء الواجهة تُلتقط من أول لحظة لتُرفق ببلاغات الدعم
+installErrorCapture();
 
 // الوضع المحفوظ يُطبَّق قبل أول رسم — وإلا ومض التطبيق أبيض ثم انقلب ليلياً.
 // Applied before first paint; otherwise the app flashes light then flips to dark.

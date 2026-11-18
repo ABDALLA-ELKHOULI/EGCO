@@ -1063,3 +1063,11 @@ tbody td > a { overflow-wrap: anywhere; }
   border-radius: 2px;
   margin-inline-end: var(--space-xs4);
 }
+
+/* ---- تمويه لقطة بلاغ الدعم (SupportModal.captureRedacted) ----
+   البلاغ يُنشر علناً: تُموَّه الخلايا والأرقام والعناوين التي تحمل أسماء الأطراف،
+   وتبقى عناوين الأعمدة والأزرار والشريط الجانبي — هي ما يحتاجه من يُصلح الخلل
+   ليعرف أي شاشة وأي عمود. الفئة تُضاف لحظة اللقطة فقط ثم تُزال. */
+.support-redact .main :is(td, input, textarea, select, .num, .value, h1, p, li, .pill, .muted, a) {
+  filter: blur(6px);
+}
