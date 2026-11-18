@@ -38,6 +38,7 @@ def _out(row: models.Receivable) -> dict:
         dueDate=row.due_date.isoformat() if row.due_date else None,
         collectedOn=row.collected_on.isoformat() if row.collected_on else None,
         status=row.status, source=row.source or 'manual', notes=row.notes,
+        approval=row.approval or 'approved',
         createdAt=row.created_at.isoformat() if row.created_at else None,
     )
 
@@ -149,6 +150,15 @@ def list_revenues(q: Optional[str] = Query(None), project: Optional[str] = Query
                               if r.due_date is not None and r.due_date < today), zero)),
         datedOpen=len([r for r in open_rows if r.due_date is not None]),
         undatedOpen=len([r for r in open_rows if r.due_date is None]),
+        # إضافات قسم النقد — على نفس المجموعة المصفّاة
+        in30=money(sum((D(r.amount) for r in open_rows if r.due_date is not None
+                        and today <= r.due_date <= today + dt.timedelta(days=30)), zero)),
+        collectedThisMonth=money(sum((D(r.amount) for r in filtered
+                                      if r.status == 'collected' and r.collected_on is not None
+                                      and r.collected_on.year == today.year
+                                      and r.collected_on.month == today.month), zero)),
+        overdueCount=len([r for r in open_rows
+                          if r.due_date is not None and r.due_date < today]),
     )
 
     filters_applied = dict(q=q, project=project, status=status, dateFrom=date_from,
@@ -156,6 +166,14 @@ def list_revenues(q: Optional[str] = Query(None), project: Optional[str] = Query
                            maxAmount=max_amount)
     return dict(count=len(rows), rows=[_out(r) for r in rows], totals=totals, projects=projects,
                clients=clients, filtersApplied=filters_applied)
+
+
+def _approval(v: Optional[str]) -> Optional[str]:
+    if v is None:
+        return None
+    if v not in ('pending', 'approved'):
+        raise HTTPException(422, detail='الاعتماد يجب أن يكون pending أو approved')
+    return v
 
 
 def _validate_status_coherence(status: str, collected_on: Optional[dt.date]) -> None:
@@ -177,6 +195,7 @@ def create_revenue(body: RevenueIn, db: Session = Depends(get_session)) -> dict:
         project=body.project or '', unit=body.unit or '', client=body.client,
         amount=body.amount, due_date=due_date, collected_on=collected_on,
         status=status, source='manual', notes=body.notes or '',
+        approval=_approval(body.approval) or 'approved',
     )
     db.add(row)
     db.commit()
@@ -192,7 +211,7 @@ def update_revenue(revenue_id: str, body: RevenueUpdate,
     if row is None:
         raise HTTPException(404, detail='لا يوجد تحصيل بهذا المعرّف')
 
-    fields = body.dict(exclude_unset=True, by_alias=False)
+    fields = body.model_dump(exclude_unset=True, by_alias=False)
 
     if 'project' in fields:
         row.project = fields['project'] or ''
@@ -210,6 +229,8 @@ def update_revenue(revenue_id: str, body: RevenueUpdate,
         row.collected_on = _parse_date(fields['collected_on'])
     if 'status' in fields and fields['status'] is not None:
         row.status = fields['status']
+    if fields.get('approval') is not None:
+        row.approval = _approval(fields['approval'])
 
     # normalise / validate coherence after applying the partial update
     if 'collected_on' in fields and row.collected_on is not None and 'status' not in fields:

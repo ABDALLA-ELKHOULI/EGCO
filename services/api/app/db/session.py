@@ -168,10 +168,51 @@ def init_db() -> None:
         # missing key as false, not by anything here.
         Base.metadata.tables['app_settings'].create(bind=conn, checkfirst=True)
         Base.metadata.tables['payment_allocations'].create(bind=conn, checkfirst=True)
+        # ---- الموجة ٠ (أرخبيل) — كلها إضافية: أعمدة NULL/افتراضية وجداول جديدة،
+        # لا تعديل ولا حذف لأي عمود قائم.
+        # م-٥٠ — مبلغ الإسناد وملاحظته على رابط الطرف بالمشروع. NULL = «لم يُدخل».
+        _migrate_add_column(conn, 'party_projects', 'amount', 'TEXT', 'NULL')
+        _migrate_add_column(conn, 'party_projects', 'notes', 'TEXT', "''")
+        # وسم اعتماد التحصيل — القائم 'approved' لأنه رُفع من ملف معتمد فعلاً.
+        _migrate_add_column(conn, 'receivables', 'approval', 'VARCHAR(20)', "'approved'")
+        for t in ('project_registry', 'events', 'change_snapshots',
+                  # الموازنة التقديرية — جدولان جديدان إضافيان فقط
+                  'budget_plans', 'budget_plan_months'):
+            Base.metadata.tables[t].create(bind=conn, checkfirst=True)
+        _ensure_indexes(conn)
     _migrate_211_contractors_to_suppliers()
     _backfill_import_log_id()
     _strip_branch_prefix_from_descriptions()
     _reclassify_persian_heh_entries()
+
+
+#: فهارس أنماط الاستعلام الفعلية (BACKEND-ANALYSIS §٢.١٠) — كل استعلام قراءة يصفّي
+#: `deleted_at IS NULL` ويجمع بالطرف، والتقويم/التدفق يصفّيان بالتاريخ. `IF NOT
+#: EXISTS` يجعلها آمنة في كل إقلاع؛ الفهرس لا يغيّر أي نتيجة، فقط سرعتها.
+_INDEXES = (
+    ('ix_invoices_supplier_deleted', 'invoices', 'supplier_id, deleted_at'),
+    ('ix_payments_supplier_deleted', 'payments', 'supplier_id, deleted_at'),
+    ('ix_centries_contractor_deleted', 'contractor_entries', 'contractor_id, deleted_at'),
+    ('ix_invoices_date', 'invoices', 'date'),
+    ('ix_payments_date', 'payments', 'date'),
+    ('ix_centries_date', 'contractor_entries', 'date'),
+    ('ix_centries_project', 'contractor_entries', 'project'),
+    ('ix_suppliers_deleted', 'suppliers', 'deleted_at'),
+    ('ix_contractors_deleted', 'contractors', 'deleted_at'),
+    ('ix_receivables_deleted', 'receivables', 'deleted_at'),
+    ('ix_cguarantees_contractor_deleted', 'contractor_guarantees', 'contractor_id, deleted_at'),
+    ('ix_palloc_payment_deleted', 'payment_allocations', 'payment_id, deleted_at'),
+    ('ix_party_projects_type_project', 'party_projects', 'party_type, project'),
+    ('ix_import_logs_account', 'import_logs', 'account'),
+)
+
+
+def _ensure_indexes(conn) -> None:
+    existing = {r[0] for r in conn.execute(text(
+        "SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
+    for name, table, cols in _INDEXES:
+        if table in existing:
+            conn.execute(text(f'CREATE INDEX IF NOT EXISTS {name} ON {table} ({cols})'))
 
 
 #: marker for the one-time backfill below.

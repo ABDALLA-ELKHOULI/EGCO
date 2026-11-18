@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI):
         from app.services import backup_service
         from app.db.session import SessionLocal
         from sqlalchemy import text as _sql
+        has_data = 0
         with SessionLocal() as db:
             ext = backup_service.get_external_dir(db)
             # قاعدة بلا أي طرف (أول تشغيل، أو خادم اختبار) — نسخة منها لا تحمي شيئاً
@@ -32,10 +33,23 @@ async def lifespan(app: FastAPI):
                 'SELECT (SELECT COUNT(*) FROM suppliers) + (SELECT COUNT(*) FROM contractors)'
             )).scalar()
         if has_data:
-            backup_service.daily_if_due(ext)
+            from app.services import events_service
+            events_service.backup_with_events(lambda: backup_service.daily_if_due(ext))
     except Exception:  # noqa: BLE001
         logging.getLogger(__name__).exception('تعذّرت النسخة اليومية عند الإقلاع')
+    # المولّد عند الإقلاع — يلحق ما فات منذ آخر تشغيل (متأخرات جديدة، ضمانات…).
+    # متزامن (عشرات الملّي ثانية بعد إصلاح N+1) وفقط على قاعدة فيها بيانات؛ فشله
+    # لا يمنع الإقلاع، وdedupe_key يمنع التكرار عند كل إقلاع.
+    try:
+        if has_data:
+            from app.services import events_service
+            events_service.generate_safely()
+    except NameError:
+        pass
     yield
+    # الإيقاف: أغلق كل بث SSE مفتوح قبل أن تُغلق الحلقة
+    from app.services import sse_broker
+    sse_broker.broker.close_all()
 
 
 app = FastAPI(title=settings.APP_NAME, version='0.1.0',
@@ -46,6 +60,9 @@ app.add_middleware(CORSMiddleware,
                    allow_origins=['http://localhost:5173'],
                    allow_methods=['*'], allow_headers=['*'])
 app.include_router(api_router)
+# بعد كل كتابة ناجحة: حدث SSE «invalidate» بمفاتيح مشتقة من المسار
+from app.api.invalidate import InvalidateMiddleware  # noqa: E402
+app.add_middleware(InvalidateMiddleware)
 
 
 @app.get('/health')

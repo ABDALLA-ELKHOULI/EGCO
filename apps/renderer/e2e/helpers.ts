@@ -1,5 +1,5 @@
 /** أدوات مشتركة لاختبارات الواجهة — التنقّل بالـhash وجمع أخطاء الكونسول. */
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 export const API_BASE = `http://127.0.0.1:${process.env.E2E_API_PORT || '8790'}`;
 
@@ -33,6 +33,8 @@ export function collectErrors(page: Page): string[] {
   });
   page.on('requestfailed', (req) => {
     if (new URL(req.url()).pathname === '/favicon.ico') return;
+    // ERR_ABORTED = طلب ألغاه التطبيق نفسه (TanStack Query عند مغادرة الشاشة/إعادة الجلب) — ليس خللاً
+    if (req.failure()?.errorText === 'net::ERR_ABORTED') return;
     errors.push(`requestfailed: ${req.method()} ${req.url()} — ${req.failure()?.errorText}`);
   });
   return errors;
@@ -57,3 +59,35 @@ export async function useDarkTheme(page: Page): Promise<void> {
  */
 export const TIME_SENSITIVE =
   /((?<!خلال )[٠-٩0-9]+\s*(يناير|فبراير|مارس|أبريل|مايو|يونيو|يوليو|أغسطس|سبتمبر|أكتوبر|نوفمبر|ديسمبر|يوماً|يوم|أيام)|\d{4}-\d{2}-\d{2})/;
+
+/**
+ * محدِّد مقاوم لإعادة التصميم: data-testid إن أضافه وكيل القسم (القائمة في
+ * docs/next/QA.md)، وإلا البديل الدلالي (دور/نص عربي) الذي يعمل على الواجهة الحالية.
+ */
+export function tid(page: Page, id: string, fallback: Locator): Locator {
+  return page.getByTestId(id).or(fallback).first();
+}
+
+/** صيغة المبالغ المعروضة (lib/format.ts sar): أرقام لاتينية وفاصل آلاف ومنزلتان. */
+export const money = (v: number): string =>
+  Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * مسارات الشاشات بعد إعادة التصميم (sections/<قسم>/index.tsx). القديمة بقيت تعمل حتى تُستبدل؛
+ * حين يسجّل قسمٌ عرضه الجديد تُحدَّث القيمة هنا وحدها.
+ */
+export const R = {
+  suppliers: '/suppliers',
+  trash: '/data/trash',
+  imports: '/data/import',
+  backups: '/data/backups',
+  settings: '/data/settings',
+  projects: '/projects',
+  projectAdmin: '/projects/admin',
+  budget: '/projects/budget',
+  payables: '/payables',
+};
+
+/** خلية مبلغ: «1,234.00» مع «ر.س» ملتصقة أو بدونها (‹Money› الجديد يلصق الوحدة). */
+export const moneyCell = (page: Page, v: number): Locator =>
+  page.getByRole('cell', { name: new RegExp(`^${money(v).replace(/[.,]/g, '\\$&')}\\s*(ر\\.س)?$`) });

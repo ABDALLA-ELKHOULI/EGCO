@@ -4,8 +4,9 @@ from fastapi import APIRouter
 
 from app.api.routes import (ai, backups, budget, cashflow, contractors, coverage,
                             dashboard, guarantees, imports, invoices, manual,
-                            overview, project_admin, projects, reports, reset,
-                            revenues, suppliers, trash)
+                            events, overview, parties, project_admin, projects, reports,
+                            reset, revenues, settings as settings_routes, suppliers,
+                            today, trash)
 from app.core.config import settings
 
 api_router = APIRouter(prefix=settings.API_PREFIX)
@@ -34,3 +35,8 @@ api_router.include_router(project_admin.router, prefix='/project-admin', tags=['
 api_router.include_router(backups.router, prefix='/backups', tags=['backups'])
 # ---- تصفير البيانات
 api_router.include_router(reset.router, prefix='/reset', tags=['reset'])
+# ---- أرخبيل (الموجة ٠): م-٥٠ · الرصيد البنكي
+api_router.include_router(parties.router, prefix='/parties', tags=['parties'])
+api_router.include_router(settings_routes.router, prefix='/settings', tags=['settings'])
+api_router.include_router(events.router, prefix='/events', tags=['events'])
+api_router.include_router(today.router, prefix='/today', tags=['today'])

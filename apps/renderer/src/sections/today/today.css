@@ -1,0 +1,105 @@
+/* قسم «اليوم» — منقول من prototype/sections/today.css؛ كل المحدّدات تحت .sec-today، الرموز من tokens.css فقط. */
+.sec-today .td-sub{display:inline-flex;flex-wrap:wrap;align-items:center;gap:var(--s-2)}
+.sec-today .lnk{all:unset;cursor:pointer;color:var(--text-link);font:var(--t-caption)}
+.sec-today .lnk:hover{text-decoration:underline}
+.sec-today .lnk:focus-visible,.sec-today .td-ab:focus-visible,.sec-today .td-day:focus-visible,.sec-today .prow:focus-visible,
+.sec-today .tasks .tt:focus-visible,.sec-today .td-col:focus-visible,.sec-today .td-anom:focus-visible{outline:2px solid var(--brand-gold);outline-offset:2px}
+.sec-today .td-q{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:var(--s-2);border-radius:var(--r-pill);background:var(--warn-bg);color:var(--warn-fg);font:var(--t-caption);padding:var(--s-1) var(--s-3)}
+.sec-today .td-qlist{list-style:none;margin:0 auto var(--s-4);padding:var(--s-3) var(--s-4);background:var(--warn-bg);border-radius:var(--r-card);display:flex;flex-direction:column;gap:var(--s-2);max-width:1360px;animation:fade-in var(--d-base) var(--ease-out) both}
+.sec-today .td-qlist li{display:flex;align-items:center;gap:var(--s-3);font:var(--t-body);color:var(--text-1)}
+.sec-today .td-qlist li span:nth-child(2){flex:1}
+.sec-today .td-allclear{max-width:1360px;margin:0 auto var(--s-3)}
+/* المهام */
+.sec-today .tasks .tt{all:unset;flex:1;min-width:0;cursor:pointer;display:flex;flex-direction:column;font:var(--t-body);color:var(--text-1)}
+.sec-today .tasks .tt small{font:var(--t-caption);color:var(--text-3)}
+.sec-today .tasks li .td-act{flex:none}
+.sec-today .tasks li.done .td-act{visibility:hidden}
+.sec-today .td-more{display:block;margin-top:var(--s-3)}
+/* البطاقات */
+.sec-today .td-chart{min-height:220px}
+.sec-today .td-kpi-sm{font:var(--n-kpi)}
+.sec-today .td-crow{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s-2);margin-top:var(--s-3);padding-top:var(--s-3);border-top:1px solid var(--divider)}
+.sec-today .td-lg1{background:var(--chart-1)}
+.sec-today .prow{grid-template-columns:minmax(72px,1fr) 1.2fr auto}
+.sec-today .prow.click{cursor:pointer;border-radius:var(--r-control)}
+.sec-today .prow.click:hover .td-pn{color:var(--text-link)}
+.sec-today .td-pn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sec-today .td-pv{display:flex;flex-direction:column;align-items:flex-end;font:var(--t-caption)}
+.sec-today .td-bar-gold{background:var(--brand-gold)}
+.sec-today .td-bar-cur{background:var(--chart-1)}
+.sec-today .td-bar-late{background:var(--danger-solid)}
+.sec-today .td-covbar{display:block;margin:var(--s-2) 0}
+.sec-today .td-chg2{margin-top:var(--s-3)}
+.sec-today .td-ar{display:inline-block;font-size:.7em;margin-inline-end:var(--s-1);animation:arrow-up var(--d-base) var(--ease-out) both}
+/* أعمار الديون */
+.sec-today .td-aging{display:flex;flex-direction:column;gap:var(--s-2)}
+.sec-today .td-ab{all:unset;cursor:pointer;display:grid;grid-template-columns:110px 1fr minmax(120px,auto);align-items:center;gap:var(--s-3);padding:var(--s-1) var(--s-2);border-radius:var(--r-control);transition:background var(--d-fast)}
+.sec-today .td-ab:hover{background:var(--surface-2)}
+.sec-today .td-al{font:var(--t-caption);color:var(--text-2)}
+.sec-today .td-av,.sec-today .td-agtot{text-align:left}
+.sec-today .td-agtot{padding-inline:var(--s-2)}
+/* أعمدة ٩٠ يوماً */
+.sec-today .td-cols{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:var(--s-2);align-items:end;min-height:180px}
+.sec-today .td-col{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:var(--s-1);height:100%;border-radius:var(--r-control);padding:var(--s-1)}
+.sec-today .td-col:hover{background:var(--surface-2)}
+.sec-today .td-colv{font:var(--t-caption);color:var(--text-2)}
+.sec-today .td-colbar{display:block;width:60%;height:130px;border-radius:var(--s-1) var(--s-1) 0 0;background:var(--brand-gold);transform-origin:bottom;transform:scaleY(var(--h));animation:td-rise 700ms var(--ease-out) both;animation-delay:calc(var(--i) * 40ms)}
+@keyframes td-rise{from{transform:scaleY(0)}to{transform:scaleY(var(--h))}}
+/* المستحقات */
+.sec-today .td-sel{height:36px;border-radius:var(--r-control);border:1px solid var(--border-2);background:var(--surface-1);color:var(--text-1);font:var(--t-body);padding:0 var(--s-3)}
+.sec-today .td-conline{padding-block:var(--s-3)}
+.sec-today .td-conline .disclose{margin:0}
+.sec-today .td-alert{margin:var(--s-2) 0 0;padding:var(--s-2) var(--s-3);border-radius:var(--r-control);font:var(--t-caption)}
+.sec-today .td-alert.d{background:var(--danger-bg);color:var(--danger-fg)}
+.sec-today .td-alert.i{background:var(--info-bg);color:var(--info-fg)}
+/* التقويم */
+.sec-today .td-day{all:unset;box-sizing:border-box;cursor:pointer;min-height:92px;border:1px solid var(--border-1);border-radius:10px;padding:var(--s-2);display:flex;flex-direction:column;gap:var(--s-1);background:var(--surface-1);min-width:0;transition:border-color var(--d-fast),transform var(--d-fast) var(--ease-out)}
+.sec-today .td-day:hover{border-color:var(--border-2);transform:translateY(-1px)}
+.sec-today .td-day.out{opacity:.35}
+.sec-today .td-day.today{border-color:var(--brand-gold);box-shadow:0 0 0 1px var(--brand-gold)}
+.sec-today .td-day.td-late{border-color:var(--danger-solid)}
+.sec-today .td-week .td-day{min-height:260px}
+.sec-today .td-damt{margin-top:auto;font:var(--t-caption);color:var(--text-2)}
+.sec-today .td-damt.t-danger{color:var(--danger-fg)}
+.sec-today .ev.i{background:var(--info-bg);color:var(--info-fg)}
+.sec-today .ev.n{background:var(--neutral-bg);color:var(--text-2)}
+.sec-today .td-lg{display:inline-block;font:var(--t-caption);border-radius:6px;padding:2px 6px}
+.sec-today .td-agenda{display:none;list-style:none;margin:0;padding:0}
+.sec-today .td-agenda>li{border-bottom:1px solid var(--divider);padding:var(--s-3) 0}
+.sec-today .td-agday{all:unset;cursor:pointer;display:flex;gap:var(--s-2);align-items:center;font:var(--t-heading)}
+.sec-today .td-agenda ul{list-style:none;margin:var(--s-2) 0 0;padding:0;display:flex;flex-direction:column;gap:var(--s-2)}
+.sec-today .td-agenda ul li,.sec-today .td-dlist li{display:flex;align-items:center;gap:var(--s-3);font:var(--t-body)}
+.sec-today .td-agenda ul li>span:nth-child(2){flex:1;min-width:0}
+.sec-today .td-dsec+.td-dsec{margin-top:var(--s-5)}
+.sec-today .td-dsec h3{font:var(--t-heading);margin:0 0 var(--s-2)}
+.sec-today .td-dlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.sec-today .td-dlist li{padding:var(--s-3) 0;border-bottom:1px solid var(--divider);flex-wrap:wrap}
+.sec-today .td-dl{flex:1;min-width:0}
+/* المساعد */
+.sec-today .td-ai{display:flex;flex-direction:column;gap:var(--s-3)}
+.sec-today .td-ask{display:flex;gap:var(--s-2)}
+.sec-today .td-ask input{flex:1;height:36px;border-radius:var(--r-control);border:1px solid var(--border-2);background:var(--surface-1);color:var(--text-1);font:var(--t-body);padding:0 var(--s-3)}
+.sec-today .td-ai-text{margin:0;font:var(--t-body);white-space:pre-wrap}
+.sec-today .td-ai-out{display:flex;flex-direction:column;gap:var(--s-3)}
+.sec-today .td-sql{margin:var(--s-2) 0 0;padding:var(--s-3);background:var(--surface-sunken);border-radius:var(--r-control);font:var(--t-caption);white-space:pre-wrap;overflow:auto}
+.sec-today .td-err{margin:0;padding:var(--s-2) var(--s-3);border-radius:var(--r-control);background:var(--warn-bg);color:var(--warn-fg);font:var(--t-caption)}
+.sec-today .td-anoms{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s-3)}
+.sec-today .td-anom{all:unset;display:flex;flex-direction:column;gap:2px;font:var(--t-body)}
+.sec-today button.td-anom{cursor:pointer}
+@media (max-width:1100px){
+  .sec-today .grid>.c4,.sec-today .grid>.c8{grid-column:span 12}
+}
+@media (max-width:760px){
+  .sec-today .td-cal{display:none}
+  .sec-today .td-agenda{display:block}
+  .sec-today .td-ab{grid-template-columns:80px 1fr}
+  .sec-today .td-av{grid-column:1 / -1}
+  .sec-today .tasks li{flex-wrap:wrap;padding:var(--s-2) 0}
+  .sec-today .changes{grid-template-columns:1fr}
+  .sec-today .grid>.c6{grid-column:span 12}
+}
+@media (prefers-reduced-motion:reduce){
+  .sec-today .td-day,.sec-today .td-ab{transition:none}
+  .sec-today .td-ar,.sec-today .td-qlist,.sec-today .td-colbar{animation:none}
+}
+.sec-today .td-contents{display:contents}

@@ -8,6 +8,10 @@ import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { backendErrorTail, backendUrl, onBackendRestart, startBackend, stopBackend } from './backend';
+import { captureWindow, flushQueue, submitReport, systemDiagnostics, type SupportReport } from './support';
+import { applyTheme, canvasColor, ThemeName, titleBarInsets, titleBarOptions } from './chrome';
+import { OsNotifyPayload, setBadge, showOsNotification } from './notify';
+import { loadWindowState, MIN_HEIGHT, MIN_WIDTH, trackWindowState } from './windowState';
 
 let win: BrowserWindow | null = null;
 
@@ -27,6 +31,24 @@ type UpdateStatus =
 
 function sendUpdateStatus(status: UpdateStatus) {
   win?.webContents.send('update:status', status);
+}
+
+/**
+ * حدث نظام للخادم (مركز الإشعارات) — المسار يبنيه وكيل الخادم؛ غيابه (404) أو
+ * تعذّر الاتصال لا يُعدّ خطأً. يُرسل مرة واحدة لكل (حالة، إصدار).
+ */
+const postedUpdateEvents = new Set<string>();
+async function postSystemEvent(key: string, title: string, detail: string): Promise<void> {
+  if (postedUpdateEvents.has(key)) return;
+  postedUpdateEvents.add(key);
+  try {
+    await fetch(`${backendUrl()}/api/v1/events/system`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'update', severity: 'info', title, detail }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch { /* الخدمة غير متاحة — غير حرج */ }
 }
 
 /**
@@ -91,7 +113,11 @@ async function getAutoUpdater() {
       // المؤجَّل يُعرض على المستخدم من جديد بدل أن يُثبَّت بلا علمه أو يُنسى.
       autoUpdater.autoInstallOnAppQuit = false;
 
-      autoUpdater.on('update-available', (info) => sendUpdateStatus({ state: 'available', version: info.version }));
+      autoUpdater.on('update-available', (info) => {
+        sendUpdateStatus({ state: 'available', version: info.version });
+        void postSystemEvent(`available-${info.version}`, `يتوفر إصدار جديد ${info.version}`,
+          'يجري تنزيل التحديث في الخلفية.');
+      });
       autoUpdater.on('update-not-available', (info) => sendUpdateStatus({ state: 'up-to-date', version: info.version }));
       autoUpdater.on('download-progress', (p) => sendUpdateStatus({ state: 'downloading', percent: Math.round(p.percent) }));
 
@@ -105,6 +131,8 @@ async function getAutoUpdater() {
       autoUpdater.on('update-downloaded', async (info) => {
         backupBeforeUpdate(info.version);
         sendUpdateStatus({ state: 'downloaded', version: info.version });
+        void postSystemEvent(`downloaded-${info.version}`, `التحديث ${info.version} جاهز للتثبيت`,
+          'أُخذت نسخة احتياطية من البيانات قبل التثبيت. أعد التشغيل لتطبيق التحديث.');
         if (!win) return;
         const { response } = await dialog.showMessageBox(win, {
           type: 'info',
@@ -144,14 +172,16 @@ async function setupAutoUpdate() {
 }
 
 async function createWindow() {
+  const saved = loadWindowState();
   win = new BrowserWindow({
-    width: 1600,
-    height: 950,
-    minWidth: 1100,
-    minHeight: 720,
+    width: saved.width,
+    height: saved.height,
+    ...(typeof saved.x === 'number' && typeof saved.y === 'number' ? { x: saved.x, y: saved.y } : {}),
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
     show: false,
-    backgroundColor: '#FBFAF7',
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    backgroundColor: canvasColor(),   // يطابق السمة — لا وميض أبيض
+    ...titleBarOptions(),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true,
@@ -159,6 +189,16 @@ async function createWindow() {
       sandbox: true,
     },
   });
+  if (saved.maximized) win.maximize();
+  if (saved.fullScreen) win.setFullScreen(true);
+  trackWindowState(win);
+
+  const sendInsets = () => win?.webContents.send('window:insets', titleBarInsets(win));
+  win.on('enter-full-screen', sendInsets);
+  win.on('leave-full-screen', sendInsets);
+  win.on('focus', () => win?.webContents.send('window:focus', true));
+  win.on('blur', () => win?.webContents.send('window:focus', false));
+  win.on('closed', () => { win = null; });
 
   win.once('ready-to-show', () => win?.show());
 
@@ -178,6 +218,9 @@ async function createWindow() {
  * نسخة واحدة فقط — نسختان تفتحان خدمتين على نفس ملف القاعدة، فتظهر أخطاء
  * «database is locked» خاماً بلا ترجمة، وقد تتضارب كتابتان على نفس الحركة.
  */
+// في التطوير: ملف تعريف منفصل حتى لا يصطدم بقفل النسخة المثبّتة ولا يلمس بياناتها
+if (!app.isPackaged && process.env.EGCO_DATA_DIR) app.setPath('userData', process.env.EGCO_DATA_DIR);
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -190,6 +233,8 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.whenReady().then(async () => {
+  // بلاغات حُفظت حين لم يكن هناك اتصال — تُرسل بصمت عند الإقلاع
+  setTimeout(() => { void flushQueue(); }, 15000);
   /**
    * التنزيلات (تصدير Excel مثلاً) — حوار حفظ دائماً بالاسم العربي الصحيح.
    *
@@ -240,6 +285,16 @@ app.on('before-quit', stopBackend);
 /* ---------------------------------------------------------------- IPC */
 
 ipcMain.handle('app:backendUrl', () => backendUrl());
+
+// ---- بلاغات الدعم (support.ts) ----
+/** لقطة نافذة التطبيق — الواجهة تموّه المبالغ والأسماء قبل الطلب وتعيدها بعده. */
+ipcMain.handle('support:capture', async () => (win ? captureWindow(win) : null));
+/** معلومات تقنية تُرفق بالبلاغ: الإصدار والنظام وآخر أخطاء الخدمة الخلفية. */
+ipcMain.handle('support:diagnostics', () => ({
+  ...systemDiagnostics(),
+  'آخر أخطاء الخدمة': backendErrorTail() || '—',
+}));
+ipcMain.handle('support:submit', (_e, report: SupportReport) => submitReport(report));
 
 ipcMain.handle('app:info', () => ({
   version: app.getVersion(),
@@ -325,7 +380,7 @@ function sniffXlsIsContractorsBalance(filePath: string): boolean {
  * المنطق قد تنحرف عن الخادم بصمت. فشل الاتصال (خدمة لم تُقلع بعد) يبقى على
  * التصنيف الافتراضي القديم — الخادم سيرفض الملف برسالته العربية لاحقاً على أي حال.
  */
-async function classifyXlsxViaBackend(filePath: string): Promise<'suppliers_excel' | 'budget_deviation'> {
+async function classifyXlsxViaBackend(filePath: string): Promise<'suppliers_excel' | 'budget_deviation' | 'budget_plan'> {
   try {
     const res = await fetch(`${backendUrl()}/api/v1/import/classify`, {
       method: 'POST',
@@ -334,6 +389,8 @@ async function classifyXlsxViaBackend(filePath: string): Promise<'suppliers_exce
     });
     if (!res.ok) return 'suppliers_excel';
     const data = (await res.json()) as { source?: string };
+    // الموازنة التقديرية (خطة شهرية) — كانت تسقط إلى «ملف موردين» فتفشل المعاينة
+    if (data.source === 'budget_plan') return 'budget_plan';
     return data.source === 'budget_deviation' ? 'budget_deviation' : 'suppliers_excel';
   } catch {
     return 'suppliers_excel';
@@ -342,7 +399,7 @@ async function classifyXlsxViaBackend(filePath: string): Promise<'suppliers_exce
 
 async function detectSource(filePath: string):
     Promise<'pdf_statement' | 'csv_statement' | 'suppliers_excel' | 'debts_report_xls'
-    | 'contractors_balance_xls' | 'budget_deviation'> {
+    | 'contractors_balance_xls' | 'budget_deviation' | 'budget_plan'> {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === '.pdf') return 'pdf_statement';
   if (ext === '.csv') return 'csv_statement';
@@ -602,3 +659,19 @@ ipcMain.handle('export:pdf', async (event, opts: { filename: string; landscape?:
     return { error: e instanceof Error ? e.message : String(e) };
   }
 });
+
+/* ---------------------------------------------------------------- شريط العنوان · الإشعارات · الشارة */
+
+ipcMain.handle('window:insets', () => titleBarInsets(win));
+
+/** الواجهة تبلغ سمتها الفعلية — يُحدَّث لون الخلفية وطبقة أزرار Windows. */
+ipcMain.handle('window:setTheme', (_e, theme: ThemeName) => {
+  if (theme !== 'light' && theme !== 'dark') return;
+  applyTheme(win, theme);
+});
+
+ipcMain.handle('window:isFocused', () => !!win && !win.isDestroyed() && win.isFocused());
+
+ipcMain.handle('notify:os', (_e, payload: OsNotifyPayload) => showOsNotification(win, payload));
+
+ipcMain.handle('app:setBadge', (_e, count: number) => setBadge(win, count));

@@ -25,7 +25,9 @@ from app.ingest.suppliers_excel import SuppliersParseError
 from app.schemas.common import (AccountClassificationIn, BatchImportRequest,
                                 ClassifyFileRequest, ClassifySuggestRequest,
                                 ImportRequest, PreviewRequest, ScanDirRequest)
-from app.services import import_service, receivables_service
+from app.services import events_service as ES
+from app.services import budget_plan_service, bundle_selective_service, import_service, receivables_service
+from app.services.budget_plan_service import BudgetPlanParseError
 
 router = APIRouter()
 
@@ -34,12 +36,15 @@ router = APIRouter()
 #: خرجت كخطأ 500 غير معالج بدل رسالة 422 عربية واضحة.
 _PARSE_ERRORS = (StatementParseError, SuppliersParseError, CsvStatementParseError,
                  DebtsReportParseError, ContractorsBalanceParseError, BudgetParseError,
-                 ReceivablesExcelParseError, ReceivablesParseError)
+                 ReceivablesExcelParseError, ReceivablesParseError, BudgetPlanParseError)
 
 #: sources managed from their own dedicated screen — deleting them here would be
 #: dangerous (the supplier list drives every FIFO calculation; budget snapshots feed
 #: the deviation report), so the history screen only lets the user delete statements.
-_UNDELETABLE_SOURCES = {'suppliers_excel', 'budget_deviation'}
+_UNDELETABLE_SOURCES = {'suppliers_excel', 'budget_deviation', 'budget_plan'}
+
+#: تسميات مصادر جديدة لم تُضف بعد إلى import_service.DETECTED_LABELS (يملكه وكيل آخر)
+_EXTRA_DETECTED = {'budget_plan': budget_plan_service.DETECTED_LABEL}
 
 #: linked-rows count spans these five tables — every table a statement/receivables
 #: import can write to (GuaranteeEntry added for the 216 guarantee-statement flow).
@@ -58,6 +63,8 @@ def preview(body: PreviewRequest, db: Session = Depends(get_session)) -> dict:
     التكرار المحتمل قبل الحفظ.
     """
     try:
+        if body.source == 'budget_plan':
+            return budget_plan_service.preview(db, body.path)
         if body.source in import_service.STATEMENT_SOURCES:
             return import_service.preview_statement(body.path, body.source, db)
         if body.source == 'debts_report_xls':
@@ -71,7 +78,20 @@ def preview(body: PreviewRequest, db: Session = Depends(get_session)) -> dict:
 
 @router.post('')
 def run_import(body: ImportRequest, db: Session = Depends(get_session)) -> dict:
+    # الأحداث + لقطة قبل/بعد تُغلَّف هنا في طبقة المسار لا داخل import_service
+    # (يملكه وكيل قرّاء البيانات) — المنطق المالي لا يُلمس.
+    with ES.track_import(body.path, body.source) as ctx:
+        ctx['result'] = _run_import(body, db)
+        return ctx['result']
+
+
+def _run_import(body: ImportRequest, db: Session) -> dict:
     try:
+        if body.source == 'budget_plan':
+            return budget_plan_service.commit(db, body.path, confirm_project=body.confirm_project)
+        if body.allow_accounts and bundle_selective_service.is_bundle(body.path, body.source):
+            # «احفظ رغم الفرق» — الحسابات التي اختارها المستخدم بالاسم فقط
+            return bundle_selective_service.commit_accounts(db, body.path, body.allow_accounts)
         if body.source == 'suppliers_excel':
             return import_service.import_suppliers(db, body.path)
         if body.source == 'budget_deviation':
@@ -95,9 +115,14 @@ def run_import(body: ImportRequest, db: Session = Depends(get_session)) -> dict:
 def scan(body: ScanDirRequest) -> dict:
     """مسح مجلد — non-recursive, classifies files by extension."""
     try:
-        return import_service.scan_dir(body.dir)
+        out = import_service.scan_dir(body.dir)
     except NotADirectoryError:
         raise HTTPException(404, detail='المجلد غير موجود أو ليس مجلداً')
+    # الموازنة التقديرية — المصنّف العام يراها «ملف موردين»؛ تُصحَّح التسمية هنا
+    for f in out.get('files') or []:
+        if budget_plan_service.is_budget_plan(f.get('path') or ''):
+            f['source'] = 'budget_plan'
+    return out
 
 
 @router.post('/classify')
@@ -112,6 +137,9 @@ def classify_file(body: ClassifyFileRequest) -> dict:
     """
     if not os.path.isfile(body.path):
         raise HTTPException(404, detail='الملف غير موجود')
+    # الموازنة التقديرية قبل المصنّف العام — كان يراها «ملف موردين» (كلاهما xlsx)
+    if budget_plan_service.is_budget_plan(body.path):
+        return dict(source='budget_plan')
     return dict(source=import_service.classify_path(body.path))
 
 
@@ -137,7 +165,31 @@ def upload_budget_attachment(body: BudgetAttachmentRequest) -> dict:
 @router.post('/batch')
 def batch(body: BatchImportRequest, db: Session = Depends(get_session)) -> dict:
     """استيراد دفعة ملفات — ملفات الموردين أولاً، نسخة احتياطية واحدة للدفعة كلها."""
-    return import_service.batch_import(db, body.paths, body.allow_unreconciled)
+    from app.services import sse_broker
+    # الموازنة التقديرية لا تُرفع ضمن دفعة: تحتاج تأكيد المشروع، والمصنّف العام كان
+    # سيعاملها ملف موردين. تُستبعد وتظهر في النتيجة بسببها بدل أن تُكتب خطأً.
+    plan_rows = []
+    paths = []
+    for pth in body.paths or []:
+        if budget_plan_service.is_budget_plan(pth):
+            plan_rows.append(dict(path=pth, name=os.path.basename(pth), source='budget_plan',
+                                  status='needs_single', detected=budget_plan_service.DETECTED_LABEL,
+                                  account=None, supplierName=None, added=0, skipped=0,
+                                  message='موازنة تقديرية — ارفعها منفردة («اختيار ملفات») لمراجعة الأشهر وتأكيد المشروع',
+                                  nearDuplicates=[]))
+        else:
+            paths.append(pth)
+    body = BatchImportRequest(paths=paths, allow_unreconciled=body.allow_unreconciled)
+    n = max(1, len(body.paths or []))
+    sse_broker.publish_progress('import', 0, '')
+    with ES.track_import('دفعة %d ملفات' % n, 'batch') as ctx:
+        ctx['result'] = import_service.batch_import(db, body.paths, body.allow_unreconciled)
+        if plan_rows and isinstance(ctx['result'], dict):
+            ctx['result'].setdefault('results', []).extend(plan_rows)
+        for i, r in enumerate(ctx['result'].get('results') or [], 1):
+            sse_broker.publish_progress('import', int(i * 100 / n),
+                                        os.path.basename(str((r or {}).get('path') or '')))
+        return ctx['result']
 
 
 # ---------------------------------------------------------------- تصنيف الحسابات
@@ -369,7 +421,7 @@ def import_history(
             fileName=file_name_val,
             path=log.path,
             source=log.source,
-            detected=import_service.DETECTED_LABELS.get(
+            detected=_EXTRA_DETECTED.get(log.source) or import_service.DETECTED_LABELS.get(
                 log.source, import_service.DETECTED_LABELS[None]),
             account=log.account or None,
             partyName=party_name,

@@ -12,12 +12,13 @@ from typing import Dict, List, Optional
 import datetime as dt
 from decimal import Decimal
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.db import models
 from app.domain import payables as P
 from app.domain.payables import D, money
+from app.services import request_cache as RC
 
 
 def _term(row: models.Supplier) -> P.Term:
@@ -55,9 +56,13 @@ def _load_decisions(db: Session, payment_ids: List[str]) -> Dict[str, List[tuple
     """يبني payment_id -> [(invoice_id أو None, Decimal amount), ...] من الجدول."""
     if not payment_ids:
         return {}
-    rows = (db.query(models.PaymentAllocation)
-            .filter(models.PaymentAllocation.payment_id.in_(payment_ids),
-                    models.PaymentAllocation.deleted_at.is_(None)).all())
+    # على دفعات من ٥٠٠ — حدّ متغيرات SQLite في الإصدارات الأقدم ٩٩٩، وتحميل كل
+    # الدفعات دفعة واحدة (positions) قد يتجاوزه على قاعدة كبيرة.
+    rows = []
+    for i in range(0, len(payment_ids), 500):
+        rows.extend(db.query(models.PaymentAllocation)
+                    .filter(models.PaymentAllocation.payment_id.in_(payment_ids[i:i + 500]),
+                            models.PaymentAllocation.deleted_at.is_(None)).all())
     out: Dict[str, List[tuple]] = {}
     for r in rows:
         out.setdefault(r.payment_id, []).append((r.invoice_id, D(r.amount)))
@@ -99,18 +104,47 @@ def positions(db: Session, today: Optional[dt.date] = None,
               include_empty: bool = False,
               smart: Optional[bool] = None) -> list:
     """smart=None (الافتراضي) يقرأ إعداد app_settings؛ مرّر True/False صراحةً
-    لتجاوزه (مثال: أدوات القياس)."""
+    لتجاوزه (مثال: أدوات القياس).
+
+    الأداء (بلا تغيير في أي رقم): النتيجة الكاملة تُحفظ لعمر الجلسة (request_cache)
+    فلا يُعاد حسابها ست مرات في /overview، وكل نسخة مصفّاة (حساب/مشروع/بلا الفارغين)
+    تُشتق منها بالتصفية نفسها التي كان الاستعلام يجريها — الحساب لكل مورد مستقل
+    عن غيره، فالمورد نفسه يُنتج الموقف نفسه سواء حُسب وحده أو مع الجميع.
+    """
     today = today or dt.date.today()
     if smart is None:
         smart = is_smart_allocation_enabled(db)
+    full_key = ('positions', today, bool(smart))
+    full = RC.peek(db, full_key)
+    if full is None and not account:
+        full = RC.get(db, full_key, lambda: _compute_positions(db, today, None, None, smart))
+    if full is not None:
+        out = [p for p in full
+               if (not account or p.supplier.account == account)
+               and (not project or p.supplier.project == project)
+               and (include_empty or p.invoices or p.payments)]
+        return out
+    return [p for p in _compute_positions(db, today, account, project, smart)
+            if include_empty or p.invoices or p.payments]
+
+
+def _compute_positions(db: Session, today: dt.date, account: Optional[str],
+                       project: Optional[str], smart: bool) -> list:
+    """كل الموردين (بما فيهم بلا حركة) — التصفية بالفراغ يجريها المستدعي."""
     q = db.query(models.Supplier).filter(models.Supplier.deleted_at.is_(None))
     if account:
         q = q.filter(models.Supplier.account == account)
     if project:
         q = q.filter(models.Supplier.project == project)
+    # selectinload: استعلامان للفواتير والدفعات كلها بدل استعلامين لكل مورد (N+1).
+    # ترتيب الصفوف داخل كل مورد يبقى ترتيب الإدراج كما في التحميل الكسول، والمحرك
+    # يرتّب بالتاريخ ترتيباً مستقراً — فلا يتغيّر توزيع FIFO بين المتساويات.
+    rows = q.options(selectinload(models.Supplier.invoices),
+                     selectinload(models.Supplier.payments)).all()
 
-    out: list = []
-    for row in q.all():
+    staged = []
+    all_pay_ids: List[str] = []
+    for row in rows:
         invs = [P.Invoice(date=i.date, amount=i.amount, number=i.number,
                           doc=i.doc, description=i.description, id=i.id,
                           source=i.source or 'statement',
@@ -120,11 +154,16 @@ def positions(db: Session, today: Optional[dt.date] = None,
                           description=p.description, id=p.id,
                           source=p.source or 'statement')
                 for p in row.payments if p.deleted_at is None]
-        # A supplier with no movement yet still belongs in the list screen — it just
-        # has nothing owing. Only the dashboard filters these out.
-        if not invs and not pays and not include_empty:
-            continue
-        decisions = _load_decisions(db, [p.id for p in pays]) if smart else None
+        staged.append((row, invs, pays))
+        if smart:
+            all_pay_ids.extend(p.id for p in pays)
+    # قرارات التخصيص دفعة واحدة لكل الدفعات بدل استعلام لكل مورد
+    all_decisions = _load_decisions(db, all_pay_ids) if smart else {}
+
+    out: list = []
+    for row, invs, pays in staged:
+        decisions = ({p.id: all_decisions[p.id] for p in pays if p.id in all_decisions}
+                     if smart else None)
         out.append(P.position(_supplier(row), invs, pays, today,
                               smart=smart, decisions=decisions))
     return out

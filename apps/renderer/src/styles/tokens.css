@@ -1,1065 +1,121 @@
-/* مشتق من design/tokens/tokens.json — عدّل ملف الرموز لا هذا الملف.
-   Generated from the same tokens the Figma variables use. */
-
-:root {
-  --gold: #D9943C;
-  /* م-٤١: كان #B87A28 → تباين 3.59 على --card و3.44 على --bg (دون 4.5) — يُستعمل
-     نصاً لـ.pill.gold و.gold وبطاقات المشاريع. غُمِّق مع الحفاظ على الهوية
-     البرونزية إلى #8F5E1D → 5.55 على --card و5.31 على --bg. */
-  --bronze: #8F5E1D;
-  --tint: #EFE1CB;
-  --ink: #211D16;
-  /* م-٤١: كان rgb(138,133,120) → تباين 3.68 على --card (الحدّ 4.5، WCAG). غُمِّق
-     إلى rgb(112,107,95) — نفس درجة اللون، فقط أغمق — فصار 5.31 على --card
-     و5.08 على --bg. الوضع الداكن (6.09) لم يُلمس. */
-  --muted: #706B5F;
-  --hair: #DDD8CE;
-  --red: #C0271A;
-  --ok: #2E7D32;
-  --warn: #D9943C;
-  --bg: #FBFAF7;
-  --card: #FFFFFF;
-
-  /* الروابط لها رمز خاص — أزرق المتصفح الافتراضي كان يكسر اللوحة الذهبية ويختفي في الوضع الليلي.
-     Links get their own token; the browser default blue broke the palette and vanished on dark. */
-  --link: #9A6416;
-  --link-hover: #B87A28;
-
-  /* الشريط الجانبي رموز مستقلة — كان يقرأ var(--ink) فينقلب أبيض في الوضع الليلي.
-     The sidebar owns its own tokens; reading --ink flipped it white in dark mode. */
-  --sidebar-bg: #211D16;
-  --sidebar-fg: #EFE1CB;
-  --sidebar-fg-strong: #FFFFFF;
-  --sidebar-active-fg: #211D16;
-  --sidebar-hover: rgba(255, 255, 255, .06);
-  --sidebar-hover-strong: rgba(255, 255, 255, .16);
-  --sidebar-rule: rgba(255, 255, 255, .14);
-
-  /* طبقات شفافة للحالات — تُستعمل في الشرائط والتنبيهات وخلفيات النوافذ */
-  --wash-red: rgba(192, 39, 26, .10);
-  --wash-ok: rgba(46, 125, 50, .10);
-  --wash-gold: rgba(217, 148, 60, .14);
-  --overlay: rgba(33, 29, 22, .45);
-  --surface-2: #F5F2EC;
-
-  --r-card: 10px;
-  --r-control: 6px;
-  --sidebar: 248px;
-
-  color-scheme: light;
-  /* Cairo is the design font (macOS/Figma). Windows has neither Cairo nor SF Arabic,
-     so Segoe UI then Tahoma carry the Arabic there — both ship with Windows and
-     render Arabic correctly. Install Cairo on Windows to match the design exactly. */
-  --font: "Cairo", "SF Arabic", "Segoe UI", Tahoma, "Helvetica Neue", Helvetica, Arial, sans-serif;
-
-  /* ==================== سلّم المسافات والطباعة — المصدر الوحيد للحقيقة ====================
-     كل حشو/فجوة/هامش جديد يجب أن يستعمل أحد هذه المتغيرات بدل أرقام حرة.
-     Spacing (4pt scale) and type ramp: the single source of truth for spacing/type.
-     New code must resolve to these instead of ad-hoc px values. */
-  --space-xs4: 4px;
-  --space-sm8: 8px;
-  --space-md12: 12px;
-  --space-lg16: 16px;
-  --space-xl20: 20px;
-  --space-xxl24: 24px;
-  --space-xxxl32: 32px;
-  --space-section40: 40px;
-  --space-block48: 48px;
-  --space-page64: 64px;
-
-  --radius-control: 6px;
-  --radius-card: 10px;
-  --radius-pill: 999px;
-  --row-height: 44px;
-  --control-height: 34px;
-  --reading-max-width: 720px;
-
-  /* Type ramp (Cairo) */
-  --text-figure: 30px;
-  --lh-figure: 1.2;
-  --ls-figure: 0.6px;
-  --weight-figure: 700;
-
-  --text-figure-sm: 22px;
-  --lh-figure-sm: 1.25;
-  --ls-figure-sm: 0.4px;
-  --weight-figure-sm: 700;
-
-  --text-heading-page: 20px;
-  --lh-heading-page: 1.3;
-  --ls-heading-page: 0.3px;
-  --weight-heading-page: 700;
-
-  --text-heading-section: 16px;
-  --lh-heading-section: 1.4;
-  --weight-heading-section: 600;
-
-  --text-heading-card: 14px;
-  --lh-heading-card: 1.4;
-  --weight-heading-card: 600;
-
-  --text-body-default: 15px;
-  --lh-body-default: 1.65;
-
-  --text-body-table: 13px;
-  --lh-body-table: 1.4;
-
-  --text-body-emphasis: 13px;
-  --lh-body-emphasis: 1.4;
-  --weight-body-emphasis: 600;
-
-  --text-caption-default: 12px;
-  --lh-caption-default: 1.4;
-
-  --text-caption-micro: 11px;
-  --lh-caption-micro: 1.3;
-
-  --text-label-field: 12px;
-  --lh-label-field: 1.4;
-  --weight-label-field: 500;
-}
-
-:root[data-theme="dark"] {
-  --tint: #3A3226;
-  --ink: #F2EFE8;
-  --muted: #9A9486;
-  --hair: #3C382F;
-  --red: #E0554A;
-  --ok: #5CB860;
-  --bg: #16140F;
-  --card: #1E1B15;
-
-  --link: #E0A85C;
-  --link-hover: #F0C489;
-
-  --sidebar-bg: #100E0A;
-  --sidebar-fg: #C9C2B2;
-  --sidebar-fg-strong: #F7F4EE;
-  --sidebar-active-fg: #16140F;
-  --sidebar-hover: rgba(255, 255, 255, .07);
-  --sidebar-hover-strong: rgba(255, 255, 255, .14);
-  --sidebar-rule: rgba(255, 255, 255, .12);
-
-  --wash-red: rgba(224, 85, 74, .14);
-  --wash-ok: rgba(92, 184, 96, .13);
-  --wash-gold: rgba(217, 148, 60, .15);
-  --overlay: rgba(0, 0, 0, .62);
-  --surface-2: #262218;
-
-  /* يجعل شريط التمرير وحقول التاريخ ومربعات الاختيار الأصلية تتبع الوضع الليلي */
-  color-scheme: dark;
-}
-
-* { box-sizing: border-box; }
-
-html, body, #root { height: 100%; margin: 0; }
-
-body {
-  background: var(--bg);
-  color: var(--ink);
-  font-family: var(--font);
-  font-size: 15px;
-  line-height: 1.65;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* الروابط تتبع اللوحة الذهبية — الأزرق الافتراضي كان يختفي تماماً على خلفية الوضع الليلي.
-   Links follow the palette; the default blue was unreadable on the dark surface. */
-a {
-  color: var(--link);
-  text-decoration: none;
-}
-a:hover { color: var(--link-hover); text-decoration: underline; }
-a:focus-visible,
-button:focus-visible,
-summary:focus-visible,
-[tabindex]:focus-visible {
-  outline: 2px solid var(--gold);
-  outline-offset: 2px;
-  border-radius: var(--r-control);
-}
-
-::selection { background: var(--wash-gold); }
-
-/* الأرقام تُعرض دائماً من اليسار لليمين بأرقام جدولية داخل النص العربي —
-   إهمال هذه القاعدة يُفسد محاذاة كل جدول مالي. */
-.num {
-  font-variant-numeric: tabular-nums;
-  direction: ltr;
-  display: inline-block;
-}
-/* …لكن خلية الجدول تبقى خلية جدول. وضع display:inline-block على <td class="num">
-   يُخرج الخلية من تخطيط الأعمدة، فتتوقف الأرقام عن الجلوس تحت عناوينها.
-   A td that stops being a table-cell breaks every column alignment in the table. */
-td.num, th.num, td.ltr, th.ltr { display: table-cell; }
-
-/* م-٤٤: قرار مستخدم لا مطوّر — معطَّلة، لا تُستعمل في أي صفحة الآن.
-   المطلوب: خانة الآحاد لا تستقر على خط عمودي واحد لأن الأرقام تُحاذى يميناً
-   داخل خلية RTL بعرضها الطبيعي (LTR داخل النص فقط). العرف المحاسبي محاذاة يمين
-   صريحة + LTR فتستقر الآحاد. لتفعيلها: أضف class="num num-right" في الخلية،
-   أو بدّل `.num` أعلاه إلى نفس القاعدتين — تبديل سطر واحد إذا قرَّر المستخدم. */
-.num-right { text-align: right; direction: ltr; }
-
-/* ---------------- layout ---------------- */
-.app { display: flex; height: 100%; }
-.main { flex: 1; overflow-y: auto; padding: 26px 32px; }
-/* يلتف عند الازدحام — أسماء المقاولين طويلة وستة أزرار كانت تدفع العنوان خارج السطر.
-   Wraps under pressure: long contractor names plus six buttons used to squeeze the title. */
-.page-head { display: flex; align-items: center; gap: 10px 12px; margin-bottom: 18px; flex-wrap: wrap; }
-.page-head .grow { flex: 1 1 260px; min-width: 0; }
-.page-head h1 { font-size: var(--text-heading-page); font-weight: var(--weight-heading-page); margin: 0; letter-spacing: -0.3px; overflow-wrap: anywhere; }
-/* -0.3px تركت كما هي: ls-heading-page (0.6+) موجب أما هذا العنوان فمصمم بتباعد سلبي أصلاً — لا نغيّر قيمة بصرية قائمة. */
-.page-head p { margin: 2px 0 0; font-size: var(--text-body-table); color: var(--muted); }
-
-/* ---------------- sidebar ---------------- */
-/* مدة الانتقال ومنحناه من لوح مواصفات الحركة في Figma — مصدر واحد للاثنين. */
-:root {
-  --sidebar-w: 248px;
-  --sidebar-w-collapsed: 76px;
-  --motion-base: 280ms;
-  --motion-fast: 120ms;
-  --ease-base: cubic-bezier(0.4, 0, 0.2, 1);   /* EASE_IN_AND_OUT */
-}
-
-.sidebar {
-  width: var(--sidebar-w);
-  flex: 0 0 var(--sidebar-w);
-  background: var(--sidebar-bg);
-  color: var(--sidebar-fg);
-  padding: 20px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  /* القائمة صارت ١٣ بنداً — على شاشة 768px كانت البنود السفلية تُقص بلا تمرير.
-     overflow-x يبقى مخفياً حتى لا تظهر البنود أثناء حركة الطي. */
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,.25) transparent;
-  transition: width var(--motion-base) var(--ease-base),
-              flex-basis var(--motion-base) var(--ease-base),
-              padding var(--motion-base) var(--ease-base);
-}
-.sidebar.collapsed {
-  width: var(--sidebar-w-collapsed);
-  flex-basis: var(--sidebar-w-collapsed);
-  padding-left: 12px;
-  padding-right: 12px;
-}
-
-.side-head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 0 6px 18px;
-}
-.side-head .brand { flex: 1; min-width: 0; text-align: right; }
-.brand b { color: var(--sidebar-fg-strong); font-size: 16px; display: block; white-space: nowrap; }
-.brand span { color: var(--gold); font-size: 11px; white-space: nowrap; }
-
-.side-toggle {
-  display: flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; flex: 0 0 30px;
-  border: 0; border-radius: var(--r-control); cursor: pointer;
-  background: var(--sidebar-hover); color: var(--sidebar-fg);
-  transition: background var(--motion-fast) var(--ease-base),
-              color var(--motion-fast) var(--ease-base);
-}
-.side-toggle:hover { background: var(--sidebar-hover-strong); color: var(--sidebar-fg-strong); }
-.side-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-
-.nav-group { display: flex; flex-direction: column; gap: 3px; }
-.sidebar .section {
-  color: var(--sidebar-fg);
-  opacity: .62; font-size: 11px;
-  padding: 14px 10px 5px;
-  white-space: nowrap;
-}
-/* عند الطي يتحوّل عنوان القسم إلى خط فاصل — الإيقاع البصري يبقى فلا يضيع المكان */
-.section-rule {
-  display: block; height: 1px; width: 28px; margin: 6px auto 0;
-  background: var(--sidebar-rule);
-}
-
-.nav-item {
-  position: relative;
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px;
-  border-radius: var(--r-control);
-  color: var(--sidebar-fg); text-decoration: none; font-size: 13px;
-  white-space: nowrap;
-  transition: background var(--motion-fast) var(--ease-base),
-              color var(--motion-fast) var(--ease-base),
-              padding var(--motion-base) var(--ease-base);
-}
-.nav-item:hover { background: var(--sidebar-hover); color: var(--sidebar-fg-strong); text-decoration: none; }
-.nav-item.active,
-.nav-item.active:hover { background: var(--gold); color: var(--sidebar-active-fg); font-weight: 600; }
-.nav-item:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-
-/* الترتيب في RTL: الأيقونة يميناً ثم النص ثم النقطة أقصى اليسار */
-.nav-item .nav-label {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  opacity: 1;
-  transition: opacity var(--motion-fast) var(--ease-base);
-}
-.sidebar.collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
-.sidebar.collapsed .nav-label { opacity: 0; width: 0; flex: 0 0 0; }
-.sidebar.collapsed .side-head .brand { opacity: 0; width: 0; flex: 0 0 0; overflow: hidden; }
-.sidebar.collapsed .side-head { justify-content: center; padding-bottom: 14px; }
-
-/* نقطة التنبيه تبقى مرئية في الحالتين — الطي لا يُخفي معلومة */
-.alert-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--red); flex: 0 0 6px;
-  transition: all var(--motion-base) var(--ease-base);
-}
-.sidebar.collapsed .alert-dot {
-  position: absolute; top: 6px; inset-inline-start: 14px;
-}
-
-.sidebar .grow { flex: 1; }
-
-/* احترام تفضيل تقليل الحركة في النظام */
-@media (prefers-reduced-motion: reduce) {
-  .sidebar, .nav-item, .nav-label, .alert-dot, .side-toggle { transition: none !important; }
-}
-
-/* ---------------- cards ---------------- */
-.card {
-  background: var(--card);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-card);
-  overflow: hidden;
-}
-.card > .cap { padding: 14px 20px 10px; }
-.card > .cap h2 { font-size: var(--text-heading-section); margin: 0; }
-.card > .cap p { margin: 2px 0 0; font-size: var(--text-caption-micro); color: var(--muted); }
-
-/* م-١٧: رقم "متأخر" (الأقصى يساراً في RTL) كان يخرج فعلياً عن حاوية الشاشة —
-   .kpi-row بعرض ٩٦٠px قصّاً صامتاً داخل حاوية ٧٨٨px، بلا شريط تمرير ظاهر ولا
-   أي إشارة أن هناك بطاقة رابعة. السبب: أعمدة grid بـ1fr لا تنكمش تحت
-   min-content للنص (رقم طويل بلا مسافات)، فيفرض العرض الكلي تجاوز الحاوية.
-   auto-fit + minmax يسمح للصف بالالتفاف إلى سطر ثانٍ بدل القصّ — لا بطاقة
-   تخرج عن الإطار عند أي عرض شاشة. */
-.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(214px, 1fr)); gap: 14px; margin-bottom: 18px; }
-.kpi {
-  background: var(--card); border: 1px solid var(--hair);
-  border-radius: var(--r-card); padding: 16px 18px;
-  min-width: 0; /* يسمح للبطاقة بالانكماش تحت عرض رقمها؛ بدونه تفرض minmax(auto) القصّ */
-}
-/* رقمٌ مالي لا يُكسر في منتصفه أبداً: «5,938,715.» في سطر و«01» في التالي يُقرأ
-   رقمَين. `overflow-wrap: anywhere` (أُضيف مع auto-fit لمنع خروج البطاقة عن الإطار)
-   كان يقصّ الرقم نفسه عند ١٢٨٠px وخمس بطاقات — مُشاهَد بلقطة. الحلّ: لا التفاف
-   داخل الرقم، وحجم خط يتقلّص مع ضيق البطاقة (clamp) حتى يتّسع، والحدّ الأدنى
-   لعرض البطاقة يكفي رقماً من ١٣ خانة على أصغر حجم. */
-.kpi .value { min-width: 0; white-space: nowrap; overflow-wrap: normal; }
-.kpi.alert { border-color: var(--red); border-width: 1.5px; }
-.kpi .label { font-size: var(--text-label-field); color: var(--muted); }
-/* 28px مقصودة لهذه البطاقة — لا تطابق أي مقاس في السلّم (30 الأقرب) فتُركت كما هي */
-.kpi .value { font-size: clamp(17px, 1.9vw, 28px); font-weight: 700; letter-spacing: -1px; margin-top: 2px; }
-.kpi .unit { font-size: var(--text-caption-micro); color: var(--muted); }
-
-/* هرم أرقام الـKPI: رقم بطل واحد لكل شاشة (30px) والبقية أصغر (22px) */
-.kpi .value.text-figure {
-  /* «الرقم البطل» يتقلّص مع ضيق البطاقة كالبقية — ثابت ٣٠px كان يخرج ٤٥px عن بطاقة
-     بعرض ١٨٢px فيُقصّ من طرف الشاشة (قِيس: valueLeft = −32). السقف يبقى --text-figure. */
-  font-size: clamp(19px, 2.3vw, var(--text-figure));
-  line-height: var(--lh-figure);
-  letter-spacing: var(--ls-figure);
-  font-weight: var(--weight-figure);
-}
-.kpi .value.text-figure-sm {
-  font-size: var(--text-figure-sm);
-  line-height: var(--lh-figure-sm);
-  letter-spacing: var(--ls-figure-sm);
-  font-weight: var(--weight-figure-sm);
-}
-
-/* ==================== الكتلة المرجعية الموحّدة للأنماط الشائعة (Canonical utility block) ====================
-   دمج ما أضافه عاملان متزامنان سابقاً في مجموعة واحدة بلا تكرار — أي صنف جديد متكرر
-   عبر أكثر من صفحتين يُضاف هنا، لا كأسلوب سطري. */
-/* ---------------- utility: نصوص متكررة ---------------- */
-.text-caption { font-size: var(--text-caption-default); color: var(--muted); }
-.text-caption-micro { font-size: var(--text-caption-micro); color: var(--muted); }
-.text-label { font-size: var(--text-label-field); font-weight: var(--weight-label-field, 500); color: var(--muted); }
-.text-emphasis { font-size: var(--text-body-emphasis); font-weight: 600; }
-.text-body-table { font-size: var(--text-body-table); }
-
-/* ---------------- utility: إيقاع المسافات بين الأقسام ---------------- */
-.section-gap { margin-bottom: var(--space-xxl24); }
-.section-gap-lg { margin-bottom: var(--space-xxxl32); }
-.row-gap-sm { display: flex; gap: var(--space-sm8); }
-.row-gap-md { display: flex; gap: var(--space-md12); }
-
-/* ---------------- card header: عنوان + سطر فرعي رمادي + إجراءات ---------------- */
-/* الشكل الموحّد الوحيد لرأس البطاقة: .card-header مع .title/.sub/.actions —
-   استُخدمت سابقاً باسمين مختلفين (card-header-row وأسماء card-header-title/-sub/-actions)
-   حتى تصادم عاملان؛ هذا هو الاسم الباقي الآن، وCard في ui.tsx يستعمله مباشرة. */
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-md12);
-  padding: 14px 20px 10px;
-}
-.card-header .title { font-size: var(--text-heading-card); font-weight: var(--weight-heading-card); margin: 0; }
-.card-header .sub { margin: 2px 0 0; font-size: var(--text-caption-micro); color: var(--muted); }
-.card-header .actions { display: flex; align-items: center; gap: var(--space-sm8); flex: none; }
-
-/* ---------------- utility: أنماط متكررة إضافية (CashFlow وغيرها) ---------------- */
-/* زر شفاف يغلّف بطاقة KPI كاملة بلا تغيير شكلي — يفتح نافذة التفاصيل */
-.kpi-link-reset { all: unset; cursor: pointer; display: block; width: 100%; }
-/* ‏صار div بدور زر (م-٤٧) — all:unset يمحو حلقة التركيز، فمستخدم لوحة المفاتيح لا يرى أين هو */
-.kpi-link-reset:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: var(--r-card); }
-/* تسمية حقل توولبار صغيرة رمادية — 13px لا تطابق درجة في السلّم فتُركت رقماً صريحاً هنا فقط */
-.field-inline-label { font-size: 13px; color: var(--muted); }
-.callout-tight { margin-bottom: 14px; }
-.stack-sm { display: flex; flex-direction: column; gap: var(--space-md12); }
-
-/* ---------------- explain-this-number ---------------- */
-.explain-dot {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px; margin-inline-start: 4px;
-  border: 1px solid var(--hair); border-radius: 50%;
-  background: transparent; color: var(--muted);
-  font-size: 10px; line-height: 1; cursor: pointer; padding: 0;
-  vertical-align: middle;
-}
-.explain-dot:hover, .explain-dot:focus-visible {
-  border-color: var(--gold); color: var(--gold);
-}
-
-/* ---------------- tables ---------------- */
-table { width: 100%; border-collapse: collapse; font-size: var(--text-body-table); }
-/* 10px 12px: عمودي غير مطابق للسلّم عمداً — يضبط ارتفاع الصف 44px، لا يُلمس */
-th, td { padding: 10px 12px; text-align: right; }
-thead tr { background: var(--tint); }
-th { font-size: var(--text-caption-micro); color: var(--muted); font-weight: 600; white-space: nowrap; }
-tbody tr { border-top: 1px solid var(--hair); }
-tbody tr:hover { background: var(--tint); }
-td.ltr, th.ltr { text-align: left; }
-tfoot tr { background: var(--tint); font-weight: 600; }
-
-/* شارة «قريباً» في التنقل — الشاشة موجودة كإطار، وقولُ ذلك أفضل من أن يفتحها
-   المستخدم فيظنّها معطّلة. تختفي مع طيّ الشريط لأن الاسم نفسه يختفي معها. */
-.nav-soon {
-  font-size: 10px; line-height: 16px; padding: 0 6px; border-radius: var(--radius-pill);
-  background: var(--wash-gold); color: var(--gold); white-space: nowrap;
-}
-.sidebar.collapsed .nav-soon { display: none; }
-/* على البند النشط تصير الخلفية ذهبية، فالشارة الذهبية تختفي فيها — تُعكس */
-.nav-item.active .nav-soon { background: rgba(0, 0, 0, .22); color: inherit; }
-
-/* ---- قوائم الأعمدة (ترتيب + تصفية) ---- */
-/* العنوان صار عنصرين: النص وزرّ القائمة. flex يُبقيهما على سطر واحد بارتفاع الصف
-   نفسه — أي padding إضافي هنا يكسر عقد الـ44px أعلاه. */
-.th-inner { display: flex; align-items: center; gap: var(--space-xs4); justify-content: space-between; }
-th.ltr .th-inner { flex-direction: row-reverse; }
-.col-menu-wrap { position: relative; display: inline-flex; }
-.col-menu-btn {
-  border: 0; background: none; cursor: pointer; padding: 0 2px; line-height: 1;
-  font-size: 10px; color: var(--muted); border-radius: 4px; position: relative;
-}
-.col-menu-btn:hover, .col-menu-btn.open { background: var(--hair); color: var(--ink); }
-/* العمود المرتَّب أو المصفَّى يبقى ظاهراً دون فتح القائمة — وإلا صفّى المستخدم
-   عموداً ثم نسي، ورأى إجمالياً ناقصاً ظنّه الحقيقة. */
-.col-menu-btn.on { color: var(--gold); }
-.col-menu-dot {
-  position: absolute; top: -1px; inset-inline-end: -1px; width: 5px; height: 5px;
-  border-radius: 50%; background: var(--gold);
-}
-.col-menu {
-  position: fixed; z-index: 60; min-width: 190px; background: var(--card); border: 1px solid var(--hair);
-  border-radius: var(--radius-control); box-shadow: 0 10px 28px rgba(0, 0, 0, .18);
-  padding: var(--space-xs4); font-size: var(--text-body-table); font-weight: 400;
-  color: var(--ink); white-space: normal;
-}
-.col-menu-sort { display: flex; flex-direction: column; }
-.col-menu-sort button {
-  border: 0; background: none; text-align: right; cursor: pointer; color: var(--ink);
-  padding: 6px 8px; border-radius: 4px; font: inherit;
-}
-.col-menu-sort button:hover { background: var(--tint); }
-.col-menu-sort button.on { background: var(--wash-gold); color: var(--gold); font-weight: 600; }
-.col-menu-filter { border-top: 1px solid var(--hair); margin-top: var(--space-xs4); padding-top: var(--space-sm8); }
-.col-menu-filter input, .col-menu-filter select { width: 100%; }
-.col-menu-pair { display: flex; gap: var(--space-xs4); align-items: center; }
-
-/* ---- شريط شرائح التأخر (صفحة الطرف) ---- */
-/* سبع خلايا متساوية تلتف على الشاشات الضيقة. كل خلية زرّ لأنها تفعل شيئاً:
-   تصفّي الجدول أدناه — والمظهر يجب أن يَعِد بذلك قبل النقر. */
-.bucket-strip { display: flex; flex-wrap: wrap; gap: var(--space-sm8); }
-.bucket-cell {
-  flex: 1 1 118px; display: flex; flex-direction: column; gap: 2px;
-  padding: var(--space-md12); border: 1px solid var(--hair); background: var(--card);
-  border-radius: var(--radius-control); cursor: pointer; text-align: right; font: inherit;
-}
-.bucket-cell:hover:not(:disabled) { border-color: var(--gold); }
-.bucket-cell.on { border-color: var(--gold); background: var(--wash-gold); }
-/* شريحة بلا مال ليست خياراً — تُعتَّم ولا تُنقر، بدل أن تُصفّي إلى جدول فارغ */
-.bucket-cell.empty { opacity: .45; cursor: default; }
-.bucket-label { font-size: var(--text-caption-micro); font-weight: 600; color: var(--ink); }
-.bucket-days { font-size: 11px; color: var(--muted); }
-.bucket-amount { font-size: var(--text-body-table); font-weight: 600; color: var(--muted); direction: ltr; text-align: left; }
-.bucket-amount.red { color: var(--red); }
-
-/* رقم قابل للنقر داخل خلية — يبدو كالنص لا كالزر، ويكشف نفسه عند المرور.
-   يُستعمل حين يكون للرقم تفصيلٌ خلفه؛ رقمٌ نهائي لا يُلبَس هذه الفئة. */
-.link-btn {
-  border: 0; background: none; padding: 0; cursor: pointer; font: inherit;
-  color: inherit; text-align: inherit; border-radius: 4px;
-}
-.link-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
-.link-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-
-/* شريط «فلاتر نشطة» — الرقم المعروض يصف مجموعةً مصفّاة، وهذا يجب أن يُقال. */
-.filter-bar {
-  display: flex; align-items: center; gap: var(--space-sm8); flex-wrap: wrap;
-  padding: var(--space-sm8) var(--space-md12); background: var(--wash-gold);
-  border-bottom: 1px solid var(--hair); font-size: var(--text-caption-micro);
-}
-.filter-chip {
-  display: inline-flex; align-items: center; gap: var(--space-xs4);
-  background: var(--card); border: 1px solid var(--hair); border-radius: var(--radius-pill);
-  padding: 2px 8px;
-}
-.filter-chip button { border: 0; background: none; cursor: pointer; color: var(--muted); line-height: 1; }
-.filter-chip button:hover { color: var(--ink); }
-
-/* الجداول العريضة تنزلق داخل حاويتها بدل أن تلتف وتتكسّر أعمدتها.
-   A wide table scrolls inside its own box; it never reflows into stacked cells. */
-/* م-١٧: القصّ الأفقي كان صامتاً — لا شريط تمرير ظاهر ولا أي إشارة أن أعمدة
-   إضافية (مثل "آخر دفعة" أو أزرار التعديل/الحذف) مخفية خارج الإطار. تدرّج
-   عند حافة الحاوية اليسرى (بداية الجدول في RTL) يجعل وجود المزيد مرئياً
-   دائماً بدل الاعتماد على اكتشاف المستخدم للتمرير بنفسه. */
-.table-scroll {
-  overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
-  /* تقنية "ظلال التمرير" القياسية: تدرّجان يتحركان مع المحتوى (local) يخفيان
-     أنفسهما عند بلوغ الحافة + تدرّجان ثابتان بالنسبة للحاوية (scroll) يرسمان
-     الظل الفعلي. تعمل بلا JS وتختفي تلقائياً عند عدم وجود ما يُقصّ. */
-  background-repeat: no-repeat;
-  background-color: var(--card);
-  background-image:
-    linear-gradient(to right, var(--card) 30%, transparent),
-    linear-gradient(to left, var(--card) 30%, transparent),
-    radial-gradient(farthest-side at 0 50%, rgba(0,0,0,.16), rgba(0,0,0,0)),
-    radial-gradient(farthest-side at 100% 50%, rgba(0,0,0,.16), rgba(0,0,0,0));
-  background-position: 0 0, 100% 0, 0 0, 100% 0;
-  background-size: 32px 100%, 32px 100%, 14px 100%, 14px 100%;
-  background-attachment: local, local, scroll, scroll;
-}
-.table-scroll > table { min-width: var(--table-min, 760px); }
-.table-scroll.wide > table { --table-min: 1040px; }
-/* اسم الطرف هو مرساة الصف — يحجز عرضاً لا ينزل عنه مهما ازدحمت الأعمدة، وإلا
-   انكسر إلى كلمة في كل سطر فطال الصف وضاع مسحُ العين للعمود. */
-td.party, th.party { min-width: 210px; white-space: normal; }
-/* خلايا الأرقام لا تلتف أبداً — سطر ملفوف يُزحزح الصف كله عن عناوينه */
-td.num, td.nowrap, th { white-space: nowrap; }
-
-/* ---------------- bits ---------------- */
-/* شارة واحدة بمقاس واحد — الارتفاع ثابت مهما كان المحتوى «✓» أو جملة كاملة */
-.pill {
-  display: inline-block; font-size: 11px; line-height: 18px; padding: 0 9px;
-  border-radius: 99px; background: var(--tint); color: var(--ink);
-  white-space: nowrap; vertical-align: middle;
-  /* بلا هذا يُسقط محرك الطباعة (printToPDF) خلفية الشارات فتخرج بلا لون على
-     الورق — نفس السبب الذي جعل .badge يحملها من قبل. */
-  print-color-adjust: exact; -webkit-print-color-adjust: exact;
-}
-.pill.red { background: var(--wash-red); color: var(--red); }
-.pill.gold { background: var(--wash-gold); color: var(--bronze); }
-.pill.ok { background: var(--wash-ok); color: var(--ok); }
-.pill.warn { background: var(--wash-gold); color: var(--bronze); }
-/* وسم الطرف — كل صفّ يقول لمن هو: مورد أم مقاول */
-.pill.party { font-size: 10px; line-height: 16px; padding: 0 7px; margin-inline-start: 6px; }
-.pill.party.supplier { background: var(--wash-gold); color: var(--bronze); }
-.pill.party.contractor { background: var(--wash-ok); color: var(--ok); }
-
-/* زرّ واحد لكل الأشكال — و«a.btn» يجب أن يفقد لون الرابط وتسطيره وإلا بدا نصاً أزرق داخل إطار.
-   One button for every shape; an <a class="btn"> must shed link colour/underline. */
-.btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  font: inherit; font-size: 13px; line-height: 1.4; padding: 9px 18px;
-  border-radius: var(--r-control);
-  border: 1px solid var(--hair); background: transparent; color: var(--ink);
-  cursor: pointer; text-decoration: none; white-space: nowrap;
-  transition: background var(--motion-fast) var(--ease-base),
-              border-color var(--motion-fast) var(--ease-base),
-              color var(--motion-fast) var(--ease-base);
-}
-a.btn, a.btn:hover { color: var(--ink); text-decoration: none; }
-.btn:hover:not(:disabled) { border-color: var(--gold); background: var(--wash-gold); }
-.btn.primary { background: var(--gold); border-color: var(--gold); color: #fff; }
-.btn.primary:hover:not(:disabled) { background: var(--bronze); border-color: var(--bronze); color: #fff; }
-/* الزر الخطر — الحذف النهائي لا يجوز أن يرتدي لون الإجراء الأساسي الذهبي */
-.btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
-.btn.danger:hover:not(:disabled) { filter: brightness(1.08); background: var(--red); border-color: var(--red); }
-/* زر مصغّر داخل صفوف الجداول والبطاقات — كان يُكرَّر كأسلوب سطري في خمس شاشات */
-.btn.sm { padding: 4px 9px; font-size: 12px; }
-.btn:disabled { opacity: .45; cursor: not-allowed; }
-
-input, select, textarea {
-  font: inherit; font-size: 13px; padding: 8px 12px;
-  border: 1px solid var(--hair); border-radius: var(--r-control);
-  background: var(--card); color: var(--ink);
-}
-textarea { width: 100%; resize: vertical; line-height: 1.8; padding: 10px 12px; }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 2px var(--wash-gold); }
-input:disabled, select:disabled, textarea:disabled { opacity: .55; cursor: not-allowed; }
-input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); }
-
-.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-.toolbar .count { font-size: 12px; color: var(--muted); margin-right: auto; }
-
-/* التنبيه: إطار + طبقة لون خفيفة، والنص يبقى بلون الحبر ليُقرأ في الوضعين.
-   نصّ ملوّن بالكامل على خلفية داكنة كان يهبط تحت حدّ التباين. */
-.callout {
-  padding: 12px 16px; border-radius: 8px; border: 1px solid var(--hair);
-  font-size: 13px; color: var(--ink); line-height: 1.7;
-}
-.callout.ok { border-color: var(--ok); background: var(--wash-ok); }
-.callout.bad { border-color: var(--red); background: var(--wash-red); }
-.callout.warn { border-color: var(--gold); background: var(--wash-gold); }
-.callout.note { border-color: var(--hair); background: var(--surface-2); }
-/* السطر الأول من التنبيه يحمل لون حالته — إشارة اللون بلا فقدان القراءة */
-.callout.ok > b:first-child, .callout.ok .lede { color: var(--ok); }
-.callout.bad > b:first-child, .callout.bad .lede { color: var(--red); }
-
-/* صفّ التنبيهات في لوحة القيادة — عمودان على الشاشات العريضة بدل ستة أشرطة
-   تبتلع الطية الأولى قبل أن يرى المستخدم رقماً واحداً. */
-.alerts { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 18px; }
-@media (min-width: 1180px) { .alerts { grid-template-columns: 1fr 1fr; } }
-
-/* جسم البطاقة — كان يُكتب كأسلوب سطري بثلاث قيم مختلفة عبر الشاشات */
-.card-body { padding: 0 20px 16px; }
-.card-body.top { padding-top: 14px; }
-.card-body.flow { display: flex; flex-direction: column; gap: 12px; }
-
-/* كتلة نتيجة الذكاء الاصطناعي — سطح داخلي لا بطاقة داخل بطاقة.
-   AiBlock used to render a .card inside a .card: doubled border and mismatched padding. */
-.ai-block {
-  background: var(--surface-2); border: 1px solid var(--hair);
-  border-radius: var(--r-control); padding: 14px 16px;
-}
-.ai-block > :first-child { margin-top: 0; }
-.ai-block > :last-child { margin-bottom: 0; }
-.ai-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
-/* نص المساعد قد يخلط عربية بلاتينية — سطر قصير واتجاه تلقائي يمنع القفز */
-.ai-text {
-  margin: 0; white-space: pre-wrap; overflow-wrap: anywhere;
-  max-width: 74ch; line-height: 1.9; unicode-bidi: plaintext;
-}
-.ai-sql {
-  font-size: 11px; white-space: pre-wrap; direction: ltr; text-align: left;
-  margin: 8px 0 0; padding: 8px 10px; border-radius: var(--r-control);
-  background: var(--surface-2); border: 1px solid var(--hair); overflow-x: auto;
-}
-details > summary { cursor: pointer; font-size: 12px; color: var(--muted); }
-details > summary:hover { color: var(--ink); }
-
-.state { padding: 60px 20px; text-align: center; color: var(--muted); font-size: 14px; }
-.red { color: var(--red); }
-.ok { color: var(--ok); }
-.gold { color: var(--bronze); }
-.muted { color: var(--muted); }
-.stack { display: flex; flex-direction: column; gap: 18px; }
-.two { display: grid; grid-template-columns: 1fr 380px; gap: 14px; align-items: start; }
-.dropzone {
-  border: 1.5px dashed var(--gold); border-radius: var(--r-card);
-  background: var(--card); padding: 34px; text-align: center; cursor: pointer;
-}
-.dropzone:hover { background: var(--tint); }
-.bars { display: flex; gap: 10px; align-items: flex-end; height: 200px; padding: 0 20px 16px; }
-.bars .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; justify-content: flex-end; }
-.bars .bar { width: 100%; border-radius: 4px; min-height: 6px; }
-.age-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
-
-/* ---------------- التقرير التحليلي (A4) ---------------- */
-.sheet {
-  background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-card);
-  padding: 48px 56px; max-width: 900px; margin: 0 auto;
-}
-.rpt-head { display: flex; justify-content: flex-start; }
-.rpt-head b { display: block; font-size: 16px; }
-.rpt-head span { font-size: 11px; color: var(--muted); }
-.rule-ink { border: 0; border-top: 1.5px solid var(--ink); margin: 10px 0 18px; }
-hr { border: 0; border-top: 1px solid var(--hair); margin: 16px 0; }
-.rpt-title { font-size: 26px; margin: 0; letter-spacing: -0.6px; }
-.rpt-sub { margin: 4px 0 16px; font-size: 13px; color: var(--muted); }
-.rpt-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.rpt-meta span { display: block; font-size: 10px; color: var(--muted); }
-.rpt-meta b { font-size: 12px; font-weight: 600; }
-.rpt-section { margin: 22px 0 10px; }
-.rpt-section > div { display: flex; align-items: center; gap: 8px; }
-.rpt-section b { font-size: 15px; }
-.rpt-section p { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
-.badge { background: var(--gold); color: #fff; print-color-adjust: exact; -webkit-print-color-adjust: exact; font-size: 10px; padding: 2px 7px; border-radius: 4px; }
-.rpt-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
-.rpt-kpi { border: 1px solid var(--hair); padding: 12px; }
-.rpt-kpi span { display: block; font-size: 10px; color: var(--muted); }
-.rpt-kpi b { font-size: 18px; display: block; margin-top: 2px; }
-.rpt-kpi i { font-size: 10px; color: var(--muted); font-style: normal; }
-.rpt-lede { font-size: 13px; line-height: 1.9; }
-.rpt-table { font-size: 12px; border-collapse: collapse; width: 100%; }
-.rpt-table th, .rpt-table td { padding: 7px 8px; }
-/* رأس الجدول بلون العلامة بدل أسود مسطّح على أبيض — نفس ذهبي الهوية،
-   وprint-color-adjust يضمن ظهوره في PDF لا اختفاءه كما تفعل المتصفحات أحياناً
-   عند الطباعة الافتراضية. */
-.rpt-table thead th {
-  background: var(--gold); color: #fff; font-weight: 600; text-align: right;
-  border-bottom: 2px solid var(--bronze);
-  print-color-adjust: exact; -webkit-print-color-adjust: exact;
-}
-.rpt-table thead th.ltr { text-align: left; }
-/* صفوف مخطَّطة — عمود طويل من الأرقام يصعب متابعته سطراً سطراً بلا تمييز */
-.rpt-table tbody tr:nth-child(even) { background: var(--wash-gold); }
-.rpt-table tbody tr { border-bottom: 1px solid var(--hair); }
-.rpt-table tfoot tr {
-  background: var(--ink); color: #fff; font-weight: 700;
-  print-color-adjust: exact; -webkit-print-color-adjust: exact;
-}
-.rpt-table tfoot td { padding: 9px 8px; }
-/* شريط ذهبي أسفل ترويسة الوثيقة — لمسة هوية بصرية بدل خط رفيع محايد */
-.rpt-head { border-bottom: 3px solid var(--gold); padding-bottom: 12px; }
-
-/* جدول الورقة المطبوعة ينكمش ليسع عرض الصفحة بدل أن يفيض عنها.
-   الورق لا يُمرَّر أفقياً: أي عمود يتجاوز حدّ الصفحة لا يُقرأ أبداً — وعمودا
-   المال هما آخر ما يجوز فقده في وثيقة يُبنى عليها قرار سداد. */
-.print-table-wrap { width: 100%; }
-.print-table-wrap > .rpt-table { width: 100%; min-width: 0; table-layout: auto; }
-/* اسم المورد يلتف على أسطر بدل أن يفرض عرضاً يزيح بقية الأعمدة */
-.print-table-wrap .rpt-table td:first-child,
-.print-table-wrap .rpt-table th:first-child { white-space: normal; word-break: break-word; }
-/* خلايا الأرقام تبقى بلا التفاف حتى لا ينكسر الرقم على سطرين */
-.print-table-wrap .rpt-table td.num, .print-table-wrap .rpt-table th.ltr { white-space: nowrap; }
-.rpt-notes > div { margin-bottom: 8px; }
-.rpt-notes b { font-size: 12px; display: block; }
-.rpt-notes p { margin: 1px 0 0; font-size: 12px; color: var(--muted); }
-.rpt-foot { margin-top: 28px; }
-.rpt-foot .signs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
-.rpt-foot .signs div { border-top: 1px solid var(--hair); padding-top: 6px; font-size: 10px; color: var(--muted); }
-.rpt-foot .muted { font-size: 10px; margin-top: 10px; }
-
-@media print {
-  .sidebar, .no-print, .explain-dot { display: none !important; }
-  .main { padding: 0; overflow: visible; }
-  .sheet { border: 0; border-radius: 0; padding: 0; max-width: none; }
-  body { background: #fff; }
-  /* .table-scroll.wide يفرض min-width: 1040px للتمرير الأفقي على الشاشة — في
-     الطباعة لا تمرير، فأي عرض أدنى يتجاوز عرض الصفحة يُقصّ صامتاً بدل أن يظهر
-     خطأ. الجدول يجب أن يتقلّص ليملأ عرض الصفحة الفعلي، عمودياً كان أو أفقياً. */
-  .sheet .table-scroll { overflow: visible !important; }
-  .sheet .table-scroll > table { min-width: 0 !important; }
-  /* A4 عمودي (الوضع الافتراضي) أضيق بكثير من الأفقي — ستة أعمدة موردين أو خمسة
-     أعمدة مقاولين تحتاج خطاً وحشوة أدق كي لا تتزاحم الأعمدة، ويظل توزيع العرض
-     ثابتاً (table-layout: fixed) بدل أن يتمدد عمود الاسم فيضغط أعمدة المديونية/
-     التأخر/الرصيد — وهي أرقام هذه الورقة الأساسية ولا يجوز أن تُقصّ. */
-  .sheet:not(.print-landscape) .rpt-table { font-size: 10.5px; table-layout: fixed; }
-  .sheet:not(.print-landscape) .rpt-table th,
-  .sheet:not(.print-landscape) .rpt-table td {
-    padding: 5px 4px; overflow-wrap: break-word;
-  }
-  /* بلا هذا كان Chromium يقطع صفّاً في منتصفه عند حدّ الصفحة — نصف اسم مورد في
-     أسفل صفحة ونصفه الثاني أعلى التالية، أو رقم مديونية يُقصّ عمودياً فيبدو
-     غير مكتمل رغم أن البيانات كاملة في الـDOM (تأكَّد بمقارنة عدد صفوف Excel
-     المصدَّر — ١٠٣ صفاً كاملة — بنفس القائمة). كل صفّ يبقى وحدة واحدة تُدفع
-     كاملة إلى الصفحة التالية بدل أن تُشطر. */
-  .rpt-table tr { break-inside: avoid; page-break-inside: avoid; }
-  /* الرأس يتكرر أعلى كل صفحة تلقائياً — thead هو ما يتيح لـChromium ذلك؛
-     دفعه صراحةً يمنع أي قاعدة أخرى من كسر هذا السلوك الافتراضي. */
-  .rpt-table thead { display: table-header-group; }
-  .rpt-table tfoot { display: table-row-group; }
-}
-/* حجم الصفحة يُحدَّد بالعنصر لا بترتيب القواعد. Chromium (الذي يعتمد عليه
-   printToPDF) يجمع كل قواعد @page عالمياً بصرف النظر عن الفئة المحيطة بها —
-   فقاعدتان مختلفتان لحجم الصفحة كانتا تتنازعان، والفائزة تعتمد على ترتيب
-   التعريف لا على الحالة الفعلية وقت التصدير. الصفحات المسمّاة تحسم هذا:
-   العنصر الذي يحمل .print-landscape يستدعي صفحته الخاصة صراحة. */
-@page { size: A4; margin: 16mm; }
-@page rpt-landscape { size: A4 landscape; margin: 12mm; }
-.print-landscape { page: rpt-landscape; }
-
-/* ---------------- وضع العرض (ملء الشاشة) ---------------- */
-.present {
-  position: fixed; inset: 0; z-index: 200;
-  background: var(--bg); display: flex; flex-direction: column;
-}
-.present-bar {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 20px; border-bottom: 1px solid var(--hair); background: var(--card);
-}
-.present-bar .grow { flex: 1; }
-.present-count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; direction: ltr; }
-.present-stage { flex: 1; display: flex; align-items: center; justify-content: center; padding: 28px; overflow: auto; }
-
-.present-slide {
-  width: 100%; max-width: 1180px;
-  background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-card);
-  padding: 40px 48px; display: flex; flex-direction: column; gap: 22px;
-}
-.present-slide header h1 { font-size: 32px; margin: 0; letter-spacing: -0.8px; }
-.present-slide header p { margin: 6px 0 0; font-size: 15px; color: var(--muted); }
-.present-slide footer {
-  display: flex; justify-content: space-between; align-items: center;
-  border-top: 1px solid var(--hair); padding-top: 12px;
-  font-size: 11px; color: var(--muted);
-}
-.present-slide { min-width: 0; overflow: hidden; }
-.present-body { flex: 1; min-width: 0; }
-
-/* الشرائح كبيرة عمداً — تُقرأ من آخر الغرفة.
-   لكن «كبير» لا يعني «خارج الشريحة»: البطاقات تلتف والأرقام تتقلّص لتبقى داخل الورقة. */
-/* 1.75vw: a 13-digit amount (43,312,712.98) must fit a 4-across card on one line
-   at 1500px — 2.3vw wrapped its last digit to a second row. */
-.present-body .kpi .value { font-size: clamp(16px, 1.75vw, 32px); }
-.present-body .kpi .label { font-size: 14px; }
-.present-body table { font-size: 15px; }
-.present-body th { font-size: 13px; }
-.present-body .bars { height: 260px; }
-.present-body .table-scroll > table { --table-min: 0px; }
-
-/* صفّ مؤشرات الشريحة — يلتف تلقائياً بدل أن تخرج آخر بطاقة من الورقة البيضاء */
-.slide-kpis {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 14px;
-}
-.slide-kpis > .kpi { min-width: 0; }
-.slide-kpis .value, .slide-kpis .label, .slide-kpis .unit { min-width: 0; overflow-wrap: anywhere; }
-/* أي صفّ مؤشرات ورثه العرض من الشاشات — يخضع لنفس القاعدة */
-.present-body .kpi-row { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)) !important; }
-.present-body .kpi { min-width: 0; }
-
-.present-print-only { display: none; }
-
-@media print {
-  /* التصدير يطبع كل الشرائح، شريحة لكل صفحة أفقية */
-  .present-bar, .present-stage { display: none !important; }
-  .present-print-only { display: block !important; }
-  .present { position: static; }
-  .print-slide {
-    break-after: page; page-break-after: always;
-    border: 0; border-radius: 0; min-height: 92vh;
-  }
-  .print-slide:last-child { break-after: auto; page-break-after: auto; }
-  /* في الطباعة لا وجود لـ vw موثوق — نثبّت مقاساً يسع الصفحة الأفقية */
-  .print-slide { overflow: hidden; }
-  .print-slide .slide-kpis,
-  .print-slide .kpi-row {
-    display: grid !important;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
-    gap: 10px !important;
-  }
-  .print-slide .kpi { min-width: 0; padding: 10px 12px; }
-  /* م-٤٣: !important هنا لأن `.present-body .kpi .value` (نفس التخصيص: ٣ فئات)
-     يضبط `font-size: clamp(...vw...)`، وهذه القاعدة داخل @media print. الطباعة
-     لا vw موثوقاً فيها (مشروح أعلاه)، فيجب أن تفوز هذه القيمة الثابتة بصرف
-     النظر عن ترتيب القواعد — لا نص السلّم (20/11px) يطابق --text-* بدقة، فتُركا
-     كرقمين خامّين موثَّقين بدل نقلهما لمتغيّر تقريبي يُغيّر مقاس شرائح الطباعة. */
-  .print-slide .kpi .value { font-size: 20px !important; letter-spacing: -0.4px; overflow-wrap: anywhere; }
-  .print-slide .kpi .label { font-size: 11px !important; }
-  .print-slide .table-scroll { overflow: visible !important; }
-  .print-slide .table-scroll > table { min-width: 0 !important; }
-  html.presenting .sidebar, html.presenting .main > *:not(.present) { display: none !important; }
-}
-
-/* ---------------- حالات الفراغ (Empty/State) ---------------- */
-.empty-state {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  padding: 44px 32px; text-align: center;
-}
-.empty-icon { font-size: 30px; line-height: 1; margin-bottom: 4px; }
-.empty-icon.gold { color: var(--gold); }
-.empty-icon.muted { color: var(--muted); }
-.empty-icon.ok { color: var(--ok); }
-/* م-٧: ErrorState صارت تستعمل هيكل empty-state نفسه — تحتاج لوناً أحمر للأيقونة لم يكن معرَّفاً */
-.empty-icon.red { color: var(--red); }
-.empty-title { font-size: 16px; font-weight: 600; color: var(--ink); }
-.empty-body { font-size: 13px; color: var(--muted); max-width: 380px; margin-bottom: 6px; }
-
-/* ---------------- كثافة حبر الجدول المتدرّجة (Table/Row) ---------------- */
-/* الاستثناء يصرخ والباقي يصمت — شريط الحافة يحمل الحالة دون إغراق الصف باللون. */
-/* الشريط يُعلَّق على أول خلية لا على الصف نفسه: العنصر الزائف على <tr> يُلفّ في
-   خلية مجهولة فيُزحزح كل خلايا الصف عموداً كاملاً عن عناوينها.
-   A ::before on a <tr> gets wrapped in an anonymous table-cell — it steals a
-   column and shifts every real cell in that row off its header. */
-tbody tr.row-overdue { background: var(--row-critical, transparent); }
-tbody tr.row-overdue > td:first-child,
-tbody tr.row-due-soon > td:first-child { position: relative; }
-tbody tr.row-overdue > td:first-child::before {
-  content: ''; position: absolute; inset-inline-start: 0; top: 0; bottom: 0;
-  width: 3px; background: var(--red);
-}
-tbody tr.row-due-soon { background: var(--row-decision, transparent); }
-tbody tr.row-due-soon > td:first-child::before {
-  content: ''; position: absolute; inset-inline-start: 0; top: 0; bottom: 0;
-  width: 3px; background: var(--gold);
-}
-/* الصف المسدَّد يهدأ ولا يختفي — 0.55 كانت تُنزل نصّه تحت حدّ التباين في الوضع الليلي */
-tbody tr.row-settled { opacity: 0.72; }
-tbody tr.row-settled:hover { opacity: 1; }
-
-/* ---------------- المقاولون ---------------- */
-/* شرائح المشاريع — تلتف على أكثر من سطر عند الازدحام */
-.chip-row { display: flex; flex-wrap: wrap; gap: 4px; }
-.chip {
-  display: inline-block; font-size: 11px; padding: 1px 8px;
-  border-radius: 99px; background: var(--tint); color: var(--muted);
-  white-space: nowrap;
-}
-/* وسم اتجاه الرصيد: «له» / «لنا» / «متوازن» */
-.balance-tag { font-size: 11px; }
-/* نقطة ذهبية — ضمان يقترب أو استحق صرفه */
-.release-dot {
-  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-  background: var(--gold); margin-inline-start: 6px; vertical-align: middle;
-}
-/* بطاقات المشاريع في كشف المقاول — الضغط يصفّي الدفتر */
-.project-cards {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px; margin-bottom: 18px;
-}
-.project-card {
-  font: inherit; text-align: right; cursor: pointer;
-  background: var(--card); border: 1px solid var(--hair);
-  border-radius: var(--r-card); padding: 12px 14px;
-  display: flex; flex-direction: column; gap: 2px; color: var(--ink);
-}
-.project-card:hover { border-color: var(--gold); }
-.project-card.active { border-color: var(--gold); background: var(--tint); }
-.project-card .pc-name { font-size: 13px; font-weight: 600; }
-.project-card .pc-balance { font-size: 17px; font-weight: 700; }
-.project-card .pc-balance small { font-size: 11px; font-weight: 400; }
-.project-card .pc-count { font-size: 11px; }
-/* شبكة بطاقات الضمانات */
-.guarantee-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px; padding: 14px 20px 18px;
-}
-.guarantee-card {
-  border: 1px solid var(--hair); border-radius: var(--r-card);
-  padding: 14px; display: flex; flex-direction: column; gap: 8px;
-}
-
-:root {
-  --row-critical: rgba(192, 39, 26, 0.05);
-  --row-decision: rgba(217, 148, 60, 0.06);
-}
-:root[data-theme="dark"] {
-  --row-critical: rgba(224, 85, 74, 0.10);
-  --row-decision: rgba(217, 148, 60, 0.10);
-}
-
-/* ==================== وثيقة الموازنة (Budget.tsx) — كتلة مضافة، لا تعدَّل خارج صفحة الموازنة ==================== */
-.budget-doc-project { margin-bottom: 26px; }
-.budget-doc-bar {
-  display: flex; align-items: center; gap: 10px; font-size: 11px; margin-bottom: 5px;
-}
-.budget-doc-bar > span:first-child { width: 52px; flex: 0 0 52px; color: var(--muted); }
-.budget-doc-bar .track {
-  flex: 1; background: var(--tint); border-radius: 4px; height: 12px; overflow: hidden;
-}
-.budget-doc-bar .fill { height: 100%; background: var(--hair); border-radius: 4px; }
-.budget-doc-bar .fill.gold { background: var(--gold); }
-.budget-doc-bar .amount { flex: 0 0 auto; min-width: 110px; white-space: nowrap; text-align: left; direction: ltr; }
-
-@media print {
-  /* الوثيقة فقط — القسم الواحد لا ينقسم على صفحتين، والجداول لا تفيض */
-  .budget-doc-project { break-inside: avoid; page-break-inside: avoid; }
-  .budget-doc table { width: 100%; table-layout: fixed; font-size: 10px; }
-  .budget-doc table td, .budget-doc table th { overflow-wrap: anywhere; }
-  .budget-doc .rpt-kpis { grid-template-columns: repeat(5, 1fr) !important; gap: 6px; }
-  .budget-doc .rpt-kpi b { font-size: 13px; }
-  /* الأشرطة تُطبع بألوانها */
-  .budget-doc-bar .fill { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-}
-/* ==================== نهاية كتلة وثيقة الموازنة ==================== */
-
-/* ==================== نافذة منبثقة موحّدة ==================== */
-/* كل النوافذ ترث نفس العرض والحشو وترتيب الأزرار — كانت تُبنى بأساليب سطرية متفرقة. */
-.modal-scrim {
-  position: fixed; inset: 0; z-index: 1000;
-  background: var(--overlay);
-  display: flex; align-items: center; justify-content: center;
-  padding: 24px;
-}
-.modal-box {
-  background: var(--card); color: var(--ink);
-  border: 1px solid var(--hair); border-radius: var(--r-card);
-  padding: 22px 24px; width: 100%; max-height: 88vh; overflow-y: auto;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, .22);
-}
-.modal-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-.modal-head h2 { font-size: var(--text-heading-section); margin: 0; flex: 1; }
-.modal-box > :last-child { margin-bottom: 0; }
-/* ترتيب واحد في كل النوافذ: الإلغاء ثم الإجراء الأساسي، مصفوفَين لجهة النهاية */
-.modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-.modal-foot.split { justify-content: space-between; }
-.modal-foot .group { display: flex; gap: 8px; }
-
-/* صفّ الحقول في النماذج — بديل التكرار السطري */
-.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.field-grid.three { grid-template-columns: 1fr 1fr 1fr; }
-.form-stack { display: flex; flex-direction: column; gap: 12px; }
-@media (max-width: 620px) {
-  .field-grid, .field-grid.three { grid-template-columns: 1fr; }
-}
-
-/* ==================== الطباعة ==================== */
-/* الوثيقة المطبوعة تُقرأ دائماً بحبر داكن على ورق أبيض، حتى لو كانت الشاشة ليلية */
-@media print {
-  :root, :root[data-theme="dark"] {
-    --bg: #FFFFFF; --card: #FFFFFF; --ink: #211D16; --muted: #6B665B;
-    --hair: #CFC9BE; --tint: #EFE1CB; --surface-2: #F5F2EC;
-    --red: #C0271A; --ok: #2E7D32; --link: #211D16;
-    color-scheme: light;
-  }
-  /* عناصر التحكم لا تُطبع؛ نص الملاحظات يُطبع كنص لا كصندوق إدخال */
-  .no-print-controls .no-print { display: none !important; }
-  .no-print-controls textarea {
-    border: 0; padding: 0; resize: none; background: transparent;
-    height: auto; overflow: visible; font-size: 12px;
-  }
-  .no-print-controls textarea:placeholder-shown { display: none; }
-  .btn, .toolbar { display: none !important; }
-}
-
-/* ==================== قصّ الأسماء الطويلة ==================== */
-/* أسماء المقاولين والملفات طويلة — تُقصّ بثلاث نقاط بدل أن تدفع بقية الأعمدة خارج الجدول.
-   Long names get an ellipsis instead of shoving the rest of the row off the table. */
-.truncate {
-  max-width: 260px; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap;
-}
-td.truncate { max-width: 260px; }
-
-/* اسم الطرف في صفوف الجداول لا يتجاوز عرضاً معقولاً */
-tbody td > a { overflow-wrap: anywhere; }
-
-/* ==================== أنماط سطرية مشتركة (Track B — استبدال style={{}} المتكرر) ==================== */
-/* تسمية حقل نموذج داخل شريط أدوات — كانت تتكرر سطرياً بنفس المقاس واللون في خمس شاشات على الأقل */
-.field-inline { font-size: var(--text-body-emphasis); color: var(--muted); }
-/* زرّ يخلع كل مظهر الزر ليصبح غلافاً شفافاً لعنصر آخر (بطاقة مؤشر قابلة للنقر مثلاً) */
-.btn-reset { all: unset; cursor: pointer; }
-.btn-reset.block { display: block; width: 100%; }
-/* هامش سفلي موحّد بين كتل الصفحة (تنبيهات/أقسام) — يستبدل قيماً حرة متفرقة مثل 14px */
-.mb-section { margin-bottom: var(--space-lg16); }
-/* هامش علوي موحّد بين كتل الصفحة — كان يتكرر كـ marginTop: 18 سطرياً في أكثر من شاشة */
-.mt-section { margin-top: var(--space-lg16); }
-/* فقرة توضيحية صغيرة تحت جدول أو بطاقة */
-.text-note { font-size: var(--text-caption-micro); color: var(--muted); line-height: 1.7; }
-/* عمود عناصر بفجوة متوسطة — بديل تكرار display:flex;flex-direction:column;gap
-   (مطابق تماماً لـ .stack-sm أعلاه؛ أُبقي على .stack-sm وحُذف هذا الاسم المكرر) */
-/* ---------------- تراتب مؤشرات الأداء (KPI hierarchy) ---------------- */
-/* رقم واحد "بطل" لكل شاشة بحجم أكبر — يُطبَّق عبر Kpi({hero:true}) في ui.tsx الذي
-   يضيف .text-figure مباشرة على .value؛ لا حاجة لمسار ثانٍ عبر .kpi.hero أو .kpi-value-hero
-   (كانا بلا استخدام فعلي في أي صفحة — أُزيلا هنا). */
-
-/* مربّع دلالة الألوان في مخطط التدفق — يتكرر ثلاث مرات بلون مختلف فقط،
-   فاللون يبقى داخل السطر والشكل ينتقل إلى هنا. */
-.legend-swatch {
-  display: inline-block;
-  width: 10px; height: 10px;
-  border-radius: 2px;
-  margin-inline-end: var(--space-xs4);
+/* ═══ رموز «أرخبيل» — المصدر الوحيد للون والمسافة والخط والحركة ═══
+ * منقولة حرفياً من النموذج المعتمد docs/next/prototype/styles.css (أسطر ٣–٦٠).
+ * لا لون أو مسافة خارج هذا الملف (CLAUDE.md §٤). الوضع الداكن: data-theme="dark" على
+ * <html>، أو تفضيل النظام حين لا يوجد data-theme (الإعداد «تلقائي»).
+ */
+:root{
+  --brand-ink:#242A36;
+  --brand-gold:#D9943C;--brand-gold-hover:#C8842E;--brand-bronze:#8F5E1D;--on-gold:#1E2430;
+  --canvas:#F5F4F1;--surface-1:#FFFFFF;--surface-2:#F9F8F6;--surface-3:#EFEDE8;--surface-sunken:#E9E6E0;
+  --surface-glass:rgba(27,32,43,.88);--overlay:rgba(20,24,33,.42);
+  --text-1:#1E2430;--text-2:#4E5563;--text-3:#686F7E;--text-link:#8F5E1D;
+  --border-1:#E4E2DC;--border-2:#D3D0C8;--divider:#EEECE7;
+  --danger-fg:#B3261E;--danger-bg:#FBEAE8;--danger-solid:#D93A2F;
+  --warn-fg:#8A5300;--warn-bg:#FDF1DC;--warn-solid:#E5A33B;
+  --ok-fg:#1F6B35;--ok-bg:#E7F4EA;--ok-solid:#2F9E52;
+  --info-fg:#1F5A8A;--info-bg:#E6F0F8;--info-solid:#3A7FC1;
+  --neutral-bg:#EFEDE8;
+  --chart-1:#D9943C;--chart-2:#3E5A86;--chart-3:#4E9A7A;--chart-4:#B5553C;--chart-grid:#ECEAE5;--chart-axis:#686F7E;--chart-neg:#D93A2F;
+  --sidebar-bg:#1B202B;--sidebar-fg:#C9CED8;--sidebar-section:#7F8796;--sidebar-hover:rgba(255,255,255,.06);
+  --sidebar-active-bg:rgba(217,148,60,.14);--sidebar-active-fg:#F2C27F;--sidebar-rule:rgba(255,255,255,.07);
+  --font:"Cairo","SF Arabic","Segoe UI",Tahoma,sans-serif;
+  --r-control:8px;--r-card:14px;--r-island:20px;--r-pill:999px;
+  --e-1:0 1px 2px rgba(20,24,33,.04),0 1px 1px rgba(20,24,33,.03);
+  --e-2:0 4px 12px -2px rgba(20,24,33,.08),0 2px 4px rgba(20,24,33,.04);
+  --e-3:0 24px 48px -12px rgba(20,24,33,.22),0 8px 16px -8px rgba(20,24,33,.10);
+  --e-island:0 10px 30px -6px rgba(0,0,0,.35),inset 0 0 0 1px rgba(255,255,255,.08);
+  --d-instant:80ms;--d-fast:140ms;--d-base:220ms;--d-slow:320ms;--d-count:700ms;--d-chart:900ms;--d-flash:1600ms;--stagger:40ms;
+  --ease-out:cubic-bezier(.22,1,.36,1);--ease-in:cubic-bezier(.4,0,1,1);--ease-inout:cubic-bezier(.65,0,.35,1);
+  --ease-spring:linear(0,.009,.035 2.1%,.141 4.4%,.723 12.9%,.938 16.7%,1.017 19.4%,1.067,1.089 26.6%,1.085 29.4%,1.026 38.3%,1.004 42.8%,.994 50%,1);
+  --d-spring:480ms;
+
+  /* ─ سلّم المسافات ٤/٨ — لا قيمة أخرى ─ */
+  --s-1:4px;--s-2:8px;--s-3:12px;--s-4:16px;--s-5:20px;--s-6:24px;--s-8:32px;--s-10:40px;--s-12:48px;--s-16:64px;
+
+  /* ─ الطباعة: ٤ أدوار نص + ٣ أرقام (DESIGN-DIRECTION §٣.٢) — قيم لـ font: المختصرة ─ */
+  --t-title:600 22px/30px var(--font);
+  --t-heading:600 15px/22px var(--font);
+  --t-body:400 14px/22px var(--font);
+  --t-caption:500 12px/16px var(--font);
+  --n-hero:700 40px/48px var(--font);
+  --n-kpi:700 26px/34px var(--font);
+  --n-inline:600 14px/22px var(--font);
+
+  /* ─ الهيكل ─ */
+  --side-w:248px;--side-w-collapsed:72px;--dock-h:72px;--content-max:1360px;
+  --h-row-comfy:48px;--h-row-compact:36px;--h-control:36px;--h-control-sm:28px;--h-field:40px;
+  --focus-ring:0 0 0 3px rgba(217,148,60,.22);
+  --brand-bronze-on-glass:#E3B071;--on-glass:#F4EBDD;--on-glass-dim:rgba(244,235,221,.62);
+  --ease-press:cubic-bezier(.4,0,.2,1);
+
+  /* ═══ أسماء مستعارة للصفحات القديمة (pages/**) — تُحذف مع legacy.css ═══
+     القديم كان يقرأ هذه الأسماء؛ ربطها برموز أرخبيل يمنحه اللوحة الجديدة والوضع الداكن. */
+  --gold:var(--brand-gold);--bronze:var(--brand-bronze);--tint:var(--surface-3);--ink:var(--text-1);
+  --muted:var(--text-3);--hair:var(--border-1);--red:var(--danger-fg);--ok:var(--ok-fg);--warn:var(--warn-solid);
+  --bg:var(--canvas);--card:var(--surface-1);--link:var(--text-link);--link-hover:var(--brand-gold-hover);
+  --wash-red:var(--danger-bg);--wash-ok:var(--ok-bg);--wash-gold:rgba(217,148,60,.14);
+  --sidebar-fg-strong:#FFFFFF;--sidebar-hover-strong:rgba(255,255,255,.16);
+  --radius-control:var(--r-control);--radius-card:var(--r-card);--radius-pill:var(--r-pill);
+  --sidebar:var(--side-w);--sidebar-w:248px;--sidebar-w-collapsed:72px;
+  --motion-base:280ms;--motion-fast:120ms;--ease-base:cubic-bezier(0.4,0,0.2,1);
+  --row-critical:rgba(192,39,26,.05);--row-decision:rgba(217,148,60,.06);
+  --space-xs4:4px;--space-sm8:8px;--space-md12:12px;--space-lg16:16px;--space-xl20:20px;--space-xxl24:24px;
+  --space-xxxl32:32px;--space-section40:40px;--space-block48:48px;--space-page64:64px;
+  --row-height:44px;--control-height:34px;--reading-max-width:720px;
+  --text-figure:30px;--lh-figure:1.2;--ls-figure:0.6px;--weight-figure:700;
+  --text-figure-sm:22px;--lh-figure-sm:1.25;--ls-figure-sm:0.4px;--weight-figure-sm:700;
+  --text-heading-page:20px;--lh-heading-page:1.3;--ls-heading-page:0.3px;--weight-heading-page:700;
+  --text-heading-section:16px;--lh-heading-section:1.4;--weight-heading-section:600;
+  --text-heading-card:14px;--lh-heading-card:1.4;--weight-heading-card:600;
+  --text-body-default:15px;--lh-body-default:1.65;
+  --text-body-table:13px;--lh-body-table:1.4;
+  --text-body-emphasis:13px;--lh-body-emphasis:1.4;--weight-body-emphasis:600;
+  --text-caption-default:12px;--lh-caption-default:1.4;
+  --text-caption-micro:11px;--lh-caption-micro:1.3;
+  --text-label-field:12px;--lh-label-field:1.4;--weight-label-field:500;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;--brand-bronze:#E3B071;--on-gold:#10131A;
+  --canvas:#10131A;--surface-1:#171B24;--surface-2:#1D222D;--surface-3:#252B37;--surface-sunken:#0C0F14;
+  --surface-glass:rgba(12,15,20,.86);--overlay:rgba(0,0,0,.55);
+  --text-1:#EEF0F4;--text-2:#B8BEC9;--text-3:#8D94A1;--text-link:#E3B071;
+  --border-1:#262C38;--border-2:#323947;--divider:#20252F;
+  --danger-fg:#FF8A80;--danger-bg:rgba(217,58,47,.14);--danger-solid:#F0574B;
+  --warn-fg:#F5C26B;--warn-bg:rgba(229,163,59,.14);--warn-solid:#F0B04F;
+  --ok-fg:#7FD69A;--ok-bg:rgba(47,158,82,.14);--ok-solid:#45B86A;
+  --info-fg:#8EC1EE;--info-bg:rgba(58,127,193,.16);--info-solid:#5A9BD8;--neutral-bg:#252B37;
+  --chart-1:#E3A355;--chart-2:#7E9CC6;--chart-3:#6FBF9B;--chart-4:#D9775C;--chart-grid:#222834;--chart-axis:#8D94A1;--chart-neg:#F0574B;
+  --sidebar-bg:#0D1016;--sidebar-rule:rgba(255,255,255,.06);--row-critical:rgba(224,85,74,.10);--row-decision:rgba(217,148,60,.10);
+  --e-1:0 0 0 1px rgba(255,255,255,.04);--e-2:0 8px 20px -4px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.05);
+  --e-3:0 28px 56px -12px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.06);
+  --e-island:0 10px 30px -6px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.10);
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;--brand-bronze:#E3B071;--on-gold:#10131A;
+  --canvas:#10131A;--surface-1:#171B24;--surface-2:#1D222D;--surface-3:#252B37;--surface-sunken:#0C0F14;
+  --surface-glass:rgba(12,15,20,.86);--overlay:rgba(0,0,0,.55);
+  --text-1:#EEF0F4;--text-2:#B8BEC9;--text-3:#8D94A1;--text-link:#E3B071;
+  --border-1:#262C38;--border-2:#323947;--divider:#20252F;
+  --danger-fg:#FF8A80;--danger-bg:rgba(217,58,47,.14);--danger-solid:#F0574B;
+  --warn-fg:#F5C26B;--warn-bg:rgba(229,163,59,.14);--warn-solid:#F0B04F;
+  --ok-fg:#7FD69A;--ok-bg:rgba(47,158,82,.14);--ok-solid:#45B86A;
+  --info-fg:#8EC1EE;--info-bg:rgba(58,127,193,.16);--info-solid:#5A9BD8;--neutral-bg:#252B37;
+  --chart-1:#E3A355;--chart-2:#7E9CC6;--chart-3:#6FBF9B;--chart-4:#D9775C;--chart-grid:#222834;--chart-axis:#8D94A1;--chart-neg:#F0574B;
+  --sidebar-bg:#0D1016;--sidebar-rule:rgba(255,255,255,.06);--row-critical:rgba(224,85,74,.10);--row-decision:rgba(217,148,60,.10);
+  --e-1:0 0 0 1px rgba(255,255,255,.04);--e-2:0 8px 20px -4px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.05);
+  --e-3:0 28px 56px -12px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.06);
+  --e-island:0 10px 30px -6px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.10);
+}
+
+/* الوثيقة المطبوعة حبر داكن على ورق أبيض حتى لو كانت الشاشة داكنة */
+@media print{:root,:root[data-theme="dark"]{
+  color-scheme:light;--canvas:#FFFFFF;--surface-1:#FFFFFF;--surface-2:#F9F8F6;--surface-3:#EFEDE8;
+  --text-1:#1E2430;--text-2:#4E5563;--text-3:#5C6270;--text-link:#1E2430;--border-1:#D3D0C8;--divider:#E4E2DC;
+  --danger-fg:#B3261E;--ok-fg:#1F6B35;--warn-fg:#8A5300;
+}}
+
+/* ---- تمويه لقطة بلاغ الدعم (SupportModal.captureRedacted) ---- */
+.support-redact :is(.main, #main) :is(td, input, textarea, select, .num, .value, .kpi, .hero, h1, p, li, .pill, .muted, a) {
+  filter: blur(6px);
 }

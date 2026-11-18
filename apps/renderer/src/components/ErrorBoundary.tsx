@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { recordError } from '@/lib/diagnostics';
 
 /**
  * حاجز الأخطاء — يمنع خطأً في شاشة واحدة من إفراغ التطبيق كله.
@@ -38,6 +39,8 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo) {
     // لا خدمة تتبّع خارجية في تطبيق محلي — نطبعه في الطرفية ليُقرأ عند التشخيص.
     console.error('[EGCO] خطأ غير متوقع في الواجهة:', error, info.componentStack);
+    // ويُحفظ ليُرفق تلقائياً ببلاغ الدعم — المستخدم لا يرى الطرفية
+    recordError('واجهة: ' + error.message);
   }
 
   render() {

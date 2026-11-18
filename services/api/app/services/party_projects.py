@@ -6,6 +6,7 @@ they share one implementation. Anything that special-cases one of them here is a
 bug waiting to happen: the two lists must behave the same or filtering «كل المشاريع»
 will quietly mean two different things on two screens.
 """
+import datetime as dt
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -17,12 +18,28 @@ SUPPLIER = 'supplier'
 CONTRACTOR = 'contractor'
 
 
+def _live(q):
+    """روابط غير محذوفة — م-٥٠ جعل الفك حذفاً منطقياً (المبلغ يبقى قابلاً للإحياء)."""
+    return q.filter(models.PartyProject.deleted_at.is_(None))
+
+
 def projects_of(db: Session, party_type: str, party_id: str) -> List[str]:
     """مشاريع الطرف بترتيب العرض."""
-    rows = (db.query(models.PartyProject)
-            .filter_by(party_type=party_type, party_id=party_id)
+    rows = (_live(db.query(models.PartyProject)
+                  .filter_by(party_type=party_type, party_id=party_id))
             .order_by(models.PartyProject.position).all())
     return [r.project for r in rows]
+
+
+def projects_by_party(db: Session, party_type: str) -> Dict[str, List[str]]:
+    """{party_id: [مشاريع بترتيب العرض]} لكل أطراف النوع باستعلام واحد — بديل
+    projects_of داخل حلقة (كان استعلاماً لكل مورد في شاشة القائمة)."""
+    rows = (_live(db.query(models.PartyProject).filter_by(party_type=party_type))
+            .order_by(models.PartyProject.position).all())
+    out: Dict[str, List[str]] = {}
+    for r in rows:
+        out.setdefault(r.party_id, []).append(r.project)
+    return out
 
 
 def set_projects(db: Session, party_type: str, party_id: str,
@@ -31,6 +48,10 @@ def set_projects(db: Session, party_type: str, party_id: str,
 
     projects=None تعني «لا تغيّر»، وهو ما يجعل تعديلاً جزئياً (اسم فقط) لا يمحو
     المشاريع بصمت.
+
+    م-٥٠: كان يحذف الروابط حذفاً فعلياً ثم يُعيد إنشاءها — فيمحو مبلغ الإسناد
+    وملاحظته عند كل حفظ لنموذج المورد. الآن: الرابط الباقي يُحدَّث موضعه فقط،
+    المُزال يُحذف منطقياً (مبلغه محفوظ)، والعائد يُحيا بمبلغه السابق.
     """
     if projects is None:
         return projects_of(db, party_type, party_id)
@@ -42,12 +63,27 @@ def set_projects(db: Session, party_type: str, party_id: str,
         if p and p not in clean:
             clean.append(p)
 
-    db.query(models.PartyProject).filter_by(
-        party_type=party_type, party_id=party_id).delete(synchronize_session=False)
+    existing = {r.project: r for r in db.query(models.PartyProject).filter_by(
+        party_type=party_type, party_id=party_id).all()}
+    now = dt.datetime.now(dt.timezone.utc)
+    for name, row in existing.items():
+        if name not in clean and row.deleted_at is None:
+            row.deleted_at = now
     for i, p in enumerate(clean):
-        db.add(models.PartyProject(party_type=party_type, party_id=party_id,
-                                   project=p, position=i))
+        row = existing.get(p)
+        if row is None:
+            db.add(models.PartyProject(party_type=party_type, party_id=party_id,
+                                       project=p, position=i))
+        else:
+            row.deleted_at = None
+            row.position = i
     return clean
+
+
+def link(db: Session, party_type: str, party_id: str, project: str):
+    """الرابط (حيّاً أو محذوفاً) أو None — لمسارات م-٥٠."""
+    return db.query(models.PartyProject).filter_by(
+        party_type=party_type, party_id=party_id, project=project).one_or_none()
 
 
 def primary(projects: List[str]) -> str:
@@ -57,7 +93,7 @@ def primary(projects: List[str]) -> str:
 
 def _raw_project_names(db: Session) -> List[str]:
     """كل الأسماء الخام كما كُتبت — بلا تطبيع ولا تجميع، قبل التعامل مع التكرار."""
-    names = [r[0] for r in db.query(models.PartyProject.project).distinct().all() if r[0]]
+    names = [r[0] for r in _live(db.query(models.PartyProject.project)).distinct().all() if r[0]]
     names += [s.project for s in db.query(models.Supplier).filter(
         models.Supplier.deleted_at.is_(None)).all() if s.project]
     return names
@@ -93,7 +129,15 @@ def all_projects(db: Session) -> List[str]:
     لقوائم الاختيار، حتى لا يظهر «المدينة» و«المدينه» كخيارين منفصلين لنفس المشروع.
     """
     groups = project_variant_groups(db)
-    return sorted(canonical_project_name(variants) for variants in groups.values())
+    names = {canonical_project_name(variants) for variants in groups.values()}
+    keys = set(groups)
+    # BUG-004: مشروع أُنشئ من السجل بلا حركات بعد يجب أن يكون خياراً؛ والمحذوف من
+    # السجل أو المدموج (صفّه محذوف منطقياً) لا يظهر إلا إن بقيت له بيانات حيّة فعلاً.
+    for (name,) in db.query(models.ProjectRegistry.name).filter(
+            models.ProjectRegistry.deleted_at.is_(None)).all():
+        if name and normalize_ar(name) not in keys and name != 'غير محدد':
+            names.add(name)
+    return sorted(names)
 
 
 def parties_in_project(db: Session, party_type: str, project: str) -> set:
@@ -108,9 +152,9 @@ def parties_in_project(db: Session, party_type: str, project: str) -> set:
     key = normalize_ar(project)
     variants = {name for name in _raw_project_names(db) if normalize_ar(name) == key}
     variants.add(project)
-    return {r[0] for r in db.query(models.PartyProject.party_id).filter(
+    return {r[0] for r in _live(db.query(models.PartyProject.party_id).filter(
         models.PartyProject.party_type == party_type,
-        models.PartyProject.project.in_(variants)).all()}
+        models.PartyProject.project.in_(variants))).all()}
 
 
 def raw_project_names(db: Session) -> List[str]:

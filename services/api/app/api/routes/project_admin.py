@@ -8,6 +8,7 @@
 `ContractorEntry.project` و`BudgetSnapshot.project` — كل عمود اسم مشروع في
 القاعدة. لا يُنشئ صفاً جديداً ولا يحذف صفاً — يعيد كتابة نص الاسم فقط.
 """
+import datetime as dt
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -97,11 +98,26 @@ def merge_projects(body: MergeRequest, db: Session = Depends(get_session)) -> di
         clash = db.query(models.PartyProject).filter_by(
             party_type=link.party_type, party_id=link.party_id, project=into).one_or_none()
         if clash is not None:
-            db.delete(link)
+            if link.amount is not None:
+                if clash.amount is None:
+                    clash.amount = link.amount
+                elif clash.amount != link.amount:
+                    clash.notes = ((clash.notes + '\n') if clash.notes else '') + \
+                        'مبلغ مدموج من %s: %s' % (from_, link.amount)
+            if link.notes and link.notes not in (clash.notes or ''):
+                clash.notes = ((clash.notes + '\n') if clash.notes else '') + link.notes
+            if clash.deleted_at is not None and link.deleted_at is None:
+                clash.deleted_at = None
+            link.deleted_at = dt.datetime.now(dt.timezone.utc)
         else:
             link.project = into
             moved_links += 1
 
+    # م-٥٠: الرابط المكرر لا يُحذف فعلياً (كان يمحو مبلغ الإسناد) — يُبقى مبلغ
+    # الهدف إن وُجد وإلا يُنقل مبلغ المصدر، واختلافهما يُسجَّل في الملاحظة لا يُجمع
+    # (قد يكون نفس العقد مُدخلاً تحت الاسمين).
+    from app.services import project_registry_service as PR
+    PR.merge_registry(db, from_, into)
     db.commit()
     counts['party_projects'] = moved_links
     return dict(merged=dict(fromName=from_, intoName=into, affected=counts))

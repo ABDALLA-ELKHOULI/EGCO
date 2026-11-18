@@ -1,0 +1,3847 @@
+{
+ "/budget": {
+  "body": {
+   "cities": [],
+   "count": 1,
+   "filtersApplied": {
+    "city": null,
+    "fromMonth": null,
+    "hasClaims": null,
+    "project": null,
+    "status": null,
+    "toMonth": null
+   },
+   "projects": [
+    "السدن"
+   ],
+   "rows": [
+    {
+     "actualMonth": 1200000.0,
+     "city": "",
+     "claims": [],
+     "completionPct": 0.8,
+     "cumActual": 1200000.0,
+     "cumPlanned": 1500000.0,
+     "delayDeltaPp": null,
+     "delayPct": 0.19999999999999996,
+     "deviationMonth": -300000.0,
+     "docNo": "EGCO/E2E-001",
+     "entrySource": "manual",
+     "hasAttachment": false,
+     "id": "cd806c4d-ae78-4827-aef9-fa6f42469ad9",
+     "issuedOn": null,
+     "month": "2026-11-01",
+     "notes": "شهر مصنوع لاختبارات الواجهة",
+     "plannedMonth": 1500000.0,
+     "project": "السدن",
+     "serial": "",
+     "status": "behind"
+    }
+   ],
+   "totals": {
+    "actualMonth": 1200000.0,
+    "count": 1,
+    "cumActual": 1200000.0,
+    "cumPlanned": 1500000.0,
+    "plannedMonth": 1500000.0
+   }
+  },
+  "status": 200
+ },
+ "/budget/overview": {
+  "body": {
+   "projects": [
+    {
+     "latest": {
+      "actualMonth": 1200000.0,
+      "city": "",
+      "claims": [],
+      "completionPct": 0.8,
+      "cumActual": 1200000.0,
+      "cumPlanned": 1500000.0,
+      "delayDeltaPp": null,
+      "delayPct": 0.19999999999999996,
+      "deviationMonth": -300000.0,
+      "docNo": "EGCO/E2E-001",
+      "entrySource": "manual",
+      "hasAttachment": false,
+      "id": "cd806c4d-ae78-4827-aef9-fa6f42469ad9",
+      "issuedOn": null,
+      "month": "2026-11-01",
+      "notes": "شهر مصنوع لاختبارات الواجهة",
+      "plannedMonth": 1500000.0,
+      "project": "السدن",
+      "serial": "",
+      "status": "behind"
+     },
+     "months": [
+      {
+       "actualMonth": 1200000.0,
+       "city": "",
+       "claims": [],
+       "completionPct": 0.8,
+       "cumActual": 1200000.0,
+       "cumPlanned": 1500000.0,
+       "delayDeltaPp": null,
+       "delayPct": 0.19999999999999996,
+       "deviationMonth": -300000.0,
+       "docNo": "EGCO/E2E-001",
+       "entrySource": "manual",
+       "hasAttachment": false,
+       "id": "cd806c4d-ae78-4827-aef9-fa6f42469ad9",
+       "issuedOn": null,
+       "month": "2026-11-01",
+       "notes": "شهر مصنوع لاختبارات الواجهة",
+       "plannedMonth": 1500000.0,
+       "project": "السدن",
+       "serial": "",
+       "status": "behind"
+      }
+     ],
+     "project": "السدن",
+     "trend": {
+      "delayDeltaPp": null,
+      "monthsBehind": null
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/cashflow": {
+  "body": {
+   "asOf": "2026-11-17",
+   "collections": {
+    "count": 0,
+    "inWindow": 0.0,
+    "rows": [],
+    "total": 0.0,
+    "truncated": false
+   },
+   "contractorBalanceScopeNote": null,
+   "forecastVsActual": {
+    "actualCollected": 0.0,
+    "expectedInflow": 0.0,
+    "gap": 0.0
+   },
+   "openingBalance": 0.0,
+   "overdueView": {
+    "buckets": [
+     {
+      "fromDays": 1,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": 30
+     },
+     {
+      "fromDays": 31,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": 60
+     },
+     {
+      "fromDays": 61,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": 90
+     },
+     {
+      "fromDays": 91,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 155000.5,
+      "outflowCount": 3,
+      "toDays": null
+     }
+    ],
+    "minBalanceIfOverdueInflowCollectedToday": -50000.0,
+    "minBalanceIfOverdueOutflowSettledToday": -205000.5,
+    "totalOverdueInflow": 0.0,
+    "totalOverdueOutflow": 155000.5
+   },
+   "parties": "suppliers",
+   "periodDays": 14,
+   "periods": [
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-11-17",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-11-17 — 2026-11-30",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-11-30"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-12-01",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-12-01 — 2026-12-14",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-12-14"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-12-15",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-12-15 — 2026-12-28",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-12-28"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-12-29",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-12-29 — 2027-01-11",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-01-11"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2027-01-12",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-01-12 — 2027-01-25",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-01-25"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-01-26",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-01-26 — 2027-02-08",
+     "net": -50000.0,
+     "outflow": 50000.0,
+     "outflowCount": 1,
+     "to": "2027-02-08"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-02-09",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-02-09 — 2027-02-22",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-02-22"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-02-23",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-02-23 — 2027-03-08",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-03-08"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-03-09",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-03-09 — 2027-03-22",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-03-22"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-03-23",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-03-23 — 2027-04-05",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-04-05"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-04-06",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-04-06 — 2027-04-19",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-04-19"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-04-20",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-04-20 — 2027-05-03",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-05-03"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-05-04",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-05-04 — 2027-05-17",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-05-17"
+    }
+   ],
+   "projects": [
+    "السدن",
+    "المدينة",
+    "سدايم"
+   ],
+   "reconciliation": {
+    "contractors": null,
+    "from": "2026-11-17",
+    "horizonEnd": "2027-05-17",
+    "inflow": {
+     "beyondHorizon": 0.0,
+     "difference": 0.0,
+     "openTotal": 0.0,
+     "overdueNow": 0.0,
+     "scheduled": 0.0,
+     "undated": 0.0
+    },
+    "outflow": {
+     "beyondHorizon": 40000.0,
+     "credits": 0.0,
+     "difference": 0.0,
+     "excess": 0.0,
+     "openDebt": 245000.5,
+     "overdueNow": 155000.5,
+     "scheduled": 50000.0,
+     "undated": 0.0
+    },
+    "suppliers": {
+     "beyondHorizon": 40000.0,
+     "credits": 0.0,
+     "difference": 0.0,
+     "outstanding": 245000.5,
+     "overdueNow": 155000.5,
+     "scheduled": 50000.0,
+     "undated": 0.0
+    }
+   },
+   "reconciliationNote": null,
+   "summary": {
+    "firstDeficit": {
+     "amount": -50000.0,
+     "from": "2027-01-26",
+     "label": "2027-01-26 — 2027-02-08",
+     "to": "2027-02-08"
+    },
+    "hasReceivables": false,
+    "minBalance": -50000.0,
+    "netTotal": -50000.0,
+    "receivablesStats": {
+     "collected": 0,
+     "dated": 0,
+     "total": 0,
+     "undated": 0
+    },
+    "totalInflow": 0.0,
+    "totalOutflow": 50000.0
+   },
+   "undatedContractorDues": 0.0,
+   "warnings": [
+    "لم تُرفع بيانات التحصيلات بعد — التدفق الداخل صفر ولا يمثل توقعاً حقيقياً",
+    "متأخر الآن 155,000.50 ر.س — استحقاقه مضى قبل بداية الجدول فلا دلو له، وهو غير محسوب في الرصيد التراكمي أدناه؛ لو سُدِّد اليوم لصار أدنى رصيد -205,000.50 ر.س"
+   ]
+  },
+  "status": 200
+ },
+ "/cashflow?parties=both": {
+  "body": {
+   "asOf": "2026-11-17",
+   "collections": {
+    "count": 0,
+    "inWindow": 0.0,
+    "rows": [],
+    "total": 0.0,
+    "truncated": false
+   },
+   "contractorBalanceScopeNote": "مستحق المقاولين أعلاه هو رصيدهم الكامل عبر كل مشاريعهم، وليس محصوراً بالمشروع المفلتَر — دفتر حركات المقاولين لا يحمل مشروعاً على أي حركة تقريباً في البيانات الحالية، فتضييق الرصيد بالمشروع كان سيُسقط مستحقات حقيقية من التوقع",
+   "forecastVsActual": {
+    "actualCollected": 0.0,
+    "expectedInflow": 0.0,
+    "gap": 0.0
+   },
+   "openingBalance": 0.0,
+   "overdueView": {
+    "buckets": [
+     {
+      "fromDays": 1,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": 30
+     },
+     {
+      "fromDays": 31,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": 60
+     },
+     {
+      "fromDays": 61,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": 90
+     },
+     {
+      "fromDays": 91,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 155000.5,
+      "outflowCount": 3,
+      "toDays": null
+     }
+    ],
+    "minBalanceIfOverdueInflowCollectedToday": -67500.0,
+    "minBalanceIfOverdueOutflowSettledToday": -222500.5,
+    "totalOverdueInflow": 0.0,
+    "totalOverdueOutflow": 155000.5
+   },
+   "parties": "both",
+   "periodDays": 14,
+   "periods": [
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-11-17",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-11-17 — 2026-11-30",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-11-30"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-12-01",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-12-01 — 2026-12-14",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-12-14"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-12-15",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-12-15 — 2026-12-28",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-12-28"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-12-29",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-12-29 — 2027-01-11",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-01-11"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2027-01-12",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-01-12 — 2027-01-25",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-01-25"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-01-26",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-01-26 — 2027-02-08",
+     "net": -50000.0,
+     "outflow": 50000.0,
+     "outflowCount": 1,
+     "to": "2027-02-08"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-02-09",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-02-09 — 2027-02-22",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-02-22"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-02-23",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-02-23 — 2027-03-08",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-03-08"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-03-09",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-03-09 — 2027-03-22",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-03-22"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-03-23",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-03-23 — 2027-04-05",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-04-05"
+    },
+    {
+     "balance": -50000.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-04-06",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-04-06 — 2027-04-19",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-04-19"
+    },
+    {
+     "balance": -67500.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-04-20",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-04-20 — 2027-05-03",
+     "net": -17500.0,
+     "outflow": 17500.0,
+     "outflowCount": 1,
+     "to": "2027-05-03"
+    },
+    {
+     "balance": -67500.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-05-04",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-05-04 — 2027-05-17",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-05-17"
+    }
+   ],
+   "projects": [
+    "السدن",
+    "المدينة",
+    "سدايم"
+   ],
+   "reconciliation": {
+    "contractors": {
+     "beyondHorizon": 0.0,
+     "difference": 0.0,
+     "excess": 0.0,
+     "overdueNow": 0.0,
+     "owedToContractors": 310000.0,
+     "scheduled": 17500.0,
+     "undated": 292500.0
+    },
+    "from": "2026-11-17",
+    "horizonEnd": "2027-05-17",
+    "inflow": {
+     "beyondHorizon": 0.0,
+     "difference": 0.0,
+     "openTotal": 0.0,
+     "overdueNow": 0.0,
+     "scheduled": 0.0,
+     "undated": 0.0
+    },
+    "outflow": {
+     "beyondHorizon": 40000.0,
+     "credits": 0.0,
+     "difference": 0.0,
+     "excess": 0.0,
+     "openDebt": 555000.5,
+     "overdueNow": 155000.5,
+     "scheduled": 67500.0,
+     "undated": 292500.0
+    },
+    "suppliers": {
+     "beyondHorizon": 40000.0,
+     "credits": 0.0,
+     "difference": 0.0,
+     "outstanding": 245000.5,
+     "overdueNow": 155000.5,
+     "scheduled": 50000.0,
+     "undated": 0.0
+    }
+   },
+   "reconciliationNote": null,
+   "summary": {
+    "firstDeficit": {
+     "amount": -50000.0,
+     "from": "2027-01-26",
+     "label": "2027-01-26 — 2027-02-08",
+     "to": "2027-02-08"
+    },
+    "hasReceivables": false,
+    "minBalance": -67500.0,
+    "netTotal": -67500.0,
+    "receivablesStats": {
+     "collected": 0,
+     "dated": 0,
+     "total": 0,
+     "undated": 0
+    },
+    "totalInflow": 0.0,
+    "totalOutflow": 67500.0
+   },
+   "undatedContractorDues": 292500.0,
+   "warnings": [
+    "لم تُرفع بيانات التحصيلات بعد — التدفق الداخل صفر ولا يمثل توقعاً حقيقياً",
+    "متأخر الآن 155,000.50 ر.س — استحقاقه مضى قبل بداية الجدول فلا دلو له، وهو غير محسوب في الرصيد التراكمي أدناه؛ لو سُدِّد اليوم لصار أدنى رصيد -222,500.50 ر.س",
+    "بلا تواريخ استحقاق 292,500.00 ر.س — لا يمكن وضعه في أي فترة، وهو مُدرَج في سطر المطابقة أسفل جدول الفترات لا في أعمدته"
+   ]
+  },
+  "status": 200
+ },
+ "/cashflow?parties=contractors": {
+  "body": {
+   "asOf": "2026-11-17",
+   "collections": {
+    "count": 0,
+    "inWindow": 0.0,
+    "rows": [],
+    "total": 0.0,
+    "truncated": false
+   },
+   "contractorBalanceScopeNote": "مستحق المقاولين أعلاه هو رصيدهم الكامل عبر كل مشاريعهم، وليس محصوراً بالمشروع المفلتَر — دفتر حركات المقاولين لا يحمل مشروعاً على أي حركة تقريباً في البيانات الحالية، فتضييق الرصيد بالمشروع كان سيُسقط مستحقات حقيقية من التوقع",
+   "forecastVsActual": {
+    "actualCollected": 0.0,
+    "expectedInflow": 0.0,
+    "gap": 0.0
+   },
+   "openingBalance": 0.0,
+   "overdueView": {
+    "buckets": [
+     {
+      "fromDays": 1,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": 30
+     },
+     {
+      "fromDays": 31,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": 60
+     },
+     {
+      "fromDays": 61,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": 90
+     },
+     {
+      "fromDays": 91,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": null
+     }
+    ],
+    "minBalanceIfOverdueInflowCollectedToday": -17500.0,
+    "minBalanceIfOverdueOutflowSettledToday": -17500.0,
+    "totalOverdueInflow": 0.0,
+    "totalOverdueOutflow": 0.0
+   },
+   "parties": "contractors",
+   "periodDays": 14,
+   "periods": [
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-11-17",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-11-17 — 2026-11-30",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-11-30"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-12-01",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-12-01 — 2026-12-14",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-12-14"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-12-15",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-12-15 — 2026-12-28",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-12-28"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-12-29",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-12-29 — 2027-01-11",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-01-11"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2027-01-12",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-01-12 — 2027-01-25",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-01-25"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2027-01-26",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-01-26 — 2027-02-08",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-02-08"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2027-02-09",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-02-09 — 2027-02-22",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-02-22"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2027-02-23",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-02-23 — 2027-03-08",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-03-08"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2027-03-09",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-03-09 — 2027-03-22",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-03-22"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2027-03-23",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-03-23 — 2027-04-05",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-04-05"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2027-04-06",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-04-06 — 2027-04-19",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-04-19"
+    },
+    {
+     "balance": -17500.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-04-20",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-04-20 — 2027-05-03",
+     "net": -17500.0,
+     "outflow": 17500.0,
+     "outflowCount": 1,
+     "to": "2027-05-03"
+    },
+    {
+     "balance": -17500.0,
+     "collected": 0.0,
+     "deficit": true,
+     "from": "2027-05-04",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2027-05-04 — 2027-05-17",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2027-05-17"
+    }
+   ],
+   "projects": [
+    "السدن",
+    "المدينة",
+    "سدايم"
+   ],
+   "reconciliation": {
+    "contractors": {
+     "beyondHorizon": 0.0,
+     "difference": 0.0,
+     "excess": 0.0,
+     "overdueNow": 0.0,
+     "owedToContractors": 310000.0,
+     "scheduled": 17500.0,
+     "undated": 292500.0
+    },
+    "from": "2026-11-17",
+    "horizonEnd": "2027-05-17",
+    "inflow": {
+     "beyondHorizon": 0.0,
+     "difference": 0.0,
+     "openTotal": 0.0,
+     "overdueNow": 0.0,
+     "scheduled": 0.0,
+     "undated": 0.0
+    },
+    "outflow": {
+     "beyondHorizon": 0.0,
+     "credits": 0.0,
+     "difference": 0.0,
+     "excess": 0.0,
+     "openDebt": 310000.0,
+     "overdueNow": 0.0,
+     "scheduled": 17500.0,
+     "undated": 292500.0
+    },
+    "suppliers": null
+   },
+   "reconciliationNote": null,
+   "summary": {
+    "firstDeficit": {
+     "amount": -17500.0,
+     "from": "2027-04-20",
+     "label": "2027-04-20 — 2027-05-03",
+     "to": "2027-05-03"
+    },
+    "hasReceivables": false,
+    "minBalance": -17500.0,
+    "netTotal": -17500.0,
+    "receivablesStats": {
+     "collected": 0,
+     "dated": 0,
+     "total": 0,
+     "undated": 0
+    },
+    "totalInflow": 0.0,
+    "totalOutflow": 17500.0
+   },
+   "undatedContractorDues": 292500.0,
+   "warnings": [
+    "لم تُرفع بيانات التحصيلات بعد — التدفق الداخل صفر ولا يمثل توقعاً حقيقياً",
+    "بلا تواريخ استحقاق 292,500.00 ر.س — لا يمكن وضعه في أي فترة، وهو مُدرَج في سطر المطابقة أسفل جدول الفترات لا في أعمدته"
+   ]
+  },
+  "status": 200
+ },
+ "/cashflow?weeks=4&period_days=7": {
+  "body": {
+   "asOf": "2026-11-17",
+   "collections": {
+    "count": 0,
+    "inWindow": 0.0,
+    "rows": [],
+    "total": 0.0,
+    "truncated": false
+   },
+   "contractorBalanceScopeNote": null,
+   "forecastVsActual": {
+    "actualCollected": 0.0,
+    "expectedInflow": 0.0,
+    "gap": 0.0
+   },
+   "openingBalance": 0.0,
+   "overdueView": {
+    "buckets": [
+     {
+      "fromDays": 1,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": 30
+     },
+     {
+      "fromDays": 31,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": 60
+     },
+     {
+      "fromDays": 61,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 0.0,
+      "outflowCount": 0,
+      "toDays": 90
+     },
+     {
+      "fromDays": 91,
+      "inflowAmount": 0.0,
+      "inflowCount": 0,
+      "outflowAmount": 155000.5,
+      "outflowCount": 3,
+      "toDays": null
+     }
+    ],
+    "minBalanceIfOverdueInflowCollectedToday": 0.0,
+    "minBalanceIfOverdueOutflowSettledToday": -155000.5,
+    "totalOverdueInflow": 0.0,
+    "totalOverdueOutflow": 155000.5
+   },
+   "parties": "suppliers",
+   "periodDays": 7,
+   "periods": [
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-11-17",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-11-17 — 2026-11-23",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-11-23"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-11-24",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-11-24 — 2026-11-30",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-11-30"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-12-01",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-12-01 — 2026-12-07",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-12-07"
+    },
+    {
+     "balance": 0.0,
+     "collected": 0.0,
+     "deficit": false,
+     "from": "2026-12-08",
+     "inflow": 0.0,
+     "inflowCount": 0,
+     "label": "2026-12-08 — 2026-12-14",
+     "net": 0.0,
+     "outflow": 0.0,
+     "outflowCount": 0,
+     "to": "2026-12-14"
+    }
+   ],
+   "projects": [
+    "السدن",
+    "المدينة",
+    "سدايم"
+   ],
+   "reconciliation": {
+    "contractors": null,
+    "from": "2026-11-17",
+    "horizonEnd": "2026-12-14",
+    "inflow": {
+     "beyondHorizon": 0.0,
+     "difference": 0.0,
+     "openTotal": 0.0,
+     "overdueNow": 0.0,
+     "scheduled": 0.0,
+     "undated": 0.0
+    },
+    "outflow": {
+     "beyondHorizon": 90000.0,
+     "credits": 0.0,
+     "difference": 0.0,
+     "excess": 0.0,
+     "openDebt": 245000.5,
+     "overdueNow": 155000.5,
+     "scheduled": 0.0,
+     "undated": 0.0
+    },
+    "suppliers": {
+     "beyondHorizon": 90000.0,
+     "credits": 0.0,
+     "difference": 0.0,
+     "outstanding": 245000.5,
+     "overdueNow": 155000.5,
+     "scheduled": 0.0,
+     "undated": 0.0
+    }
+   },
+   "reconciliationNote": null,
+   "summary": {
+    "firstDeficit": null,
+    "hasReceivables": false,
+    "minBalance": 0.0,
+    "netTotal": 0.0,
+    "receivablesStats": {
+     "collected": 0,
+     "dated": 0,
+     "total": 0,
+     "undated": 0
+    },
+    "totalInflow": 0.0,
+    "totalOutflow": 0.0
+   },
+   "undatedContractorDues": 0.0,
+   "warnings": [
+    "لم تُرفع بيانات التحصيلات بعد — التدفق الداخل صفر ولا يمثل توقعاً حقيقياً",
+    "متأخر الآن 155,000.50 ر.س — استحقاقه مضى قبل بداية الجدول فلا دلو له، وهو غير محسوب في الرصيد التراكمي أدناه؛ لو سُدِّد اليوم لصار أدنى رصيد -155,000.50 ر.س"
+   ]
+  },
+  "status": 200
+ },
+ "/contractors": {
+  "body": {
+   "count": 3,
+   "filtersApplied": {
+    "direction": null,
+    "hasGuarantees": null,
+    "project": null,
+    "q": null,
+    "status": null
+   },
+   "rows": [
+    {
+     "balance": -250000.0,
+     "code": "2120001",
+     "deductionsTotal": 0.0,
+     "dueSoon": null,
+     "duesTotal": 150000.0,
+     "entryCount": 3,
+     "hasStatement": true,
+     "lastActivity": "2026-10-18",
+     "lastPayment": {
+      "amount": 100000.0,
+      "date": "2026-10-18"
+     },
+     "name": "مقاولات البناء الحديث",
+     "overdue": null,
+     "paidTotal": 100000.0,
+     "paymentTermDays": null,
+     "phone": "",
+     "projects": [
+      "السدن"
+     ],
+     "releaseAlerts": 0,
+     "retentionHeld": 17500.0,
+     "statementEntryCount": 3,
+     "status": "active",
+     "statusNote": ""
+    },
+    {
+     "balance": -50000.0,
+     "code": "2120002",
+     "deductionsTotal": 0.0,
+     "dueSoon": null,
+     "duesTotal": 60000.0,
+     "entryCount": 3,
+     "hasStatement": true,
+     "lastActivity": "2026-11-02",
+     "lastPayment": {
+      "amount": 90000.0,
+      "date": "2026-11-02"
+     },
+     "name": "مؤسسة الأعمال الكهروميكانيكية",
+     "overdue": null,
+     "paidTotal": 90000.0,
+     "paymentTermDays": null,
+     "phone": "",
+     "projects": [
+      "المدينة"
+     ],
+     "releaseAlerts": 0,
+     "retentionHeld": 0.0,
+     "statementEntryCount": 3,
+     "status": "active",
+     "statusNote": ""
+    },
+    {
+     "balance": -10000.0,
+     "code": "2120003",
+     "deductionsTotal": 0.0,
+     "dueSoon": null,
+     "duesTotal": 0.0,
+     "entryCount": 2,
+     "hasStatement": true,
+     "lastActivity": "2026-11-12",
+     "lastPayment": {
+      "amount": 20000.0,
+      "date": "2026-11-12"
+     },
+     "name": "شركة التشطيبات المتقدمة",
+     "overdue": null,
+     "paidTotal": 20000.0,
+     "paymentTermDays": null,
+     "phone": "",
+     "projects": [
+      "سدايم"
+     ],
+     "releaseAlerts": 0,
+     "retentionHeld": 0.0,
+     "statementEntryCount": 2,
+     "status": "active",
+     "statusNote": ""
+    }
+   ],
+   "totals": {
+    "balance": -310000.0,
+    "byProject": [
+     {
+      "count": 1,
+      "owedToContractors": 250000.0,
+      "owedToUs": 0.0,
+      "project": "السدن",
+      "unassigned": false
+     },
+     {
+      "count": 1,
+      "owedToContractors": 50000.0,
+      "owedToUs": 0.0,
+      "project": "المدينة",
+      "unassigned": false
+     },
+     {
+      "count": 1,
+      "owedToContractors": 10000.0,
+      "owedToUs": 0.0,
+      "project": "سدايم",
+      "unassigned": false
+     }
+    ],
+    "byStatus": {
+     "active": {
+      "balance": -310000.0,
+      "count": 3,
+      "owedToContractors": 310000.0,
+      "owedToUs": 0.0
+     }
+    },
+    "claimsTotal": 210000.0,
+    "count": 3,
+    "deductionsTotal": 0.0,
+    "derivedFromEntriesCount": 3,
+    "dueWithin30Total": 0.0,
+    "dueWithin7Total": 0.0,
+    "overdueContractorCount": 0,
+    "overdueTotal": 0.0,
+    "owedToContractors": 310000.0,
+    "owedToUs": 0.0,
+    "paidTotal": 210000.0,
+    "retentionHeld": 17500.0,
+    "withTermCount": 0,
+    "withoutTermCount": 3
+   }
+  },
+  "status": 200
+ },
+ "/contractors/2120001": {
+  "body": {
+   "balance": -250000.0,
+   "claims": [],
+   "code": "2120001",
+   "creditTotal": 350000.0,
+   "debitTotal": 100000.0,
+   "deductionsTotal": 0.0,
+   "defaultGuaranteeDays": null,
+   "defaultRetentionRate": null,
+   "delay": null,
+   "duesTotal": 150000.0,
+   "entries": [
+    {
+     "claimNo": null,
+     "credit": 0.0,
+     "date": "2026-10-18",
+     "debit": 100000.0,
+     "description": "دفعة",
+     "doc": "",
+     "id": "5e9c37ba-c65b-42cf-9867-dc86c3d45d2c",
+     "kind": "payment",
+     "project": "السدن",
+     "source": "manual"
+    },
+    {
+     "claimNo": "1",
+     "credit": 150000.0,
+     "date": "2026-10-08",
+     "debit": 0.0,
+     "description": "مستخلص رقم 1",
+     "doc": "",
+     "id": "c9c82eee-b380-49a3-80f8-2664693bca4b",
+     "kind": "claim",
+     "project": "السدن",
+     "source": "manual"
+    },
+    {
+     "claimNo": null,
+     "credit": 200000.0,
+     "date": "2026-07-20",
+     "debit": 0.0,
+     "description": "رصيد افتتاحي",
+     "doc": "",
+     "id": "f4585bf6-b6d2-476d-a7de-9a30a8518eee",
+     "kind": "opening",
+     "project": "السدن",
+     "source": "manual"
+    }
+   ],
+   "guarantees": [
+    {
+     "amount": 17500.0,
+     "dueStatus": "scheduled",
+     "finishedOn": "2026-05-01",
+     "guaranteeDays": 365,
+     "id": "c9511b90-c84c-4537-b864-5ff65b09f002",
+     "notes": "",
+     "project": "السدن",
+     "releaseDue": "2027-05-01",
+     "releasedOn": null,
+     "retentionRate": null
+    }
+   ],
+   "lastPayment": {
+    "amount": 100000.0,
+    "date": "2026-10-18"
+   },
+   "name": "مقاولات البناء الحديث",
+   "notes": "",
+   "otherCredits": 200000.0,
+   "otherDebits": 0.0,
+   "paidTotal": 100000.0,
+   "paymentTermDays": null,
+   "perProject": [
+    {
+     "balance": -250000.0,
+     "credit": 350000.0,
+     "debit": 100000.0,
+     "entryCount": 3,
+     "project": "السدن"
+    }
+   ],
+   "phone": "",
+   "projects": [
+    "السدن"
+   ],
+   "retentionTotal": 0.0
+  },
+  "status": 200
+ },
+ "/contractors/2120002": {
+  "body": {
+   "balance": -50000.0,
+   "claims": [],
+   "code": "2120002",
+   "creditTotal": 140000.0,
+   "debitTotal": 90000.0,
+   "deductionsTotal": 0.0,
+   "defaultGuaranteeDays": null,
+   "defaultRetentionRate": null,
+   "delay": null,
+   "duesTotal": 60000.0,
+   "entries": [
+    {
+     "claimNo": null,
+     "credit": 0.0,
+     "date": "2026-11-02",
+     "debit": 90000.0,
+     "description": "دفعة",
+     "doc": "",
+     "id": "498339db-239d-403a-b5fc-c83914d872a9",
+     "kind": "payment",
+     "project": "المدينة",
+     "source": "manual"
+    },
+    {
+     "claimNo": "1",
+     "credit": 60000.0,
+     "date": "2026-10-23",
+     "debit": 0.0,
+     "description": "مستخلص رقم 1",
+     "doc": "",
+     "id": "82cd923b-46a5-4712-85a2-242bf934cc07",
+     "kind": "claim",
+     "project": "المدينة",
+     "source": "manual"
+    },
+    {
+     "claimNo": null,
+     "credit": 80000.0,
+     "date": "2026-08-29",
+     "debit": 0.0,
+     "description": "رصيد افتتاحي",
+     "doc": "",
+     "id": "cc55b300-b491-492c-be56-90bbba898800",
+     "kind": "opening",
+     "project": "المدينة",
+     "source": "manual"
+    }
+   ],
+   "guarantees": [],
+   "lastPayment": {
+    "amount": 90000.0,
+    "date": "2026-11-02"
+   },
+   "name": "مؤسسة الأعمال الكهروميكانيكية",
+   "notes": "",
+   "otherCredits": 80000.0,
+   "otherDebits": 0.0,
+   "paidTotal": 90000.0,
+   "paymentTermDays": null,
+   "perProject": [
+    {
+     "balance": -50000.0,
+     "credit": 140000.0,
+     "debit": 90000.0,
+     "entryCount": 3,
+     "project": "المدينة"
+    }
+   ],
+   "phone": "",
+   "projects": [
+    "المدينة"
+   ],
+   "retentionTotal": 0.0
+  },
+  "status": 200
+ },
+ "/contractors/2120003": {
+  "body": {
+   "balance": -10000.0,
+   "claims": [],
+   "code": "2120003",
+   "creditTotal": 30000.0,
+   "debitTotal": 20000.0,
+   "deductionsTotal": 0.0,
+   "defaultGuaranteeDays": null,
+   "defaultRetentionRate": null,
+   "delay": null,
+   "duesTotal": 0.0,
+   "entries": [
+    {
+     "claimNo": null,
+     "credit": 0.0,
+     "date": "2026-11-12",
+     "debit": 20000.0,
+     "description": "دفعة",
+     "doc": "",
+     "id": "6542d559-3cdd-4b91-b8ae-1a6dd5f9eeb0",
+     "kind": "payment",
+     "project": "سدايم",
+     "source": "manual"
+    },
+    {
+     "claimNo": null,
+     "credit": 30000.0,
+     "date": "2026-09-28",
+     "debit": 0.0,
+     "description": "رصيد افتتاحي",
+     "doc": "",
+     "id": "85c7a17c-1a0e-4295-a81d-a9365e7b4481",
+     "kind": "opening",
+     "project": "سدايم",
+     "source": "manual"
+    }
+   ],
+   "guarantees": [],
+   "lastPayment": {
+    "amount": 20000.0,
+    "date": "2026-11-12"
+   },
+   "name": "شركة التشطيبات المتقدمة",
+   "notes": "",
+   "otherCredits": 30000.0,
+   "otherDebits": 0.0,
+   "paidTotal": 20000.0,
+   "paymentTermDays": null,
+   "perProject": [
+    {
+     "balance": -10000.0,
+     "credit": 30000.0,
+     "debit": 20000.0,
+     "entryCount": 2,
+     "project": "سدايم"
+    }
+   ],
+   "phone": "",
+   "projects": [
+    "سدايم"
+   ],
+   "retentionTotal": 0.0
+  },
+  "status": 200
+ },
+ "/contractors/claims-due": {
+  "body": {
+   "count": 0,
+   "rows": [],
+   "totals": {
+    "amount": 0.0,
+    "overdue": 0.0
+   }
+  },
+  "status": 200
+ },
+ "/contractors/overview": {
+  "body": {
+   "balanceMismatches": [],
+   "byProject": [
+    {
+     "contractorCount": 1,
+     "owed": 250000.0,
+     "project": "السدن"
+    },
+    {
+     "contractorCount": 1,
+     "owed": 50000.0,
+     "project": "المدينة"
+    },
+    {
+     "contractorCount": 1,
+     "owed": 10000.0,
+     "project": "سدايم"
+    }
+   ],
+   "guaranteeAccounts216": {
+    "count": 0,
+    "total": 0.0
+   },
+   "hasDebtsReportImport": false,
+   "lastDebtsReportImport": null,
+   "reported": {
+    "byProject": [],
+    "contractorCount": 0,
+    "owed": 0.0,
+    "topOwed": []
+   },
+   "topOwed": [
+    {
+     "balance": -250000.0,
+     "code": "2120001",
+     "name": "مقاولات البناء الحديث",
+     "projects": [
+      "السدن"
+     ]
+    },
+    {
+     "balance": -50000.0,
+     "code": "2120002",
+     "name": "مؤسسة الأعمال الكهروميكانيكية",
+     "projects": [
+      "المدينة"
+     ]
+    },
+    {
+     "balance": -10000.0,
+     "code": "2120003",
+     "name": "شركة التشطيبات المتقدمة",
+     "projects": [
+      "سدايم"
+     ]
+    }
+   ],
+   "totals": {
+    "contractorCount": 3,
+    "owedToContractors": 310000.0,
+    "retentionHeld": 17500.0
+   },
+   "withoutLedger": {
+    "count": 0,
+    "owed": 0.0
+   }
+  },
+  "status": 200
+ },
+ "/coverage": {
+  "body": {
+   "asOf": "2026-11-17",
+   "filtersApplied": {
+    "project": null,
+    "q": null,
+    "staleDays": 90,
+    "state": null
+   },
+   "rows": [
+    {
+     "account": "2110002",
+     "daysSinceLast": 400,
+     "firstActivity": "2025-10-13",
+     "invoiceCount": 1,
+     "lastActivity": "2025-10-13",
+     "name": "مصنع الخرسانة الجاهزة",
+     "outstanding": 75000.5,
+     "project": "المدينة",
+     "state": "stale"
+    },
+    {
+     "account": "2110001",
+     "daysSinceLast": 10,
+     "firstActivity": "2026-05-01",
+     "invoiceCount": 2,
+     "lastActivity": "2026-11-07",
+     "name": "شركة الحديد الموحدة",
+     "outstanding": 120000.0,
+     "project": "السدن",
+     "state": "ok"
+    },
+    {
+     "account": "2110004",
+     "daysSinceLast": 20,
+     "firstActivity": "2026-10-28",
+     "invoiceCount": 1,
+     "lastActivity": "2026-10-28",
+     "name": "شركة الدهانات الوطنية",
+     "outstanding": 40000.0,
+     "project": "السدن",
+     "state": "ok"
+    },
+    {
+     "account": "2110003",
+     "daysSinceLast": 1,
+     "firstActivity": "2026-06-20",
+     "invoiceCount": 1,
+     "lastActivity": "2026-11-16",
+     "name": "مؤسسة الكهرباء الحديثة",
+     "outstanding": 10000.0,
+     "project": "سدايم",
+     "state": "ok"
+    }
+   ],
+   "staleDays": 90,
+   "totals": {
+    "coveredPct": 100.0,
+    "stale": 1,
+    "suppliers": 4,
+    "withData": 4,
+    "withoutData": 0
+   }
+  },
+  "status": 200
+ },
+ "/dashboard": {
+  "body": {
+   "ageing": {
+    "current": 90000.0,
+    "d1_30": 0.0,
+    "d31_60": 0.0,
+    "d61_90": 0.0,
+    "d90_plus": 155000.5
+   },
+   "payToday": [
+    {
+     "account": "2110002",
+     "amount": 75000.5,
+     "daysToDue": -340,
+     "dueDate": "2025-12-12",
+     "invoice": null,
+     "overdue": true,
+     "project": "المدينة",
+     "supplier": "مصنع الخرسانة الجاهزة"
+    },
+    {
+     "account": "2110003",
+     "amount": 10000.0,
+     "daysToDue": -150,
+     "dueDate": "2026-06-20",
+     "invoice": null,
+     "overdue": true,
+     "project": "سدايم",
+     "supplier": "مؤسسة الكهرباء الحديثة"
+    },
+    {
+     "account": "2110001",
+     "amount": 70000.0,
+     "daysToDue": -110,
+     "dueDate": "2026-07-30",
+     "invoice": null,
+     "overdue": true,
+     "project": "السدن",
+     "supplier": "شركة الحديد الموحدة"
+    }
+   ],
+   "period": null,
+   "schedule": [
+    {
+     "amount": 75000.5,
+     "count": 1,
+     "date": "2025-12-12",
+     "overdue": true
+    },
+    {
+     "amount": 10000.0,
+     "count": 1,
+     "date": "2026-06-20",
+     "overdue": true
+    },
+    {
+     "amount": 70000.0,
+     "count": 1,
+     "date": "2026-07-30",
+     "overdue": true
+    },
+    {
+     "amount": 50000.0,
+     "count": 1,
+     "date": "2027-02-05",
+     "overdue": false
+    }
+   ],
+   "summary": {
+    "awaitingDate": 0,
+    "dueWithin7": 0.0,
+    "openingBalance": 0.0,
+    "outstanding": 245000.5,
+    "overdue": 155000.5,
+    "supplierCount": 4,
+    "totalPaid": 32500.0
+   },
+   "today": "2026-11-17"
+  },
+  "status": 200
+ },
+ "/dashboard/day": {
+  "body": null,
+  "status": 422
+ },
+ "/dashboard/day?date=2026-11-17": {
+  "body": {
+   "date": "2026-11-17",
+   "guarantees": [],
+   "suppliers": [],
+   "totals": {
+    "due": 0.0,
+    "guarantees": 0.0
+   }
+  },
+  "status": 200
+ },
+ "/dashboard/day?date=2026-12-01": {
+  "body": {
+   "date": "2026-12-01",
+   "guarantees": [],
+   "suppliers": [],
+   "totals": {
+    "due": 0.0,
+    "guarantees": 0.0
+   }
+  },
+  "status": 200
+ },
+ "/guarantees": {
+  "body": {
+   "accounts": [],
+   "contractorGuarantees": [
+    {
+     "amount": 17500.0,
+     "contractorCode": "2120001",
+     "contractorName": "مقاولات البناء الحديث",
+     "dueStatus": "scheduled",
+     "finishedOn": "2026-05-01",
+     "guaranteeDays": 365,
+     "id": "c9511b90-c84c-4537-b864-5ff65b09f002",
+     "notes": "",
+     "project": "السدن",
+     "releaseDue": "2027-05-01",
+     "releasedOn": null,
+     "retentionRate": null
+    }
+   ],
+   "totals": {
+    "dueSoonCount": 0,
+    "overdueCount": 0,
+    "statementsHeld": 0.0,
+    "trackedHeld": 17500.0
+   }
+  },
+  "status": 200
+ },
+ "/import/history": {
+  "body": {
+   "rows": []
+  },
+  "status": 200
+ },
+ "/overview": {
+  "body": {
+   "alerts": [
+    {
+     "level": "danger",
+     "text": "متأخرات مستحقة الآن: 155,000.50 ر.س"
+    },
+    {
+     "level": "warning",
+     "text": "مورد واحد بلا حركة منذ فترة طويلة — قد تكون البيانات قديمة"
+    },
+    {
+     "level": "warning",
+     "text": "لم تُرفع بيانات التحصيلات بعد"
+    },
+    {
+     "kind": "contractors_overdue",
+     "level": "info",
+     "text": "لا يُحسب تأخر للمقاولين: ٣ مقاولاً بلا مدة سداد — اضبط المدة في بطاقة المقاول ليظهر تأخره"
+    }
+   ],
+   "asOf": "2026-11-17",
+   "cash": {
+    "hasReceivables": false,
+    "minBalance": 0.0,
+    "nextDeficit": null
+   },
+   "contractors": {
+    "count": 3,
+    "dueWithin7": 0.0,
+    "overdue": 0.0,
+    "overdueContractorCount": 0,
+    "owedToContractors": 310000.0,
+    "owedToUs": 0.0,
+    "releaseAlerts": 0,
+    "retentionHeld": 17500.0,
+    "withTermCount": 0,
+    "withoutStatementCount": 0,
+    "withoutStatementOwed": 0.0,
+    "withoutTermCount": 3
+   },
+   "coverage": {
+    "coveredPct": 100.0,
+    "stale": 1,
+    "withoutData": 0
+   },
+   "coverageSummary": {
+    "contractors": {
+     "owedCovered": 310000.0,
+     "owedNotCovered": 0.0,
+     "withStatementCount": 3,
+     "withoutStatementCount": 0
+    },
+    "guarantees": {
+     "heldTotal": 17500.0
+    },
+    "receivables": {
+     "collected": 0.0,
+     "hasData": false,
+     "open": 0.0
+    },
+    "suppliers": {
+     "outstandingCovered": 245000.5,
+     "withStatementCount": 4,
+     "withoutStatementCount": 0
+    }
+   },
+   "guarantees": {
+    "dueCount": 0,
+    "heldTotal": 17500.0,
+    "nextRelease": {
+     "amount": 17500.0,
+     "contractorCode": "2120001",
+     "contractorName": "مقاولات البناء الحديث",
+     "date": "2027-05-01",
+     "project": "السدن"
+    },
+    "releasedThisYear": {
+     "amount": 0.0,
+     "count": 0
+    },
+    "upcomingCount": 0
+   },
+   "lastPayment": {
+    "account": "2110003",
+    "amount": 2500.0,
+    "date": "2026-11-16",
+    "description": "دفعة",
+    "name": "مؤسسة الكهرباء الحديثة",
+    "partyKind": "supplier",
+    "source": "manual"
+   },
+   "lastPayments": [
+    {
+     "account": "2110003",
+     "amount": 2500.0,
+     "date": "2026-11-16",
+     "description": "دفعة",
+     "name": "مؤسسة الكهرباء الحديثة",
+     "partyKind": "supplier",
+     "source": "manual"
+    },
+    {
+     "account": "2120003",
+     "amount": 20000.0,
+     "date": "2026-11-12",
+     "description": "دفعة",
+     "name": "شركة التشطيبات المتقدمة",
+     "partyKind": "contractor",
+     "source": "manual"
+    },
+    {
+     "account": "2120002",
+     "amount": 90000.0,
+     "date": "2026-11-02",
+     "description": "دفعة",
+     "name": "مؤسسة الأعمال الكهروميكانيكية",
+     "partyKind": "contractor",
+     "source": "manual"
+    },
+    {
+     "account": "2120001",
+     "amount": 100000.0,
+     "date": "2026-10-18",
+     "description": "دفعة",
+     "name": "مقاولات البناء الحديث",
+     "partyKind": "contractor",
+     "source": "manual"
+    },
+    {
+     "account": "2110001",
+     "amount": 30000.0,
+     "date": "2026-09-18",
+     "description": "دفعة",
+     "name": "شركة الحديد الموحدة",
+     "partyKind": "supplier",
+     "source": "manual"
+    }
+   ],
+   "needsTerm": 0,
+   "payables": {
+    "dueWithin7": 0.0,
+    "outstanding": 245000.5,
+    "overdue": 155000.5,
+    "supplierCount": 4,
+    "withData": 4
+   },
+   "projects": [
+    {
+     "outstanding": 160000.0,
+     "overdue": 70000.0,
+     "project": "السدن"
+    },
+    {
+     "outstanding": 75000.5,
+     "overdue": 75000.5,
+     "project": "المدينة"
+    },
+    {
+     "outstanding": 10000.0,
+     "overdue": 10000.0,
+     "project": "سدايم"
+    }
+   ],
+   "revenues": {
+    "collected": 0.0,
+    "open": 0.0
+   }
+  },
+  "status": 200
+ },
+ "/project-admin": {
+  "body": {
+   "possibleDuplicates": [],
+   "projects": [
+    "السدن",
+    "المدينة",
+    "سدايم"
+   ]
+  },
+  "status": 200
+ },
+ "/projects": {
+  "body": {
+   "asOf": "2026-11-17",
+   "filtersApplied": {
+    "dateFrom": null,
+    "dateTo": null,
+    "minOutstanding": null,
+    "q": null
+   },
+   "rows": [
+    {
+     "budgetDelayPct": 0.19999999999999996,
+     "budgetMonth": "2026-11-01",
+     "contractorCount": 1,
+     "contractorProjectNames": [
+      "السدن"
+     ],
+     "contractorsOwed": 250000.0,
+     "contractorsOwedToUs": 0.0,
+     "dueWithin7": 0.0,
+     "mergedSpellingAlert": false,
+     "openInvoiceCount": 3,
+     "outstanding": 160000.0,
+     "overdue": 70000.0,
+     "project": "السدن",
+     "supplierCount": 2,
+     "suppliersWithData": 2,
+     "topSuppliers": [
+      {
+       "account": "2110001",
+       "name": "شركة الحديد الموحدة",
+       "outstanding": 120000.0
+      },
+      {
+       "account": "2110004",
+       "name": "شركة الدهانات الوطنية",
+       "outstanding": 40000.0
+      }
+     ],
+     "totalCommitment": 410000.0,
+     "totalInvoiced": 190000.0,
+     "totalPaid": 30000.0
+    },
+    {
+     "budgetDelayPct": null,
+     "budgetMonth": null,
+     "contractorCount": 1,
+     "contractorProjectNames": [
+      "المدينة"
+     ],
+     "contractorsOwed": 50000.0,
+     "contractorsOwedToUs": 0.0,
+     "dueWithin7": 0.0,
+     "mergedSpellingAlert": false,
+     "openInvoiceCount": 1,
+     "outstanding": 75000.5,
+     "overdue": 75000.5,
+     "project": "المدينة",
+     "supplierCount": 1,
+     "suppliersWithData": 1,
+     "topSuppliers": [
+      {
+       "account": "2110002",
+       "name": "مصنع الخرسانة الجاهزة",
+       "outstanding": 75000.5
+      }
+     ],
+     "totalCommitment": 125000.5,
+     "totalInvoiced": 75000.5,
+     "totalPaid": 0.0
+    },
+    {
+     "budgetDelayPct": null,
+     "budgetMonth": null,
+     "contractorCount": 1,
+     "contractorProjectNames": [
+      "سدايم"
+     ],
+     "contractorsOwed": 10000.0,
+     "contractorsOwedToUs": 0.0,
+     "dueWithin7": 0.0,
+     "mergedSpellingAlert": false,
+     "openInvoiceCount": 1,
+     "outstanding": 10000.0,
+     "overdue": 10000.0,
+     "project": "سدايم",
+     "supplierCount": 1,
+     "suppliersWithData": 1,
+     "topSuppliers": [
+      {
+       "account": "2110003",
+       "name": "مؤسسة الكهرباء الحديثة",
+       "outstanding": 10000.0
+      }
+     ],
+     "totalCommitment": 20000.0,
+     "totalInvoiced": 12500.0,
+     "totalPaid": 2500.0
+    }
+   ],
+   "totals": {
+    "contractorsOwed": 310000.0,
+    "contractorsOwedToUs": 0.0,
+    "count": 3,
+    "dueWithin7": 0.0,
+    "invoiced": 277500.5,
+    "outstanding": 245000.5,
+    "overdue": 155000.5,
+    "paid": 32500.0,
+    "supplierCount": 4,
+    "totalCommitment": 555000.5
+   }
+  },
+  "status": 200
+ },
+ "/projects/%D8%A7%D9%84%D8%B3%D8%AF%D9%86": {
+  "body": {
+   "budgetDelayPct": 0.19999999999999996,
+   "budgetMonth": "2026-11-01",
+   "contractorCount": 1,
+   "contractorProjectNames": [
+    "السدن"
+   ],
+   "contractors": [
+    {
+     "balance": -250000.0,
+     "code": "2120001",
+     "deductionsTotal": 0.0,
+     "dueSoon": null,
+     "duesTotal": 150000.0,
+     "entryCount": 3,
+     "hasStatement": true,
+     "lastActivity": "2026-10-18",
+     "lastPayment": {
+      "amount": 100000.0,
+      "date": "2026-10-18"
+     },
+     "name": "مقاولات البناء الحديث",
+     "overdue": null,
+     "paidTotal": 100000.0,
+     "paymentTermDays": null,
+     "phone": "",
+     "projects": [
+      "السدن"
+     ],
+     "releaseAlerts": 0,
+     "retentionHeld": 17500.0,
+     "statementEntryCount": 3,
+     "status": "active",
+     "statusNote": ""
+    }
+   ],
+   "contractorsOwed": 250000.0,
+   "contractorsOwedToUs": 0.0,
+   "dueWithin7": 0.0,
+   "mergedSpellingAlert": false,
+   "openInvoiceCount": 3,
+   "outstanding": 160000.0,
+   "overdue": 70000.0,
+   "project": "السدن",
+   "schedule": [
+    {
+     "amount": 70000.0,
+     "count": 1,
+     "date": "2026-07-30"
+    },
+    {
+     "amount": 50000.0,
+     "count": 1,
+     "date": "2027-02-05"
+    }
+   ],
+   "supplierCount": 2,
+   "suppliers": [
+    {
+     "account": "2110001",
+     "ageing": {
+      "current": 50000.0,
+      "d1_30": 0.0,
+      "d31_60": 0.0,
+      "d61_90": 0.0,
+      "d90_plus": 70000.0
+     },
+     "delay": {
+      "amount": 70000.0,
+      "bucket": "m4",
+      "byBucket": {
+       "m1": 0.0,
+       "m2": 0.0,
+       "m3": 0.0,
+       "m4": 70000.0,
+       "m5": 0.0,
+       "m6": 0.0,
+       "m6_plus": 0.0
+      },
+      "days": 110
+     },
+     "dueToday": 70000.0,
+     "dueWithin7": 0.0,
+     "invoiceCount": 2,
+     "lastPayment": {
+      "amount": 30000.0,
+      "date": "2026-09-18"
+     },
+     "name": "شركة الحديد الموحدة",
+     "needsManualDueDate": false,
+     "openInvoiceCount": 2,
+     "outstanding": 120000.0,
+     "overdue": 70000.0,
+     "project": "السدن",
+     "projects": [
+      "السدن"
+     ],
+     "term": "90 يوم",
+     "termDays": 90,
+     "termKind": "days",
+     "totalInvoiced": 150000.0,
+     "totalPaid": 30000.0,
+     "unallocatedCount": 0
+    },
+    {
+     "account": "2110004",
+     "ageing": {
+      "current": 40000.0,
+      "d1_30": 0.0,
+      "d31_60": 0.0,
+      "d61_90": 0.0,
+      "d90_plus": 0.0
+     },
+     "delay": {
+      "amount": 0.0,
+      "bucket": null,
+      "byBucket": {
+       "m1": 0.0,
+       "m2": 0.0,
+       "m3": 0.0,
+       "m4": 0.0,
+       "m5": 0.0,
+       "m6": 0.0,
+       "m6_plus": 0.0
+      },
+      "days": 0
+     },
+     "dueToday": 0.0,
+     "dueWithin7": 0.0,
+     "invoiceCount": 1,
+     "lastPayment": null,
+     "name": "شركة الدهانات الوطنية",
+     "needsManualDueDate": false,
+     "openInvoiceCount": 1,
+     "outstanding": 40000.0,
+     "overdue": 0.0,
+     "project": "السدن",
+     "projects": [
+      "السدن"
+     ],
+     "term": "365 يوم",
+     "termDays": 365,
+     "termKind": "days",
+     "totalInvoiced": 40000.0,
+     "totalPaid": 0.0,
+     "unallocatedCount": 0
+    }
+   ],
+   "suppliersWithData": 2,
+   "topSuppliers": [
+    {
+     "account": "2110001",
+     "name": "شركة الحديد الموحدة",
+     "outstanding": 120000.0
+    },
+    {
+     "account": "2110004",
+     "name": "شركة الدهانات الوطنية",
+     "outstanding": 40000.0
+    }
+   ],
+   "totalCommitment": 410000.0,
+   "totalInvoiced": 190000.0,
+   "totalPaid": 30000.0
+  },
+  "status": 200
+ },
+ "/projects/%D8%A7%D9%84%D9%85%D8%AF%D9%8A%D9%86%D8%A9": {
+  "body": {
+   "budgetDelayPct": null,
+   "budgetMonth": null,
+   "contractorCount": 1,
+   "contractorProjectNames": [
+    "المدينة"
+   ],
+   "contractors": [
+    {
+     "balance": -50000.0,
+     "code": "2120002",
+     "deductionsTotal": 0.0,
+     "dueSoon": null,
+     "duesTotal": 60000.0,
+     "entryCount": 3,
+     "hasStatement": true,
+     "lastActivity": "2026-11-02",
+     "lastPayment": {
+      "amount": 90000.0,
+      "date": "2026-11-02"
+     },
+     "name": "مؤسسة الأعمال الكهروميكانيكية",
+     "overdue": null,
+     "paidTotal": 90000.0,
+     "paymentTermDays": null,
+     "phone": "",
+     "projects": [
+      "المدينة"
+     ],
+     "releaseAlerts": 0,
+     "retentionHeld": 0.0,
+     "statementEntryCount": 3,
+     "status": "active",
+     "statusNote": ""
+    }
+   ],
+   "contractorsOwed": 50000.0,
+   "contractorsOwedToUs": 0.0,
+   "dueWithin7": 0.0,
+   "mergedSpellingAlert": false,
+   "openInvoiceCount": 1,
+   "outstanding": 75000.5,
+   "overdue": 75000.5,
+   "project": "المدينة",
+   "schedule": [
+    {
+     "amount": 75000.5,
+     "count": 1,
+     "date": "2025-12-12"
+    }
+   ],
+   "supplierCount": 1,
+   "suppliers": [
+    {
+     "account": "2110002",
+     "ageing": {
+      "current": 0.0,
+      "d1_30": 0.0,
+      "d31_60": 0.0,
+      "d61_90": 0.0,
+      "d90_plus": 75000.5
+     },
+     "delay": {
+      "amount": 75000.5,
+      "bucket": "m6_plus",
+      "byBucket": {
+       "m1": 0.0,
+       "m2": 0.0,
+       "m3": 0.0,
+       "m4": 0.0,
+       "m5": 0.0,
+       "m6": 0.0,
+       "m6_plus": 75000.5
+      },
+      "days": 340
+     },
+     "dueToday": 75000.5,
+     "dueWithin7": 0.0,
+     "invoiceCount": 1,
+     "lastPayment": null,
+     "name": "مصنع الخرسانة الجاهزة",
+     "needsManualDueDate": false,
+     "openInvoiceCount": 1,
+     "outstanding": 75000.5,
+     "overdue": 75000.5,
+     "project": "المدينة",
+     "projects": [
+      "المدينة"
+     ],
+     "term": "60 يوم",
+     "termDays": 60,
+     "termKind": "days",
+     "totalInvoiced": 75000.5,
+     "totalPaid": 0.0,
+     "unallocatedCount": 0
+    }
+   ],
+   "suppliersWithData": 1,
+   "topSuppliers": [
+    {
+     "account": "2110002",
+     "name": "مصنع الخرسانة الجاهزة",
+     "outstanding": 75000.5
+    }
+   ],
+   "totalCommitment": 125000.5,
+   "totalInvoiced": 75000.5,
+   "totalPaid": 0.0
+  },
+  "status": 200
+ },
+ "/projects/%D8%B3%D8%AF%D8%A7%D9%8A%D9%85": {
+  "body": {
+   "budgetDelayPct": null,
+   "budgetMonth": null,
+   "contractorCount": 1,
+   "contractorProjectNames": [
+    "سدايم"
+   ],
+   "contractors": [
+    {
+     "balance": -10000.0,
+     "code": "2120003",
+     "deductionsTotal": 0.0,
+     "dueSoon": null,
+     "duesTotal": 0.0,
+     "entryCount": 2,
+     "hasStatement": true,
+     "lastActivity": "2026-11-12",
+     "lastPayment": {
+      "amount": 20000.0,
+      "date": "2026-11-12"
+     },
+     "name": "شركة التشطيبات المتقدمة",
+     "overdue": null,
+     "paidTotal": 20000.0,
+     "paymentTermDays": null,
+     "phone": "",
+     "projects": [
+      "سدايم"
+     ],
+     "releaseAlerts": 0,
+     "retentionHeld": 0.0,
+     "statementEntryCount": 2,
+     "status": "active",
+     "statusNote": ""
+    }
+   ],
+   "contractorsOwed": 10000.0,
+   "contractorsOwedToUs": 0.0,
+   "dueWithin7": 0.0,
+   "mergedSpellingAlert": false,
+   "openInvoiceCount": 1,
+   "outstanding": 10000.0,
+   "overdue": 10000.0,
+   "project": "سدايم",
+   "schedule": [
+    {
+     "amount": 10000.0,
+     "count": 1,
+     "date": "2026-06-20"
+    }
+   ],
+   "supplierCount": 1,
+   "suppliers": [
+    {
+     "account": "2110003",
+     "ageing": {
+      "current": 0.0,
+      "d1_30": 0.0,
+      "d31_60": 0.0,
+      "d61_90": 0.0,
+      "d90_plus": 10000.0
+     },
+     "delay": {
+      "amount": 10000.0,
+      "bucket": "m5",
+      "byBucket": {
+       "m1": 0.0,
+       "m2": 0.0,
+       "m3": 0.0,
+       "m4": 0.0,
+       "m5": 10000.0,
+       "m6": 0.0,
+       "m6_plus": 0.0
+      },
+      "days": 150
+     },
+     "dueToday": 10000.0,
+     "dueWithin7": 0.0,
+     "invoiceCount": 1,
+     "lastPayment": {
+      "amount": 2500.0,
+      "date": "2026-11-16"
+     },
+     "name": "مؤسسة الكهرباء الحديثة",
+     "needsManualDueDate": false,
+     "openInvoiceCount": 1,
+     "outstanding": 10000.0,
+     "overdue": 10000.0,
+     "project": "سدايم",
+     "projects": [
+      "سدايم"
+     ],
+     "term": "كاش",
+     "termDays": 0,
+     "termKind": "cash",
+     "totalInvoiced": 12500.0,
+     "totalPaid": 2500.0,
+     "unallocatedCount": 0
+    }
+   ],
+   "suppliersWithData": 1,
+   "topSuppliers": [
+    {
+     "account": "2110003",
+     "name": "مؤسسة الكهرباء الحديثة",
+     "outstanding": 10000.0
+    }
+   ],
+   "totalCommitment": 20000.0,
+   "totalInvoiced": 12500.0,
+   "totalPaid": 2500.0
+  },
+  "status": 200
+ },
+ "/reports/analysis": {
+  "body": {
+   "ageing": [
+    {
+     "amount": 90000.0,
+     "count": 2,
+     "label": "لم يحن موعدها",
+     "pct": 36.734618908941
+    },
+    {
+     "amount": 0.0,
+     "count": 0,
+     "label": "متأخر ١–٣٠ يوماً",
+     "pct": 0.0
+    },
+    {
+     "amount": 0.0,
+     "count": 0,
+     "label": "متأخر ٣١–٦٠ يوماً",
+     "pct": 0.0
+    },
+    {
+     "amount": 0.0,
+     "count": 0,
+     "label": "متأخر ٦١–٩٠ يوماً",
+     "pct": 0.0
+    },
+    {
+     "amount": 155000.5,
+     "count": 3,
+     "label": "أكثر من ٩٠ يوماً",
+     "pct": 63.265381091059
+    }
+   ],
+   "ageingUndated": 0.0,
+   "meta": {
+    "basis": "تاريخ الفاتورة + مدة المورد",
+    "classification": "داخلي — للاستخدام الإداري",
+    "closing_balance": 245000.5,
+    "company": "شركة إعمار الخليج المصرية للمقاولات",
+    "currency": "ر.س",
+    "department": "الإدارة المالية — الفرع الرئيسي",
+    "invoiced_in_period": 277500.5,
+    "issued_on": "١٧ نوفمبر ٢٠٢٦",
+    "opening_balance": 0.0,
+    "paid_in_period": 32500.0,
+    "period": "حتى ١٧ نوفمبر ٢٠٢٦",
+    "period_from": null,
+    "period_to": "2026-11-17",
+    "scope": "company",
+    "scope_label": "كل الموردين",
+    "serial": "EGC-AP-202611-001",
+    "title": "تقرير تحليل مديونية الموردين"
+   },
+   "notes": [
+    {
+     "body": "كشف الحساب لا يربط الدفعة بفاتورة، فوُزِّع المسدد بطريقة الأقدم أولاً (FIFO)، وهي الطريقة التي تعيد إنتاج رصيد الكشف.",
+     "title": "توزيع الدفعات"
+    }
+   ],
+   "schedule": [
+    {
+     "amount": 75000.5,
+     "count": 1,
+     "date": "2025-12-12",
+     "date_ar": "١٢ ديسمبر ٢٠٢٥",
+     "items": [
+      {
+       "account": "2110002",
+       "amount": 75000.5,
+       "invoice": null,
+       "name": "مصنع الخرسانة الجاهزة",
+       "overdue": true,
+       "partyKind": "supplier"
+      }
+     ],
+     "overdue": true,
+     "status": "متأخر ٣٤٠ يوماً"
+    },
+    {
+     "amount": 10000.0,
+     "count": 1,
+     "date": "2026-06-20",
+     "date_ar": "٢٠ يونيو ٢٠٢٦",
+     "items": [
+      {
+       "account": "2110003",
+       "amount": 10000.0,
+       "invoice": null,
+       "name": "مؤسسة الكهرباء الحديثة",
+       "overdue": true,
+       "partyKind": "supplier"
+      }
+     ],
+     "overdue": true,
+     "status": "متأخر ١٥٠ يوماً"
+    },
+    {
+     "amount": 70000.0,
+     "count": 1,
+     "date": "2026-07-30",
+     "date_ar": "٣٠ يوليو ٢٠٢٦",
+     "items": [
+      {
+       "account": "2110001",
+       "amount": 70000.0,
+       "invoice": null,
+       "name": "شركة الحديد الموحدة",
+       "overdue": true,
+       "partyKind": "supplier"
+      }
+     ],
+     "overdue": true,
+     "status": "متأخر ١١٠ يوماً"
+    },
+    {
+     "amount": 50000.0,
+     "count": 1,
+     "date": "2027-02-05",
+     "date_ar": "٥ فبراير ٢٠٢٧",
+     "items": [
+      {
+       "account": "2110001",
+       "amount": 50000.0,
+       "invoice": null,
+       "name": "شركة الحديد الموحدة",
+       "overdue": false,
+       "partyKind": "supplier"
+      }
+     ],
+     "overdue": false,
+     "status": "بعد ٨٠ يوماً"
+    }
+   ],
+   "summary": {
+    "credit_balances": 0.0,
+    "due_within_7": 0.0,
+    "net_outstanding": 245000.5,
+    "outstanding": 245000.5,
+    "overdue": 155000.5,
+    "supplier_count": 4,
+    "total_invoiced": 277500.5,
+    "total_paid": 32500.0
+   },
+   "suppliers": [
+    {
+     "account": "2110001",
+     "name": "شركة الحديد الموحدة",
+     "outstanding": 120000.0,
+     "overdue": 70000.0,
+     "partyKind": "supplier",
+     "project": "السدن",
+     "term": "90 يوم"
+    },
+    {
+     "account": "2110002",
+     "name": "مصنع الخرسانة الجاهزة",
+     "outstanding": 75000.5,
+     "overdue": 75000.5,
+     "partyKind": "supplier",
+     "project": "المدينة",
+     "term": "60 يوم"
+    },
+    {
+     "account": "2110004",
+     "name": "شركة الدهانات الوطنية",
+     "outstanding": 40000.0,
+     "overdue": 0.0,
+     "partyKind": "supplier",
+     "project": "السدن",
+     "term": "365 يوم"
+    },
+    {
+     "account": "2110003",
+     "name": "مؤسسة الكهرباء الحديثة",
+     "outstanding": 10000.0,
+     "overdue": 10000.0,
+     "partyKind": "supplier",
+     "project": "سدايم",
+     "term": "كاش"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/reports/periodic": {
+  "body": null,
+  "status": 422
+ },
+ "/reports/periodic?year=2026": {
+  "body": {
+   "comparison": [
+    {
+     "label": "الربع الأول ٢٠٢٦",
+     "paid": 0.0,
+     "prevPaid": 0.0,
+     "prevPct": null,
+     "yoyPaid": null,
+     "yoyPct": null
+    },
+    {
+     "label": "الربع الثاني ٢٠٢٦",
+     "paid": 0.0,
+     "prevPaid": 0.0,
+     "prevPct": null,
+     "yoyPaid": null,
+     "yoyPct": null
+    },
+    {
+     "label": "الربع الثالث ٢٠٢٦",
+     "paid": 30000.0,
+     "prevPaid": 0.0,
+     "prevPct": null,
+     "yoyPaid": null,
+     "yoyPct": null
+    },
+    {
+     "label": "الربع الرابع ٢٠٢٦",
+     "paid": 2500.0,
+     "prevPaid": 30000.0,
+     "prevPct": -91.66666666666666,
+     "yoyPaid": 0.0,
+     "yoyPct": null
+    }
+   ],
+   "coverage": {
+    "first": "2025-10-13",
+    "last": "2026-11-16"
+   },
+   "granularity": "quarter",
+   "periods": [
+    {
+     "avgSettlementDays": null,
+     "byProject": [],
+     "closing": 75000.5,
+     "complete": true,
+     "cumulativePaid": 0.0,
+     "from": "2026-01-01",
+     "invoiced": 0.0,
+     "label": "الربع الأول ٢٠٢٦",
+     "net": 0.0,
+     "opening": 75000.5,
+     "paid": 0.0,
+     "to": "2026-03-31",
+     "topSuppliers": []
+    },
+    {
+     "avgSettlementDays": null,
+     "byProject": [],
+     "closing": 187500.5,
+     "complete": true,
+     "cumulativePaid": 0.0,
+     "from": "2026-04-01",
+     "invoiced": 112500.0,
+     "label": "الربع الثاني ٢٠٢٦",
+     "net": 112500.0,
+     "opening": 75000.5,
+     "paid": 0.0,
+     "to": "2026-06-30",
+     "topSuppliers": []
+    },
+    {
+     "avgSettlementDays": 140.0,
+     "byProject": [
+      {
+       "paid": 30000.0,
+       "project": "السدن"
+      }
+     ],
+     "closing": 157500.5,
+     "complete": true,
+     "cumulativePaid": 30000.0,
+     "from": "2026-07-01",
+     "invoiced": 0.0,
+     "label": "الربع الثالث ٢٠٢٦",
+     "net": -30000.0,
+     "opening": 187500.5,
+     "paid": 30000.0,
+     "to": "2026-09-30",
+     "topSuppliers": [
+      {
+       "account": "2110001",
+       "name": "شركة الحديد الموحدة",
+       "paid": 30000.0
+      }
+     ]
+    },
+    {
+     "avgSettlementDays": 149.0,
+     "byProject": [
+      {
+       "paid": 2500.0,
+       "project": "سدايم"
+      }
+     ],
+     "closing": 245000.5,
+     "complete": false,
+     "cumulativePaid": 32500.0,
+     "from": "2026-10-01",
+     "invoiced": 90000.0,
+     "label": "الربع الرابع ٢٠٢٦",
+     "net": 87500.0,
+     "opening": 157500.5,
+     "paid": 2500.0,
+     "to": "2026-12-31",
+     "topSuppliers": [
+      {
+       "account": "2110003",
+       "name": "مؤسسة الكهرباء الحديثة",
+       "paid": 2500.0
+      }
+     ]
+    }
+   ],
+   "year": 2026
+  },
+  "status": 200
+ },
+ "/reports/periodic?year=2026&granularity=year": {
+  "body": {
+   "comparison": [
+    {
+     "label": "٢٠٢٦",
+     "paid": 32500.0,
+     "prevPaid": 0.0,
+     "prevPct": null,
+     "yoyPaid": 0.0,
+     "yoyPct": null
+    }
+   ],
+   "coverage": {
+    "first": "2025-10-13",
+    "last": "2026-11-16"
+   },
+   "granularity": "year",
+   "periods": [
+    {
+     "avgSettlementDays": 140.69230769230768,
+     "byProject": [
+      {
+       "paid": 30000.0,
+       "project": "السدن"
+      },
+      {
+       "paid": 2500.0,
+       "project": "سدايم"
+      }
+     ],
+     "closing": 245000.5,
+     "complete": false,
+     "cumulativePaid": 32500.0,
+     "from": "2026-01-01",
+     "invoiced": 202500.0,
+     "label": "٢٠٢٦",
+     "net": 170000.0,
+     "opening": 75000.5,
+     "paid": 32500.0,
+     "to": "2026-12-31",
+     "topSuppliers": [
+      {
+       "account": "2110001",
+       "name": "شركة الحديد الموحدة",
+       "paid": 30000.0
+      },
+      {
+       "account": "2110003",
+       "name": "مؤسسة الكهرباء الحديثة",
+       "paid": 2500.0
+      }
+     ]
+    }
+   ],
+   "year": 2026
+  },
+  "status": 200
+ },
+ "/reports/priorities": {
+  "body": {
+   "budget": null,
+   "items": [
+    {
+     "amount": 250000.0,
+     "key": "2120001",
+     "link": "#/contractors/2120001",
+     "name": "مقاولات البناء الحديث",
+     "partyKind": "contractor",
+     "reason": "رصيد مستحق للمقاول — 250,000.00 ر.س",
+     "score": 250000.0
+    },
+    {
+     "amount": 75000.5,
+     "key": "2110002",
+     "link": "#/suppliers/2110002",
+     "name": "مصنع الخرسانة الجاهزة",
+     "partyKind": "supplier",
+     "reason": "متأخر 340 يوماً — 75,000.50 ر.س",
+     "score": 92000.5
+    },
+    {
+     "amount": 70000.0,
+     "key": "2110001",
+     "link": "#/suppliers/2110001",
+     "name": "شركة الحديد الموحدة",
+     "partyKind": "supplier",
+     "reason": "متأخر 110 يوماً — 70,000.00 ر.س",
+     "score": 75500.0
+    },
+    {
+     "amount": 50000.0,
+     "key": "2120002",
+     "link": "#/contractors/2120002",
+     "name": "مؤسسة الأعمال الكهروميكانيكية",
+     "partyKind": "contractor",
+     "reason": "رصيد مستحق للمقاول — 50,000.00 ر.س",
+     "score": 50000.0
+    },
+    {
+     "amount": 10000.0,
+     "key": "2110003",
+     "link": "#/suppliers/2110003",
+     "name": "مؤسسة الكهرباء الحديثة",
+     "partyKind": "supplier",
+     "reason": "متأخر 150 يوماً — 10,000.00 ر.س",
+     "score": 17500.0
+    },
+    {
+     "amount": 10000.0,
+     "key": "2120003",
+     "link": "#/contractors/2120003",
+     "name": "شركة التشطيبات المتقدمة",
+     "partyKind": "contractor",
+     "reason": "رصيد مستحق للمقاول — 10,000.00 ر.س",
+     "score": 10000.0
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/reports/project-summary": {
+  "body": null,
+  "status": 422
+ },
+ "/reports/project-summary?project=%D8%A7%D9%84%D8%B3%D8%AF%D9%86": {
+  "body": {
+   "contractorScopeNote": "مستحق المقاولين هنا محسوب من حركات هذا المشروع فقط (نطاق دقيق) — على خلاف شاشة التدفق النقدي التي تعرض رصيد المقاول الكامل عبر كل مشاريعه",
+   "parties": "both",
+   "project": "السدن",
+   "rows": [
+    {
+     "account": "2110001",
+     "delay": {
+      "amount": 70000.0,
+      "bucket": "m4",
+      "byBucket": {
+       "m1": 0.0,
+       "m2": 0.0,
+       "m3": 0.0,
+       "m4": 70000.0,
+       "m5": 0.0,
+       "m6": 0.0,
+       "m6_plus": 0.0
+      },
+      "days": 110
+     },
+     "lastPayment": {
+      "amount": 30000.0,
+      "date": "2026-09-18"
+     },
+     "name": "شركة الحديد الموحدة",
+     "outstanding": 120000.0,
+     "partyKind": "supplier",
+     "totalInvoiced": 150000.0,
+     "totalPaid": 30000.0
+    },
+    {
+     "account": "2110004",
+     "delay": {
+      "amount": 0.0,
+      "bucket": null,
+      "byBucket": {
+       "m1": 0.0,
+       "m2": 0.0,
+       "m3": 0.0,
+       "m4": 0.0,
+       "m5": 0.0,
+       "m6": 0.0,
+       "m6_plus": 0.0
+      },
+      "days": 0
+     },
+     "lastPayment": null,
+     "name": "شركة الدهانات الوطنية",
+     "outstanding": 40000.0,
+     "partyKind": "supplier",
+     "totalInvoiced": 40000.0,
+     "totalPaid": 0.0
+    },
+    {
+     "account": "2120001",
+     "delay": null,
+     "lastPayment": {
+      "amount": 100000.0,
+      "date": "2026-10-18"
+     },
+     "name": "مقاولات البناء الحديث",
+     "outstanding": 250000.0,
+     "partyKind": "contractor",
+     "totalInvoiced": 350000.0,
+     "totalPaid": 100000.0
+    }
+   ],
+   "today": "2026-11-17",
+   "totals": {
+    "byBucket": {
+     "m1": 0.0,
+     "m2": 0.0,
+     "m3": 0.0,
+     "m4": 70000.0,
+     "m5": 0.0,
+     "m6": 0.0,
+     "m6_plus": 0.0
+    },
+    "companyCount": 3,
+    "delayedAmount": 70000.0,
+    "maxDelayDays": 110,
+    "outstanding": 410000.0,
+    "totalInvoiced": 540000.0,
+    "totalPaid": 130000.0
+   }
+  },
+  "status": 200
+ },
+ "/reports/project-summary?project=%D8%A7%D9%84%D9%85%D8%AF%D9%8A%D9%86%D8%A9": {
+  "body": {
+   "contractorScopeNote": "مستحق المقاولين هنا محسوب من حركات هذا المشروع فقط (نطاق دقيق) — على خلاف شاشة التدفق النقدي التي تعرض رصيد المقاول الكامل عبر كل مشاريعه",
+   "parties": "both",
+   "project": "المدينة",
+   "rows": [
+    {
+     "account": "2110002",
+     "delay": {
+      "amount": 75000.5,
+      "bucket": "m6_plus",
+      "byBucket": {
+       "m1": 0.0,
+       "m2": 0.0,
+       "m3": 0.0,
+       "m4": 0.0,
+       "m5": 0.0,
+       "m6": 0.0,
+       "m6_plus": 75000.5
+      },
+      "days": 340
+     },
+     "lastPayment": null,
+     "name": "مصنع الخرسانة الجاهزة",
+     "outstanding": 75000.5,
+     "partyKind": "supplier",
+     "totalInvoiced": 75000.5,
+     "totalPaid": 0.0
+    },
+    {
+     "account": "2120002",
+     "delay": null,
+     "lastPayment": {
+      "amount": 90000.0,
+      "date": "2026-11-02"
+     },
+     "name": "مؤسسة الأعمال الكهروميكانيكية",
+     "outstanding": 50000.0,
+     "partyKind": "contractor",
+     "totalInvoiced": 140000.0,
+     "totalPaid": 90000.0
+    }
+   ],
+   "today": "2026-11-17",
+   "totals": {
+    "byBucket": {
+     "m1": 0.0,
+     "m2": 0.0,
+     "m3": 0.0,
+     "m4": 0.0,
+     "m5": 0.0,
+     "m6": 0.0,
+     "m6_plus": 75000.5
+    },
+    "companyCount": 2,
+    "delayedAmount": 75000.5,
+    "maxDelayDays": 340,
+    "outstanding": 125000.5,
+    "totalInvoiced": 215000.5,
+    "totalPaid": 90000.0
+   }
+  },
+  "status": 200
+ },
+ "/reports/project-summary?project=%D8%B3%D8%AF%D8%A7%D9%8A%D9%85": {
+  "body": {
+   "contractorScopeNote": "مستحق المقاولين هنا محسوب من حركات هذا المشروع فقط (نطاق دقيق) — على خلاف شاشة التدفق النقدي التي تعرض رصيد المقاول الكامل عبر كل مشاريعه",
+   "parties": "both",
+   "project": "سدايم",
+   "rows": [
+    {
+     "account": "2110003",
+     "delay": {
+      "amount": 10000.0,
+      "bucket": "m5",
+      "byBucket": {
+       "m1": 0.0,
+       "m2": 0.0,
+       "m3": 0.0,
+       "m4": 0.0,
+       "m5": 10000.0,
+       "m6": 0.0,
+       "m6_plus": 0.0
+      },
+      "days": 150
+     },
+     "lastPayment": {
+      "amount": 2500.0,
+      "date": "2026-11-16"
+     },
+     "name": "مؤسسة الكهرباء الحديثة",
+     "outstanding": 10000.0,
+     "partyKind": "supplier",
+     "totalInvoiced": 12500.0,
+     "totalPaid": 2500.0
+    },
+    {
+     "account": "2120003",
+     "delay": null,
+     "lastPayment": {
+      "amount": 20000.0,
+      "date": "2026-11-12"
+     },
+     "name": "شركة التشطيبات المتقدمة",
+     "outstanding": 10000.0,
+     "partyKind": "contractor",
+     "totalInvoiced": 30000.0,
+     "totalPaid": 20000.0
+    }
+   ],
+   "today": "2026-11-17",
+   "totals": {
+    "byBucket": {
+     "m1": 0.0,
+     "m2": 0.0,
+     "m3": 0.0,
+     "m4": 0.0,
+     "m5": 10000.0,
+     "m6": 0.0,
+     "m6_plus": 0.0
+    },
+    "companyCount": 2,
+    "delayedAmount": 10000.0,
+    "maxDelayDays": 150,
+    "outstanding": 20000.0,
+    "totalInvoiced": 42500.0,
+    "totalPaid": 22500.0
+   }
+  },
+  "status": 200
+ },
+ "/reports/scopes": {
+  "body": {
+   "contractors": [
+    {
+     "code": "2120003",
+     "hasData": true,
+     "name": "شركة التشطيبات المتقدمة"
+    },
+    {
+     "code": "2120002",
+     "hasData": true,
+     "name": "مؤسسة الأعمال الكهروميكانيكية"
+    },
+    {
+     "code": "2120001",
+     "hasData": true,
+     "name": "مقاولات البناء الحديث"
+    }
+   ],
+   "parties": [
+    "suppliers",
+    "contractors",
+    "both"
+   ],
+   "projects": [
+    "السدن",
+    "المدينة",
+    "سدايم"
+   ],
+   "suppliers": [
+    {
+     "account": "2110001",
+     "hasData": true,
+     "name": "شركة الحديد الموحدة",
+     "project": "السدن"
+    },
+    {
+     "account": "2110004",
+     "hasData": true,
+     "name": "شركة الدهانات الوطنية",
+     "project": "السدن"
+    },
+    {
+     "account": "2110003",
+     "hasData": true,
+     "name": "مؤسسة الكهرباء الحديثة",
+     "project": "سدايم"
+    },
+    {
+     "account": "2110002",
+     "hasData": true,
+     "name": "مصنع الخرسانة الجاهزة",
+     "project": "المدينة"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/revenues": {
+  "body": {
+   "clients": [],
+   "count": 0,
+   "filtersApplied": {
+    "dateField": "due",
+    "dateFrom": null,
+    "dateTo": null,
+    "maxAmount": null,
+    "minAmount": null,
+    "project": null,
+    "q": null,
+    "status": null
+   },
+   "projects": [],
+   "rows": [],
+   "totals": {
+    "all": 0.0,
+    "collected": 0.0,
+    "count": 0,
+    "datedOpen": 0,
+    "open": 0.0,
+    "overdueOpen": 0.0,
+    "undatedOpen": 0
+   }
+  },
+  "status": 200
+ },
+ "/suppliers": {
+  "body": {
+   "count": 4,
+   "filtersApplied": {
+    "dateFrom": null,
+    "dateTo": null,
+    "hasData": null,
+    "maxOutstanding": null,
+    "minOutstanding": null,
+    "overdueOnly": false,
+    "project": null,
+    "q": null,
+    "status": null
+   },
+   "projects": [
+    "السدن",
+    "المدينة",
+    "سدايم"
+   ],
+   "rows": [
+    {
+     "account": "2110002",
+     "ageing": {
+      "current": 0.0,
+      "d1_30": 0.0,
+      "d31_60": 0.0,
+      "d61_90": 0.0,
+      "d90_plus": 75000.5
+     },
+     "delay": {
+      "amount": 75000.5,
+      "bucket": "m6_plus",
+      "byBucket": {
+       "m1": 0.0,
+       "m2": 0.0,
+       "m3": 0.0,
+       "m4": 0.0,
+       "m5": 0.0,
+       "m6": 0.0,
+       "m6_plus": 75000.5
+      },
+      "days": 340
+     },
+     "dueToday": 75000.5,
+     "dueWithin7": 0.0,
+     "firstActivity": "2025-10-13",
+     "invoiceCount": 1,
+     "lastActivity": "2025-10-13",
+     "lastPayment": null,
+     "name": "مصنع الخرسانة الجاهزة",
+     "needsManualDueDate": false,
+     "openInvoiceCount": 1,
+     "outstanding": 75000.5,
+     "overdue": 75000.5,
+     "project": "المدينة",
+     "projects": [
+      "المدينة"
+     ],
+     "status": "overdue",
+     "term": "60 يوم",
+     "termDays": 60,
+     "termKind": "days",
+     "totalInvoiced": 75000.5,
+     "totalPaid": 0.0,
+     "unallocatedCount": 0
+    },
+    {
+     "account": "2110001",
+     "ageing": {
+      "current": 50000.0,
+      "d1_30": 0.0,
+      "d31_60": 0.0,
+      "d61_90": 0.0,
+      "d90_plus": 70000.0
+     },
+     "delay": {
+      "amount": 70000.0,
+      "bucket": "m4",
+      "byBucket": {
+       "m1": 0.0,
+       "m2": 0.0,
+       "m3": 0.0,
+       "m4": 70000.0,
+       "m5": 0.0,
+       "m6": 0.0,
+       "m6_plus": 0.0
+      },
+      "days": 110
+     },
+     "dueToday": 70000.0,
+     "dueWithin7": 0.0,
+     "firstActivity": "2026-05-01",
+     "invoiceCount": 2,
+     "lastActivity": "2026-11-07",
+     "lastPayment": {
+      "amount": 30000.0,
+      "date": "2026-09-18"
+     },
+     "name": "شركة الحديد الموحدة",
+     "needsManualDueDate": false,
+     "openInvoiceCount": 2,
+     "outstanding": 120000.0,
+     "overdue": 70000.0,
+     "project": "السدن",
+     "projects": [
+      "السدن"
+     ],
+     "status": "overdue",
+     "term": "90 يوم",
+     "termDays": 90,
+     "termKind": "days",
+     "totalInvoiced": 150000.0,
+     "totalPaid": 30000.0,
+     "unallocatedCount": 0
+    },
+    {
+     "account": "2110003",
+     "ageing": {
+      "current": 0.0,
+      "d1_30": 0.0,
+      "d31_60": 0.0,
+      "d61_90": 0.0,
+      "d90_plus": 10000.0
+     },
+     "delay": {
+      "amount": 10000.0,
+      "bucket": "m5",
+      "byBucket": {
+       "m1": 0.0,
+       "m2": 0.0,
+       "m3": 0.0,
+       "m4": 0.0,
+       "m5": 10000.0,
+       "m6": 0.0,
+       "m6_plus": 0.0
+      },
+      "days": 150
+     },
+     "dueToday": 10000.0,
+     "dueWithin7": 0.0,
+     "firstActivity": "2026-06-20",
+     "invoiceCount": 1,
+     "lastActivity": "2026-11-16",
+     "lastPayment": {
+      "amount": 2500.0,
+      "date": "2026-11-16"
+     },
+     "name": "مؤسسة الكهرباء الحديثة",
+     "needsManualDueDate": false,
+     "openInvoiceCount": 1,
+     "outstanding": 10000.0,
+     "overdue": 10000.0,
+     "project": "سدايم",
+     "projects": [
+      "سدايم"
+     ],
+     "status": "overdue",
+     "term": "كاش",
+     "termDays": 0,
+     "termKind": "cash",
+     "totalInvoiced": 12500.0,
+     "totalPaid": 2500.0,
+     "unallocatedCount": 0
+    },
+    {
+     "account": "2110004",
+     "ageing": {
+      "current": 40000.0,
+      "d1_30": 0.0,
+      "d31_60": 0.0,
+      "d61_90": 0.0,
+      "d90_plus": 0.0
+     },
+     "delay": {
+      "amount": 0.0,
+      "bucket": null,
+      "byBucket": {
+       "m1": 0.0,
+       "m2": 0.0,
+       "m3": 0.0,
+       "m4": 0.0,
+       "m5": 0.0,
+       "m6": 0.0,
+       "m6_plus": 0.0
+      },
+      "days": 0
+     },
+     "dueToday": 0.0,
+     "dueWithin7": 0.0,
+     "firstActivity": "2026-10-28",
+     "invoiceCount": 1,
+     "lastActivity": "2026-10-28",
+     "lastPayment": null,
+     "name": "شركة الدهانات الوطنية",
+     "needsManualDueDate": false,
+     "openInvoiceCount": 1,
+     "outstanding": 40000.0,
+     "overdue": 0.0,
+     "project": "السدن",
+     "projects": [
+      "السدن"
+     ],
+     "status": "open",
+     "term": "365 يوم",
+     "termDays": 365,
+     "termKind": "days",
+     "totalInvoiced": 40000.0,
+     "totalPaid": 0.0,
+     "unallocatedCount": 0
+    }
+   ],
+   "totals": {
+    "count": 4,
+    "creditBalances": 0.0,
+    "delayByBucket": {
+     "m1": 0.0,
+     "m2": 0.0,
+     "m3": 0.0,
+     "m4": 70000.0,
+     "m5": 10000.0,
+     "m6": 0.0,
+     "m6_plus": 75000.5
+    },
+    "delayed": 155000.5,
+    "dueWithin7": 0.0,
+    "invoiced": 277500.5,
+    "outstanding": 245000.5,
+    "overdue": 155000.5,
+    "paid": 32500.0
+   }
+  },
+  "status": 200
+ },
+ "/suppliers/2110001": {
+  "body": {
+   "account": "2110001",
+   "ageing": {
+    "current": 50000.0,
+    "d1_30": 0.0,
+    "d31_60": 0.0,
+    "d61_90": 0.0,
+    "d90_plus": 70000.0
+   },
+   "closingBalance": 120000.0,
+   "delay": {
+    "amount": 70000.0,
+    "bucket": "m4",
+    "byBucket": {
+     "m1": 0.0,
+     "m2": 0.0,
+     "m3": 0.0,
+     "m4": 70000.0,
+     "m5": 0.0,
+     "m6": 0.0,
+     "m6_plus": 0.0
+    },
+    "days": 110
+   },
+   "dueToday": 70000.0,
+   "dueWithin7": 0.0,
+   "hasHistoryBefore": false,
+   "invoiceCount": 2,
+   "invoicedInPeriod": 150000.0,
+   "invoices": [
+    {
+     "amount": 100000.0,
+     "date": "2026-05-01",
+     "daysToDue": -110,
+     "description": "فاتورة توريد",
+     "doc": "F-1001",
+     "dueDate": "2026-07-30",
+     "id": "9f786fc8-0fa4-41ef-a6d8-6dfd190c909f",
+     "number": null,
+     "paid": 30000.0,
+     "remaining": 70000.0,
+     "source": "manual"
+    },
+    {
+     "amount": 50000.0,
+     "date": "2026-11-07",
+     "daysToDue": 80,
+     "description": "فاتورة توريد",
+     "doc": "F-1002",
+     "dueDate": "2027-02-05",
+     "id": "11e8d8b2-6b99-4f12-894d-1d0a23b6f74d",
+     "number": null,
+     "paid": 0.0,
+     "remaining": 50000.0,
+     "source": "manual"
+    }
+   ],
+   "lastPayment": {
+    "amount": 30000.0,
+    "date": "2026-09-18"
+   },
+   "name": "شركة الحديد الموحدة",
+   "needsManualDueDate": false,
+   "openInvoiceCount": 2,
+   "openingBalance": 0.0,
+   "outstanding": 120000.0,
+   "overdue": 70000.0,
+   "paidInPeriod": 30000.0,
+   "payments": [
+    {
+     "amount": 30000.0,
+     "date": "2026-09-18",
+     "description": "دفعة",
+     "doc": "P-2001",
+     "id": "7e6a872e-653d-440b-a810-2628532bcdc2",
+     "source": "manual"
+    }
+   ],
+   "project": "السدن",
+   "projects": [
+    "السدن"
+   ],
+   "status": "overdue",
+   "term": "90 يوم",
+   "termDays": 90,
+   "termKind": "days",
+   "totalInvoiced": 150000.0,
+   "totalPaid": 30000.0,
+   "unallocatedCount": 0,
+   "unallocatedPayments": []
+  },
+  "status": 200
+ },
+ "/suppliers/2110002": {
+  "body": {
+   "account": "2110002",
+   "ageing": {
+    "current": 0.0,
+    "d1_30": 0.0,
+    "d31_60": 0.0,
+    "d61_90": 0.0,
+    "d90_plus": 75000.5
+   },
+   "closingBalance": 75000.5,
+   "delay": {
+    "amount": 75000.5,
+    "bucket": "m6_plus",
+    "byBucket": {
+     "m1": 0.0,
+     "m2": 0.0,
+     "m3": 0.0,
+     "m4": 0.0,
+     "m5": 0.0,
+     "m6": 0.0,
+     "m6_plus": 75000.5
+    },
+    "days": 340
+   },
+   "dueToday": 75000.5,
+   "dueWithin7": 0.0,
+   "hasHistoryBefore": false,
+   "invoiceCount": 1,
+   "invoicedInPeriod": 75000.5,
+   "invoices": [
+    {
+     "amount": 75000.5,
+     "date": "2025-10-13",
+     "daysToDue": -340,
+     "description": "فاتورة توريد",
+     "doc": "F-1003",
+     "dueDate": "2025-12-12",
+     "id": "6366a934-a8dc-462f-82c6-825b7afbb5f1",
+     "number": null,
+     "paid": 0.0,
+     "remaining": 75000.5,
+     "source": "manual"
+    }
+   ],
+   "lastPayment": null,
+   "name": "مصنع الخرسانة الجاهزة",
+   "needsManualDueDate": false,
+   "openInvoiceCount": 1,
+   "openingBalance": 0.0,
+   "outstanding": 75000.5,
+   "overdue": 75000.5,
+   "paidInPeriod": 0.0,
+   "payments": [],
+   "project": "المدينة",
+   "projects": [
+    "المدينة"
+   ],
+   "status": "overdue",
+   "term": "60 يوم",
+   "termDays": 60,
+   "termKind": "days",
+   "totalInvoiced": 75000.5,
+   "totalPaid": 0.0,
+   "unallocatedCount": 0,
+   "unallocatedPayments": []
+  },
+  "status": 200
+ },
+ "/suppliers/2110003": {
+  "body": {
+   "account": "2110003",
+   "ageing": {
+    "current": 0.0,
+    "d1_30": 0.0,
+    "d31_60": 0.0,
+    "d61_90": 0.0,
+    "d90_plus": 10000.0
+   },
+   "closingBalance": 10000.0,
+   "delay": {
+    "amount": 10000.0,
+    "bucket": "m5",
+    "byBucket": {
+     "m1": 0.0,
+     "m2": 0.0,
+     "m3": 0.0,
+     "m4": 0.0,
+     "m5": 10000.0,
+     "m6": 0.0,
+     "m6_plus": 0.0
+    },
+    "days": 150
+   },
+   "dueToday": 10000.0,
+   "dueWithin7": 0.0,
+   "hasHistoryBefore": false,
+   "invoiceCount": 1,
+   "invoicedInPeriod": 12500.0,
+   "invoices": [
+    {
+     "amount": 12500.0,
+     "date": "2026-06-20",
+     "daysToDue": -150,
+     "description": "فاتورة توريد",
+     "doc": "F-1004",
+     "dueDate": "2026-06-20",
+     "id": "d31b99ff-ab99-481a-abc2-a5b62a8f0a29",
+     "number": null,
+     "paid": 2500.0,
+     "remaining": 10000.0,
+     "source": "manual"
+    }
+   ],
+   "lastPayment": {
+    "amount": 2500.0,
+    "date": "2026-11-16"
+   },
+   "name": "مؤسسة الكهرباء الحديثة",
+   "needsManualDueDate": false,
+   "openInvoiceCount": 1,
+   "openingBalance": 0.0,
+   "outstanding": 10000.0,
+   "overdue": 10000.0,
+   "paidInPeriod": 2500.0,
+   "payments": [
+    {
+     "amount": 2500.0,
+     "date": "2026-11-16",
+     "description": "دفعة",
+     "doc": "P-2002",
+     "id": "45fbdafc-48f9-43aa-acfc-778a189b05e2",
+     "source": "manual"
+    }
+   ],
+   "project": "سدايم",
+   "projects": [
+    "سدايم"
+   ],
+   "status": "overdue",
+   "term": "كاش",
+   "termDays": 0,
+   "termKind": "cash",
+   "totalInvoiced": 12500.0,
+   "totalPaid": 2500.0,
+   "unallocatedCount": 0,
+   "unallocatedPayments": []
+  },
+  "status": 200
+ },
+ "/suppliers/2110004": {
+  "body": {
+   "account": "2110004",
+   "ageing": {
+    "current": 40000.0,
+    "d1_30": 0.0,
+    "d31_60": 0.0,
+    "d61_90": 0.0,
+    "d90_plus": 0.0
+   },
+   "closingBalance": 40000.0,
+   "delay": {
+    "amount": 0.0,
+    "bucket": null,
+    "byBucket": {
+     "m1": 0.0,
+     "m2": 0.0,
+     "m3": 0.0,
+     "m4": 0.0,
+     "m5": 0.0,
+     "m6": 0.0,
+     "m6_plus": 0.0
+    },
+    "days": 0
+   },
+   "dueToday": 0.0,
+   "dueWithin7": 0.0,
+   "hasHistoryBefore": false,
+   "invoiceCount": 1,
+   "invoicedInPeriod": 40000.0,
+   "invoices": [
+    {
+     "amount": 40000.0,
+     "date": "2026-10-28",
+     "daysToDue": 345,
+     "description": "فاتورة توريد",
+     "doc": "F-1005",
+     "dueDate": "2027-10-28",
+     "id": "5fe2019c-cefd-4e9e-a4ae-802a7c8c2122",
+     "number": null,
+     "paid": 0.0,
+     "remaining": 40000.0,
+     "source": "manual"
+    }
+   ],
+   "lastPayment": null,
+   "name": "شركة الدهانات الوطنية",
+   "needsManualDueDate": false,
+   "openInvoiceCount": 1,
+   "openingBalance": 0.0,
+   "outstanding": 40000.0,
+   "overdue": 0.0,
+   "paidInPeriod": 0.0,
+   "payments": [],
+   "project": "السدن",
+   "projects": [
+    "السدن"
+   ],
+   "status": "open",
+   "term": "365 يوم",
+   "termDays": 365,
+   "termKind": "days",
+   "totalInvoiced": 40000.0,
+   "totalPaid": 0.0,
+   "unallocatedCount": 0,
+   "unallocatedPayments": []
+  },
+  "status": 200
+ },
+ "/suppliers/payment-allocation/pending-count": {
+  "body": {
+   "count": 0
+  },
+  "status": 200
+ },
+ "/trash": {
+  "body": {
+   "count": 0,
+   "rows": []
+  },
+  "status": 200
+ }
+}

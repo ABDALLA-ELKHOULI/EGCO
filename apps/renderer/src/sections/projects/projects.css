@@ -1,0 +1,120 @@
+/* ═══ قسم المشاريع — كل محدِّد يبدأ بـ.sec-projects ═══ */
+.sec-projects .sp-sort{display:inline-flex;align-items:center;gap:8px}
+.sec-projects select,.sec-projects .sp-notes{font:inherit;color:var(--text-1);background:var(--surface-1);border:1px solid var(--border-2);border-radius:var(--r-control);height:36px;padding:0 10px;min-width:0;max-width:100%}
+.sec-projects .sp-notes{height:auto;width:100%;padding:10px 12px;resize:vertical}
+.sec-projects select:focus-visible,.sec-projects .sp-notes:focus-visible{outline:2px solid var(--brand-gold);outline-offset:1px}
+.sec-projects .sp-kpi{margin-top:6px;overflow-wrap:anywhere}
+.sec-projects .sp-kpi .num{max-width:100%}
+.sec-projects .sp-err{color:var(--danger-fg);font:500 13px/20px var(--font);margin:8px 0 0}
+.sec-projects .sp-word{color:var(--text-2);font:500 12px/16px var(--font);margin-inline-start:6px}
+
+/* تنبيه «بلا قيمة عقد» / تعارض */
+.sec-projects .sp-callout{background:var(--surface-2)}
+.sec-projects .sp-callout-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+/* البطاقات */
+.sec-projects .sp-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.sec-projects .sp-card{display:flex;flex-direction:column;gap:14px}
+.sec-projects .sp-card .ih{margin-bottom:0;align-items:flex-start;flex-wrap:wrap}
+.sec-projects .sp-card-loss{border-color:var(--warn-solid)}
+.sec-projects .sp-usage .cap{display:block;margin-bottom:6px}
+.sec-projects .sp-usage .bar i{width:0}
+.sec-projects .sp-bar-ok{background:var(--ok-solid)}
+.sec-projects .sp-bar-watch{background:var(--warn-solid)}
+.sec-projects .sp-bar-loss{background:var(--warn-fg)}
+.sec-projects .sp-cta{display:flex;flex-direction:column;align-items:flex-start;gap:8px;background:var(--surface-2);border-radius:var(--r-control);padding:10px 12px}
+.sec-projects .sp-dl{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin:0}
+.sec-projects .sp-dl dt{font:500 12px/16px var(--font);color:var(--text-3)}
+.sec-projects .sp-dl dd{margin:2px 0 0;font:600 14px/20px var(--font);overflow-wrap:anywhere}
+.sec-projects .sp-dl small{color:var(--text-3);font-weight:500}
+.sec-projects .sp-card-acts{display:flex;gap:8px;margin-top:auto;padding-top:4px;border-top:1px solid var(--divider);padding-top:12px}
+
+/* تفاصيل المشروع */
+.sec-projects .ph h1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sec-projects .sp-verdict-loss{border-color:var(--warn-solid)}
+.sec-projects .sp-verdict .hero{overflow-wrap:anywhere}
+.sec-projects .sp-tl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.sec-projects .sp-tl li{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--divider)}
+.sec-projects .sp-tl li:last-child{border-bottom:0}
+.sec-projects .sp-tl .sev{margin-top:7px}
+.sec-projects .sp-tl .tt{overflow-wrap:anywhere}
+
+/* المخطط */
+.sec-projects .sp-chart{height:auto;aspect-ratio:640/240;max-height:300px}
+.sec-projects .sp-grid{stroke:var(--chart-grid);stroke-width:1}
+.sec-projects .sp-axis{fill:var(--chart-axis);font:500 11px var(--font)}
+.sec-projects .sp-line{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:sp-draw var(--d-chart) var(--ease-inout) forwards 150ms}
+.sec-projects .sp-planned{stroke:var(--chart-2);stroke-dasharray:1;opacity:.9}
+.sec-projects .sp-actual{stroke:var(--chart-1);animation-delay:300ms}
+.sec-projects .sp-dot{fill:var(--chart-1);opacity:0;animation:sp-fade var(--d-base) var(--ease-out) forwards 900ms}
+.sec-projects .sp-key{display:inline-block;width:14px;height:3px;border-radius:2px;margin-inline-end:6px;vertical-align:middle}
+.sec-projects .sp-key-p{background:var(--chart-2)}.sec-projects .sp-key-a{background:var(--chart-1)}
+@keyframes sp-draw{to{stroke-dashoffset:0}}
+@keyframes sp-fade{to{opacity:1}}
+
+/* جدول الأشهر */
+.sec-projects .sp-mtbl tr.sp-conf td{background:var(--warn-bg)}
+.sec-projects .sp-rowacts{display:flex;gap:6px;align-items:center;height:48px}
+.sec-projects .sp-choices{display:flex;flex-direction:column;gap:8px}
+.sec-projects .sp-choice{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border-1);border-radius:var(--r-control);cursor:pointer}
+.sec-projects .sp-choice:has(input:checked){border-color:var(--brand-gold);background:var(--surface-2)}
+
+/* الدمج */
+.sec-projects .sp-sugs{display:flex;flex-direction:column;gap:10px}
+.sec-projects .sp-sug{background:var(--surface-2);border-radius:var(--r-control);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.sec-projects .sp-sug-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.sec-projects .sp-mrow{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.sec-projects .sp-mrow label{display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1 1 200px}
+.sec-projects .sp-arrow{font-size:20px;color:var(--text-3);padding-bottom:6px}
+.sec-projects .sp-preview{margin-top:16px}
+.sec-projects .sp-impact ul{margin:8px 0;padding-inline-start:20px}
+.sec-projects .sp-impact li{margin:4px 0}
+
+@media (max-width:760px){
+  .sec-projects .grid>.c3,.sec-projects .grid>.c4,.sec-projects .grid>.c6,.sec-projects .grid>.c8{grid-column:span 12}
+  .sec-projects .sum{grid-template-columns:1fr 1fr;gap:14px}
+  .sec-projects .sum>div{border:0;padding:0}
+  .sec-projects .sum>div:first-child{grid-column:1/-1}
+  .sec-projects .sp-cards{grid-template-columns:1fr}
+}
+@media (max-width:440px){
+  .sec-projects .sp-dl{grid-template-columns:1fr}
+  .sec-projects .sp-arrow{transform:rotate(-90deg)}
+}
+@media (prefers-reduced-motion:reduce){
+  .sec-projects .sp-line{animation:none;stroke-dashoffset:0}
+  .sec-projects .sp-dot{animation:none;opacity:1}
+}
+
+/* ═══ إضافات النسخة الإنتاجية ═══ */
+.sec-projects input[type=month],.sec-projects input[type=search],.sec-projects .sp-claims input{font:inherit;color:var(--text-1);background:var(--surface-1);border:1px solid var(--border-2);border-radius:var(--r-control);height:36px;padding:0 var(--s-3);min-width:0;max-width:100%}
+.sec-projects .sp-filters{display:flex;flex-wrap:wrap;gap:var(--s-3);align-items:flex-end}
+.sec-projects .sp-filters label{display:flex;flex-direction:column;gap:var(--s-1)}
+.sec-projects .sp-chips{display:flex;flex-wrap:wrap;gap:var(--s-2);margin-top:var(--s-3)}
+.sec-projects .sp-list{margin:var(--s-2) 0 0;padding-inline-start:var(--s-5)}
+.sec-projects .sp-stack{display:flex;flex-direction:column;gap:var(--s-5)}
+.sec-projects .sp-block{margin-top:var(--s-4)}
+.sec-projects .sp-attach{display:flex;align-items:center;gap:var(--s-3);margin-top:var(--s-3);flex-wrap:wrap}
+/* أطراف المشروع (م-٥٠) */
+.sec-projects .sp-ptop{display:flex;justify-content:flex-end;margin-bottom:var(--s-3)}
+.sec-projects .sp-ptot{margin-bottom:var(--s-4)}
+.sec-projects .sp-picker{display:flex;flex-direction:column;gap:var(--s-2);margin-bottom:var(--s-4)}
+.sec-projects .sp-search{width:100%}
+.sec-projects .sp-results{list-style:none;margin:0;padding:0;max-height:260px;overflow:auto;border:1px solid var(--border-1);border-radius:var(--r-control)}
+.sec-projects .sp-results li{border-bottom:1px solid var(--divider)}
+.sec-projects .sp-results li:last-child{border-bottom:0}
+.sec-projects .sp-results button{all:unset;display:block;width:100%;box-sizing:border-box;padding:var(--s-2) var(--s-3);cursor:pointer}
+.sec-projects .sp-results button:hover,.sec-projects .sp-results button:focus-visible{background:var(--surface-2)}
+.sec-projects .sp-picked{display:flex;align-items:center;gap:var(--s-2);margin:0}
+/* أعمدة الاستحقاقات وأشرطة المقارنة */
+.sec-projects .sp-bars{display:flex;align-items:flex-end;gap:var(--s-3);min-height:200px}
+.sec-projects .sp-bcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:var(--s-1)}
+.sec-projects .sp-bar{display:block;width:100%;max-width:48px;height:140px;background:var(--brand-gold);border-radius:var(--r-control) var(--r-control) 0 0;transform-origin:bottom;transform:scaleY(var(--h,0))}
+.sec-projects .sp-hbars{display:flex;flex-direction:column;gap:var(--s-2)}
+.sec-projects .sp-hrow{display:grid;grid-template-columns:minmax(120px,200px) 1fr auto;align-items:center;gap:var(--s-3)}
+.sec-projects .sp-htrack{height:16px;background:var(--surface-2);border-radius:var(--r-pill);overflow:hidden}
+.sec-projects .sp-htrack i{display:block;height:100%;background:var(--brand-gold);transform-origin:right;transform:scaleX(var(--w,0))}
+.sec-projects .sp-kpis5{grid-template-columns:repeat(5,1fr)}
+.sec-projects .sp-docbars{margin:var(--s-3) 0}
+.sec-projects .sp-doc-h{display:block;margin:var(--s-3) 0 var(--s-2)}
+.sec-projects .sp-contents{display:contents}

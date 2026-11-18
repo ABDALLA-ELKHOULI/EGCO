@@ -1,0 +1,46 @@
+/* ═══ إضافات الهيكل ومكتبة React — ما لا يوجد في النموذج لأنه كان يُرسم سطرياً هناك ═══ */
+
+/* شاشة الإقلاع/الفشل */
+.boot{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s-3);color:var(--text-2);font:var(--t-body);text-align:center;padding:var(--s-8)}
+.boot b{font:var(--t-heading);color:var(--text-1)}
+.boot .st-ring{border-color:var(--border-2);border-top-color:var(--brand-gold)}
+
+/* الشريط: غلاف كل وجهة شفاف للتخطيط — المؤشر يقيس offsetTop نسبةً إلى .nav */
+.nav-slot{display:contents}
+
+/* الجزيرة — ما كان سطرياً في shell.js */
+.status .f-s2{align-items:flex-start;padding-top:9px;flex-direction:column}
+.status .f-s4{align-items:flex-start;padding-top:14px}
+.status .f-col{flex:1;min-width:0}
+.status .st-pct{margin-inline-start:auto}
+.status .s4go{cursor:pointer}
+
+/* شريط عنوان Electron (hidden titleBar): منطقة الجزيرة تسحب النافذة، والجزيرة نفسها لا */
+.island-dock{-webkit-app-region:drag;app-region:drag}
+.island-dock .status{-webkit-app-region:no-drag;app-region:no-drag}
+.side .brand{-webkit-app-region:drag;app-region:drag}
+
+/* رأس الجزيرة: إجراءات + رابط */
+.ih .acts{display:flex;align-items:center;gap:var(--s-2)}
+
+/* العودة لعرض زاره المستخدم: ظهور سريع بلا تتابع (prototype: renderView 'revisit') */
+.view.revisit .isl,.view.revisit .ph{animation-duration:120ms;animation-delay:0ms}
+
+/* الجدول: عملة شريط التحديد على الزجاج، عنوان قائمة الأعمدة */
+.ut-selcur{color:var(--on-glass-dim)}
+.ut-poph{padding:var(--s-1) var(--s-2) 6px}
+
+/* الدرج العام: الجسم يتمدد ويتمرّر */
+.drawer .d-body{flex:1}
+
+/* الصفحات القديمة داخل الهيكل الجديد: عرض القراءة كما كان */
+.view > .legacy-page{max-width:var(--content-max);margin:0 auto;min-width:0}
+
+/* وضع العرض (Present.tsx القديم) يخفي الهيكل */
+html.presenting .side,html.presenting .island-dock,html.presenting .tabs{display:none!important}
+@media print{
+  html.presenting .legacy-page > *:not(.present){display:none!important}
+}
+
+/* أرقام KPI لا تلتف ولا تُقصّ — ui/fit.ts يصغّر الخط حتى تتسع */
+:is(.kpi,.hero,[data-fit]):not(.legacy-page *),.legacy-page .kpi .value{white-space:nowrap;overflow:hidden;text-overflow:clip;min-width:0;max-width:100%}

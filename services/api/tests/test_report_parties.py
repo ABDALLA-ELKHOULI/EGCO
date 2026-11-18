@@ -69,7 +69,12 @@ def test_default_parties_keeps_the_legacy_payload_shape(api_client):
 
     assert set(a) == LEGACY_TOP_KEYS
     assert 'contractors' not in a
-    assert set(a['summary']) == LEGACY_SUMMARY_KEYS
+    # المفاتيح القديمة كلها باقية بقيمها؛ الإضافات (تفكيك الموردين/المقاولين،
+    # ageingTotal، period_movement — طلب قسم التقارير) مسموحة ولا تُزال.
+    assert LEGACY_SUMMARY_KEYS <= set(a['summary'])
+    assert set(a['summary']) - LEGACY_SUMMARY_KEYS <= {
+        'supplierOutstanding', 'contractorOutstanding', 'ageingTotal', 'period_movement'}
+    assert a['summary']['supplierOutstanding'] == a['summary']['outstanding']
     assert a['meta']['scope_label'] == 'كل الموردين'
     assert a['meta']['title'] == 'تقرير تحليل مديونية الموردين'
     # contractors present in the database must not leak into a supplier-only report

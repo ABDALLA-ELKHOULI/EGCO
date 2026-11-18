@@ -26,7 +26,7 @@ _GRANULARITY_DAYS = {'week': 7, 'fortnight': 14}
 @router.get('')
 def cashflow(weeks: int = Query(26, ge=1, le=104),
             from_: Optional[str] = Query(None, alias='from'),
-            opening_balance: float = Query(0.0),
+            opening_balance: Optional[float] = Query(None),
             project: Optional[str] = Query(None),
             parties: str = Query('suppliers', pattern='^(suppliers|contractors|both)$'),
             period_days: Optional[int] = Query(None),
@@ -61,9 +61,19 @@ def cashflow(weeks: int = Query(26, ge=1, le=104),
         raise HTTPException(status_code=422, detail='طول الفترة بين ١ و٩٢ يوماً')
 
     from_date = parse_date(from_, 'تاريخ البداية')
-    return cashflow_service.cashflow(db, weeks=weeks, from_date=from_date,
-                                     opening_balance=opening_balance, project=project,
-                                     parties=parties, period_days=period_days)
+    # الرصيد الافتتاحي: الباراميتر إن مُرِّر، وإلا الرصيد البنكي المحفوظ، وإلا صفر
+    # — والمصدر يُعاد صراحةً حتى لا يبدو صفرٌ افتراضي رصيداً حقيقياً.
+    source = 'query'
+    if opening_balance is None:
+        from app.services import settings_service
+        bank = settings_service.bank_balance(db)
+        source = 'bank' if bank is not None else 'none'
+        opening_balance = float(bank) if bank is not None else 0.0
+    out = cashflow_service.cashflow(db, weeks=weeks, from_date=from_date,
+                                    opening_balance=opening_balance, project=project,
+                                    parties=parties, period_days=period_days)
+    out['openingBalanceSource'] = source
+    return out
 
 
 @router.get('/breakdown')
@@ -74,6 +84,7 @@ def cashflow_breakdown(term: str = Query(..., pattern='^(scheduled|overdue|undat
                        project: Optional[str] = Query(None),
                        parties: str = Query('suppliers', pattern='^(suppliers|contractors|both)$'),
                        period_days: Optional[int] = Query(None),
+                       side: str = Query('outflow', pattern='^(outflow|inflow)$'),
                        db: Session = Depends(get_session)) -> dict:
     """الصفوف الفعلية وراء أي رقم في /cashflow — إجابة «من أين جاء هذا الرقم؟».
 
@@ -89,7 +100,7 @@ def cashflow_breakdown(term: str = Query(..., pattern='^(scheduled|overdue|undat
     period_date = parse_date(period, 'الفترة')
     return cashflow_service.breakdown(db, term=term, project=project, parties=parties,
                                       weeks=weeks, from_date=from_date, period_days=period_days,
-                                      period=period_date)
+                                      period=period_date, side=side)
 
 
 @router.post('/reconciliation-note')

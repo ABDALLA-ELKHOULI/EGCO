@@ -1,0 +1,24 @@
+/** مكتبة «أرخبيل» — العقد في docs/next/FRONTEND-CONTRACT.md §٤. لا استدعاء API هنا إطلاقاً. */
+export * from './format';
+export { usePrefs, setPrefs, getPrefs, cycleTheme, toggleDigits, uiPref, setUiPref, THEME_LABEL } from './prefs';
+export type { Prefs, ThemePref, DigitsPref } from './prefs';
+export { useCountUp, reduced, replayClass } from './motion';
+export { Icon, ICONS } from './Icon';
+export type { IconName } from './Icon';
+export { toast, ToastHost } from './Toast';
+export type { ToastOptions, ToastKind } from './Toast';
+export { Modal, confirm, ConfirmHost } from './Modal';
+export type { ModalProps, ModalAction, ConfirmOptions } from './Modal';
+export { isModalOpen } from './overlay';
+export { Drawer } from './Drawer';
+export type { DrawerProps } from './Drawer';
+export { useForm, Field, FormGrid } from './Form';
+export type { FormApi, Rule, Rules, FieldType, FieldProps, OptionLike } from './Form';
+export { DataTable } from './DataTable';
+export type { Column, Filter, FilterOption, SortState, TableQuery, SelectionAction, DataTableProps } from './DataTable';
+export { ExportDialog, toCSV } from './ExportDialog';
+export type { CsvColumn, ExportDialogProps } from './ExportDialog';
+export { Sparkline, LineChart, Kpi } from './charts';
+export type { Series } from './charts';
+export { Money, Num, Pill, Chip, Seg, Tabs, Button, PageHeader, Grid, Island, EmptyState, Skeleton } from './primitives';
+export type { PillTone, Opt, Span } from './primitives';

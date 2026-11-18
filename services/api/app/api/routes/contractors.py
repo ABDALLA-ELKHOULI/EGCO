@@ -9,7 +9,7 @@ import io
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -214,6 +214,38 @@ def claims_due(date_from: Optional[str] = Query(None), date_to: Optional[str] = 
     dtt = _date(date_to) if date_to else None
     return calendar_service.contractor_claim_events_json(db, date_from=df, date_to=dtt,
                                                          project=project)
+
+
+@router.post('/bulk-term')
+def bulk_term(body: dict = Body(...), db: Session = Depends(get_session)) -> dict:
+    """«مدة افتراضية» (م-٤٦) — يضبط مدة السداد لكل المقاولين دفعة واحدة.
+
+    `onlyWithoutTerm` افتراضياً true: من ضبط مدته يدوياً لا يُمسّ — قرار المستخدم
+    الفردي أقوى من الافتراضي. لا يُفترض أي رقم: المدة يُرسلها المستخدم صراحةً.
+    """
+    days = body.get('termDays')
+    if not isinstance(days, int) or isinstance(days, bool) or not (0 <= days <= 3650):
+        raise HTTPException(422, detail='مدة السداد عدد أيام صحيح بين ٠ و٣٦٥٠')
+    only_without = body.get('onlyWithoutTerm', True) is not False
+    q = db.query(models.Contractor).filter(models.Contractor.deleted_at.is_(None))
+    if only_without:
+        q = q.filter(models.Contractor.payment_term_days.is_(None))
+    n = 0
+    for row in q.all():
+        row.payment_term_days = days
+        n += 1
+    db.commit()
+    return dict(updated=n, termDays=days, onlyWithoutTerm=only_without)
+
+
+@router.get('/{code}/projects')
+def party_projects_with_amounts(code: str, db: Session = Depends(get_session)) -> list:
+    """م-٥٠ — مشاريع الطرف بمبالغ إسناده على كل مشروع."""
+    from app.services import project_registry_service as PR
+    out = PR.party_projects(db, PP.CONTRACTOR, code)
+    if out is None:
+        raise HTTPException(404, detail='الطرف غير موجود')
+    return out
 
 
 @router.get('/{code}')

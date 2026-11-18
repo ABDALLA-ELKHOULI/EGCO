@@ -61,7 +61,7 @@ def get_settings() -> dict:
 @router.put('/settings')
 def put_settings(body: AiSettingsBody) -> dict:
     """حفظ جزئي — إرسال القناع '•••' كمفتاح يعني: أبقِ المفتاح المحفوظ."""
-    partial = body.dict(exclude_unset=True)
+    partial = body.model_dump(exclude_unset=True)
     if partial.get('apiKey') == MASK:
         partial.pop('apiKey')
     # التفعيل يتطلب عنوان خدمة ونموذجاً — مفتاح API قد يكون فارغاً لبعض البوابات،

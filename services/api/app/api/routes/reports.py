@@ -275,3 +275,10 @@ def export_xlsx(granularity: Optional[str] = Query(None),
         media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers=headers,
     )
+
+
+@router.get('/gm')
+def gm_report(db: Session = Depends(get_session)) -> dict:
+    """تقرير المدير العام — API-CONTRACT.md §٨. كل الأرقام من الخادم."""
+    from app.services import today_service
+    return today_service.gm_report(db)

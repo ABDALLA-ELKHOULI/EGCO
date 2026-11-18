@@ -37,8 +37,13 @@ class ImportRequest(BaseModel):
     path: str
     source: Literal['pdf_statement', 'suppliers_excel', 'csv_statement', 'receivables_legacy_html',
                     'receivables_excel', 'debts_report_xls', 'contractors_balance_xls',
-                    'budget_deviation']
+                    'budget_deviation', 'budget_plan']
     allow_unreconciled: bool = False
+    #: كشف مجمّع — حسابات بعينها يقرّر المستخدم حفظها رغم فرق المطابقة («احفظ رغم
+    #: الفرق»). حين يُملأ لا يُحفظ من الملف إلا هذه الحسابات، والبقية لا تُمسّ.
+    allow_accounts: Optional[List[str]] = None
+    #: الموازنة التقديرية — تأكيد صريح لإنشاء المشروع إن لم يكن في السجل
+    confirm_project: bool = False
     #: يُملأ فقط بعد أن يؤكّد المستخدم إنشاء الحساب الجديد
     create_supplier: Optional[NewSupplierIn] = None
 
@@ -47,7 +52,7 @@ class PreviewRequest(BaseModel):
     path: str
     source: Literal['pdf_statement', 'suppliers_excel', 'csv_statement', 'receivables_legacy_html',
                     'receivables_excel', 'debts_report_xls',
-                    'contractors_balance_xls'] = 'pdf_statement'
+                    'contractors_balance_xls', 'budget_plan'] = 'pdf_statement'
 
 
 class ScanDirRequest(BaseModel):
@@ -133,6 +138,8 @@ class RevenueIn(BaseModel):
     status: str = 'open'
     collected_on: Optional[str] = Field(default=None, alias='collectedOn')
     notes: str = ''
+    #: 'pending' | 'approved' — وسم إداري لا يدخل أي حساب
+    approval: Optional[str] = None
 
     class Config:
         populate_by_name = True
@@ -149,6 +156,8 @@ class RevenueUpdate(BaseModel):
     status: Optional[str] = None
     collected_on: Optional[str] = Field(default=None, alias='collectedOn')
     notes: Optional[str] = None
+    #: 'pending' | 'approved' — وسم إداري لا يدخل أي حساب
+    approval: Optional[str] = None
 
     class Config:
         populate_by_name = True

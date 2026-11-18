@@ -363,6 +363,7 @@ def _supplier_term_rows(db, today, project, term, from_date, horizon_end,
                 continue
             days_overdue = (today - d).days if d is not None and d < today else None
             rows.append(dict(
+                id='inv:%s' % inv.id, kind='invoice',
                 account=p.supplier.account, supplierName=p.supplier.name,
                 invoiceNumber=inv.number, invoiceDate=inv.date.isoformat(),
                 dueDate=d.isoformat() if d else None, amount=money(inv.remaining),
@@ -419,6 +420,7 @@ def _contractor_term_rows(db, today, project, term, from_date, horizon_end,
             if c is None:
                 continue
             rows.append(dict(
+                id='gua:%s' % g.id, kind='guarantee',
                 contractorCode=c.code, contractorName=c.name, project=g.project,
                 releaseDue=due.isoformat(), amount=money(amount),
             ))
@@ -435,6 +437,7 @@ def _contractor_term_rows(db, today, project, term, from_date, horizon_end,
                 if c is None:
                     continue
                 rows.append(dict(
+                    id='con:%s' % c.code, kind='contractor_balance',
                     contractorCode=c.code, contractorName=c.name, project=None,
                     releaseDue=None, amount=money(due_i - covered),
                 ))
@@ -448,7 +451,8 @@ def _collected_term_rows(db, project, win_from, win_to) -> list:
         q = q.filter(models.Receivable.project == project)
     rows = [r for r in q.all() if r.collected_on is not None and win_from <= r.collected_on <= win_to]
     rows.sort(key=lambda r: r.collected_on, reverse=True)
-    return [dict(date=r.collected_on.isoformat(), client=r.client, project=r.project,
+    return [dict(id='rec:%s' % r.id, kind='receivable',
+                date=r.collected_on.isoformat(), client=r.client, project=r.project,
                 amount=money(r.amount)) for r in rows]
 
 
@@ -459,13 +463,44 @@ def _forecast_term_rows(db, project, win_from, win_to) -> list:
     rows = [r for r in q.all() if r.status != 'collected' and r.due_date is not None
             and win_from <= r.due_date <= win_to]
     rows.sort(key=lambda r: r.due_date)
-    return [dict(date=r.due_date.isoformat(), client=r.client, project=r.project,
+    return [dict(id='rec:%s' % r.id, kind='receivable',
+                date=r.due_date.isoformat(), client=r.client, project=r.project,
                 amount=money(r.amount)) for r in rows]
+
+
+def _receivable_term_rows(db, project, term, from_date, horizon_end, win_from, win_to) -> list:
+    """جانب الداخل لأقسام المطابقة — نفس تقسيم _receivable_reconciliation بالضبط
+    (مجدول/متأخر/خارج الأفق/بلا تاريخ) حتى يكون كل رقم في reconciliation.inflow قابلاً للنقر."""
+    q = db.query(models.Receivable).filter(models.Receivable.deleted_at.is_(None))
+    if project:
+        q = q.filter(models.Receivable.project == project)
+    out = []
+    for r in q.all():
+        if r.status == 'collected':
+            continue
+        d = r.due_date
+        if term == 'undated':
+            match = d is None
+        elif d is None:
+            match = False
+        elif term == 'overdue':
+            match = d < from_date
+        elif term == 'beyond':
+            match = d > horizon_end
+        else:
+            match = from_date <= d <= horizon_end and win_from <= d <= win_to
+        if match:
+            out.append(dict(id='rec:%s' % r.id, kind='receivable',
+                            date=d.isoformat() if d else None, client=r.client,
+                            project=r.project, amount=money(r.amount)))
+    out.sort(key=lambda x: (x['date'] or '9999', x['client'] or ''))
+    return out
 
 
 def breakdown(db: Session, term: str, project: Optional[str] = None, parties: str = 'suppliers',
              weeks: int = 26, from_date: Optional[dt.date] = None, today: Optional[dt.date] = None,
-             period_days: int = C.PERIOD_DAYS, period: Optional[dt.date] = None) -> dict:
+             period_days: int = C.PERIOD_DAYS, period: Optional[dt.date] = None,
+             side: str = 'outflow') -> dict:
     """صفوف المصدر الفعلية وراء أي رقم في /cashflow — بلا كتلة سوداء، كل رقم قابل للتتبع."""
     if term not in _TERMS:
         raise ValueError('unknown term')
@@ -478,7 +513,9 @@ def breakdown(db: Session, term: str, project: Optional[str] = None, parties: st
     else:
         win_from, win_to = from_date, horizon_end
 
-    if term == 'collected':
+    if side == 'inflow' and term in ('scheduled', 'overdue', 'undated', 'beyond'):
+        rows = _receivable_term_rows(db, project, term, from_date, horizon_end, win_from, win_to)
+    elif term == 'collected':
         rows = _collected_term_rows(db, project, win_from, win_to)
     elif term == 'forecast':
         rows = _forecast_term_rows(db, project, win_from, win_to)
@@ -493,7 +530,7 @@ def breakdown(db: Session, term: str, project: Optional[str] = None, parties: st
 
     total = sum((D(r['amount']) for r in rows), ZERO)
     truncated = len(rows) > MAX_BREAKDOWN_ROWS
-    return dict(term=term, total=money(total), truncated=truncated,
+    return dict(term=term, side=side, total=money(total), truncated=truncated,
                rows=rows[:MAX_BREAKDOWN_ROWS])
 
 

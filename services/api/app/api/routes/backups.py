@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_session
 from app.services import backup_service as BS
+from app.services import events_service as ES
 
 router = APIRouter()
 
@@ -30,7 +31,8 @@ def create_manual(db: Session = Depends(get_session)) -> dict:
     """نسخة يدوية الآن — «نسخة الآن» في الإعدادات، و`data:export` في Electron
     يستعملها أيضاً حتى لا ينسخ قاعدة حيّة بعد اليوم."""
     try:
-        return dict(backup=BS.create_backup('manual', BS.get_external_dir(db)))
+        ext = BS.get_external_dir(db)
+        return dict(backup=ES.backup_with_events(lambda: BS.create_backup('manual', ext)))
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
     except (RuntimeError, OSError) as e:
@@ -42,7 +44,8 @@ def daily_if_due(db: Session = Depends(get_session)) -> dict:
     """تستدعيها الواجهة عند فتح الإعدادات/الإقلاع — تأخذ يومية إن مضى يوم،
     وإلا تعيد `taken=False` بلا أثر."""
     try:
-        info = BS.daily_if_due(BS.get_external_dir(db))
+        ext = BS.get_external_dir(db)
+        info = ES.backup_with_events(lambda: BS.daily_if_due(ext))
     except (RuntimeError, OSError) as e:
         raise HTTPException(500, 'تعذّرت النسخة اليومية: %s' % e)
     last = BS.latest('daily')

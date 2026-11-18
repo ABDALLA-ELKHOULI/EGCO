@@ -25,6 +25,21 @@ export interface VersionTour {
 
 export const WHATS_NEW: VersionTour[] = [
   {
+    version: '0.13.1',
+    items: [
+      {
+        title: 'قراءة الكشوف المجمّعة',
+        description: 'ارفع «كشوفات الموردين» أو «كشف المقاولين» أو «كشف ضمان المقاولين» كما يُصدِّرها النظام المحاسبي — ملفاً واحداً بمئات الحسابات — فيُقرأ كل حساب على حدة ويُطابَق بإجماليه المطبوع. قبل الحفظ ترى عدد الحسابات وما لن يُحفظ ولماذا.',
+        where: 'رفع الملفات',
+      },
+      {
+        title: 'تصحيح قراءة بعض الكشوف',
+        description: 'سطرٌ يحمل دفعة وفاتورة معاً كانت دفعته تسقط، وبعض الحسابات الطويلة جداً كان رصيدها ينقلب موجباً. صُحّحت القراءة — أعد رفع كشوفك لتُحدَّث الأرقام.',
+      },
+    ],
+  },
+
+  {
     version: '0.13.0',
     items: [
       {
@@ -172,10 +187,20 @@ export const WHATS_NEW: VersionTour[] = [
 /** يعيد جولات كل الإصدارات بين آخر إصدار رآه المستخدم والإصدار الحالي (باستثناء
  *  المرئي سابقاً)، مجمَّعة بترتيب الشحن — حتى لا يُفقد إعلان ميزة لأن المستخدم لم
  *  يفتح التطبيق بين إصدارين متتاليين. */
+/** مقارنة أرقام الإصدار عددياً (0.13.1 > 0.9.10). */
+function cmpVersion(a: string, b: string): number {
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+}
+
 export function toursSince(lastSeenVersion: string | null): VersionTour[] {
   if (lastSeenVersion === null) return [];
-  const idx = WHATS_NEW.findIndex((v) => v.version === lastSeenVersion);
-  // إصدار غير معروف (نادر: قفزة كبيرة أو بيانات محلية قديمة) → أعرض كل ما هو مسجَّل،
-  // أفضل من عدم عرض شيء لمستخدم موجود فعلاً.
-  return idx === -1 ? WHATS_NEW : WHATS_NEW.slice(idx + 1);
+  // كان الاختيار بموضع العنصر في القائمة، والقائمة ليست مرتّبة دائماً — فمن ترقّى من
+  // 0.12.0 لم يرَ جولة 0.13.0 قط. الآن: كل إصدار أحدث من آخر ما رآه، مرتّباً من الأقدم.
+  return WHATS_NEW.filter((v) => cmpVersion(v.version, lastSeenVersion) > 0)
+    .sort((a, b) => cmpVersion(a.version, b.version));
 }

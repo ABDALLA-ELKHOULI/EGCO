@@ -7,7 +7,7 @@ export interface PickedFile {
   path: string;
   name: string;
   source: 'pdf_statement' | 'suppliers_excel' | 'csv_statement' | 'debts_report_xls'
-    | 'contractors_balance_xls' | 'budget_deviation'
+    | 'contractors_balance_xls' | 'budget_deviation' | 'budget_plan'
     // م-٢١ — لا يُخفى ملف بصمت لمجرد أن نوعه غير معروف؛ يظهر بحالة «غير مدعوم».
     | 'unsupported';
 }
@@ -29,7 +29,52 @@ export type UpdateStatus =
   | { state: 'error'; message: string }
   | { state: 'unavailable-dev' };
 
+export interface TitleBarInsets {
+  platform: string;
+  height: number;
+  left: number;
+  right: number;
+  fullScreen: boolean;
+}
+
+export interface OsNotifyPayload {
+  title: string;
+  body?: string;
+  severity?: 'info' | 'success' | 'warning' | 'danger';
+  link?: string;
+  kind?: string;
+}
+
+export type OsNotifyResult =
+  | { shown: true }
+  | { shown: false; reason: 'focused' | 'rate-limited' | 'unsupported' | 'invalid' };
+
 contextBridge.exposeInMainWorld('egco', {
+  /** نظام التشغيل — متاح متزامناً ('darwin' | 'win32' | 'linux'). */
+  platform: process.platform as string,
+  /* ---- شريط العنوان المخصّص ---- */
+  titleBarInsets: (): Promise<TitleBarInsets> => ipcRenderer.invoke('window:insets'),
+  onTitleBarInsets: (cb: (i: TitleBarInsets) => void): (() => void) => {
+    const listener = (_e: unknown, i: TitleBarInsets) => cb(i);
+    ipcRenderer.on('window:insets', listener);
+    return () => ipcRenderer.removeListener('window:insets', listener);
+  },
+  setTheme: (theme: 'light' | 'dark'): Promise<void> => ipcRenderer.invoke('window:setTheme', theme),
+  isFocused: (): Promise<boolean> => ipcRenderer.invoke('window:isFocused'),
+  onFocusChange: (cb: (focused: boolean) => void): (() => void) => {
+    const listener = (_e: unknown, f: boolean) => cb(f);
+    ipcRenderer.on('window:focus', listener);
+    return () => ipcRenderer.removeListener('window:focus', listener);
+  },
+  /* ---- الإشعارات والشارة ---- */
+  notifyOs: (p: OsNotifyPayload): Promise<OsNotifyResult> => ipcRenderer.invoke('notify:os', p),
+  onNotificationClicked: (cb: (d: { link: string | null; kind: string }) => void): (() => void) => {
+    const listener = (_e: unknown, d: { link: string | null; kind: string }) => cb(d);
+    ipcRenderer.on('notify:clicked', listener);
+    return () => ipcRenderer.removeListener('notify:clicked', listener);
+  },
+  setBadge: (count: number): Promise<void> => ipcRenderer.invoke('app:setBadge', count),
+
   backendUrl: (): Promise<string> => ipcRenderer.invoke('app:backendUrl'),
   info: () => ipcRenderer.invoke('app:info'),
   /** Returns the chosen file plus the type detected from its extension, or null. */
@@ -55,6 +100,14 @@ contextBridge.exposeInMainWorld('egco', {
     Promise<{ saved?: boolean; path?: string; canceled?: boolean; error?: string }> =>
     ipcRenderer.invoke('export:pdf', opts),
   /** يبدأ فحصاً يدوياً؛ الرد الفوري «جارٍ الفحص» فقط — النتيجة الحقيقية تصل عبر onUpdateStatus. */
+  /** بلاغات الدعم: لقطة نافذة التطبيق، معلومات تقنية، وإرسال البلاغ. */
+  supportCapture: (): Promise<string | null> => ipcRenderer.invoke('support:capture'),
+  supportDiagnostics: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('support:diagnostics'),
+  supportSubmit: (r: {
+    description: string; screen: string; diagnostics: Record<string, unknown>;
+    screenshotJpegBase64?: string;
+  }): Promise<{ state: 'sent' | 'queued' | 'local-only'; issueNumber?: number; issueUrl?: string; message?: string }> =>
+    ipcRenderer.invoke('support:submit', r),
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check'),
   /** يعيد تشغيل التطبيق لتثبيت تحديث سبق تنزيله. */
   installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),

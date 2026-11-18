@@ -109,7 +109,8 @@ export async function startBackend(isRestart = false): Promise<void> {
   const env = {
     ...process.env,
     EGCO_API_PORT: String(port),
-    EGCO_DATA_DIR: app.getPath('userData'),
+    // في التطوير يُسمح بمجلد بيانات منفصل حتى لا تُلمس قاعدة المستخدم الحقيقية
+    EGCO_DATA_DIR: (!app.isPackaged && process.env.EGCO_DATA_DIR) || app.getPath('userData'),
     PYTHONUNBUFFERED: '1',
   };
 

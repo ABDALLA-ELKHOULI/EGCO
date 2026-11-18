@@ -1,0 +1,6 @@
+/* ترتيب الطبقات: الرموز → الأساس العام → «أرخبيل» (دونات حول .legacy-page) → إضافات الهيكل → القديم المحصور */
+@import './tokens.css';
+@import './base.css';
+@import './archipelago.css';
+@import './shell.css';
+@import './legacy.css';

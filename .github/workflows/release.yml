@@ -108,6 +108,24 @@ jobs:
         continue-on-error: true
         run: npm --workspace apps/renderer run lint
 
+      # ‏مفتاح بلاغات الدعم يُحقن هنا من سرّ المستودع — لا يُكتب في الكود أبداً لأن
+      # ‏المستودع عام. صلاحيته على مستودع البلاغات وحده (EGCO-reports)، لا على هذا
+      # ‏المستودع: مفتاحٌ يكتب هنا يستطيع نشر تحديث إلى جهاز الشركة. بلا السرّ تُبنى
+      # ‏النسخة وتحفظ البلاغات محلياً — لا يفشل البناء.
+      - name: مفتاح بلاغات الدعم
+        shell: bash
+        env:
+          EGCO_REPORT_TOKEN: ${{ secrets.EGCO_REPORT_TOKEN }}
+          EGCO_REPORT_REPO: ${{ vars.EGCO_REPORT_REPO }}
+        run: |
+          mkdir -p apps/desktop/dist
+          if [ -n "$EGCO_REPORT_TOKEN" ]; then
+            node -e "require('fs').writeFileSync('apps/desktop/dist/support.json', JSON.stringify({token: process.env.EGCO_REPORT_TOKEN, repo: process.env.EGCO_REPORT_REPO || 'ABDALLA-ELKHOULI/EGCO-reports'}))"
+            echo "- بلاغات الدعم: **مفعّلة**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- بلاغات الدعم: **غير مفعّلة** (السرّ EGCO_REPORT_TOKEN غير موجود — تُحفظ محلياً)" >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Build and publish installers
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

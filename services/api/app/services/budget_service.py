@@ -106,6 +106,28 @@ def _rows_for_project(db: Session, project: str) -> List[models.BudgetSnapshot]:
               .all())
 
 
+def _baseline(db: Session, project: str) -> Optional[tuple]:
+    """الأساس الخارجي للمشروع = cum_prev لأول شهر حيّ (تاريخ ما قبل القاعدة).
+    BUG-001: هذا الأساس ملكٌ للمشروع لا لصفّ بعينه — إن تغيّر أول شهر حيّ (حذفه،
+    أو إضافة/نقل شهر قبله) كان rebuild_chain يقرأ cum_prev من الصفّ الجديد الأول،
+    وهو رقمٌ مشتقّ يحمل تراكم الشهر المحذوف (أو صفر لصفّ جديد فيمحو الأساس)."""
+    rows = _rows_for_project(db, project)
+    if not rows:
+        return None
+    return rows[0].id, rows[0].cum_prev_actual, rows[0].cum_prev_planned
+
+
+def _restore_baseline(db: Session, project: str, base: Optional[tuple]) -> None:
+    """ينقل الأساس الملتقط قبل التعديل إلى أول شهر حيّ بعده إن تغيّر."""
+    if base is None:
+        return
+    db.flush()
+    rows = _rows_for_project(db, project)
+    if rows and rows[0].id != base[0]:
+        rows[0].cum_prev_actual = base[1]
+        rows[0].cum_prev_planned = base[2]
+
+
 def rebuild_chain(db: Session, project: str,
                   from_month: Optional[dt.date] = None) -> List[models.BudgetSnapshot]:
     """يُعيد حساب deviation/cum_actual/cum_planned/completion_pct/delay_pct لكل
@@ -488,12 +510,15 @@ def upsert_manual(db: Session, project: str, month: str, actual_month: float,
     if prev.get('conflict') and not force_conflict:
         return dict(conflict=prev['conflict'], saved=False)
 
+    base = _baseline(db, project)
+    old_month = None
     if snapshot_id:
         row = db.query(models.BudgetSnapshot).filter(
             models.BudgetSnapshot.id == snapshot_id,
             models.BudgetSnapshot.deleted_at.is_(None)).one_or_none()
         if row is None:
             raise ValueError('السجل غير موجود')
+        old_month = row.month
     else:
         # يبحث حتى في المحذوف منطقياً: نفس (project, month) قيدُ فرادة في
         # القاعدة سواءٌ أكان الصفّ حيّاً أم محذوفاً — فإن أُغفل هذا هنا يُنشأ
@@ -517,8 +542,10 @@ def upsert_manual(db: Session, project: str, month: str, actual_month: float,
     if attachment is not None:
         row.attachment = attachment
     db.flush()
+    _restore_baseline(db, project, base)
 
-    rebuild_chain(db, project, from_month=month_d)
+    # تعديلٌ ينقل الشهر يترك فجوة في موضعه القديم — يُعاد البناء من الأبكر.
+    rebuild_chain(db, project, from_month=min(month_d, old_month or month_d))
     db.commit()
 
     return dict(saved=True, row=_row_json(row, _cities(db).get(project, '')))
@@ -533,8 +560,9 @@ def delete_snapshot(db: Session, snapshot_id: str) -> bool:
     if row is None:
         return False
     project, month = row.project, row.month
+    base = _baseline(db, project)
     row.deleted_at = dt.datetime.now(dt.timezone.utc)
-    db.flush()
+    _restore_baseline(db, project, base)
     rebuild_chain(db, project, from_month=month)
     db.commit()
     return True

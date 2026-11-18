@@ -7,6 +7,7 @@ payables_service.py.
 """
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import json
 import re
@@ -19,6 +20,7 @@ from app.db import models
 from app.domain import contractors as C
 from app.domain.payables import D, money
 from app.services import party_projects as PP
+from app.services import request_cache as RC
 from app.utils.arabic import contains_ar, normalize_ar
 
 #: مجموعة حالات المقاول المغلقة — نفس القيم الموثّقة على models.Contractor.status.
@@ -343,6 +345,7 @@ def _all_contractor_projects(db: Session) -> dict:
     محفوظ داخل كل مجموعة تماماً كما تعيده projects_of."""
     rows = (db.query(models.PartyProject)
             .filter_by(party_type=PP.CONTRACTOR)
+            .filter(models.PartyProject.deleted_at.is_(None))  # م-٥٠: الفك حذف منطقي
             .order_by(models.PartyProject.position).all())
     out: dict = {}
     for r in rows:
@@ -411,6 +414,26 @@ def contractors_list_json(db: Session, today: Optional[dt.date] = None,
                           has_guarantees: Optional[bool] = None,
                           status: Optional[str] = None,
                           sort: Optional[str] = None, dir: str = 'asc') -> dict:
+    """قائمة المقاولين — محفوظة لعمر الجلسة (request_cache).
+
+    /overview كان يبنيها مرتين (الكتلة + المشاريع) — كلفتها في Python لا في SQL
+    (آلاف القيود تمر بـD()). تُعاد نسخة عميقة في كل مرة لأن بعض المستدعين يضيفون
+    مفاتيح على الصفوف؛ نسخة مشتركة كانت ستُسرّب تعديل مستدعٍ إلى آخر.
+    """
+    today = today or dt.date.today()
+    key = ('contractors_list', today, q, project, direction, has_guarantees, status, sort, dir)
+    result = RC.get(db, key, lambda: _contractors_list_json(
+        db, today, q=q, project=project, direction=direction,
+        has_guarantees=has_guarantees, status=status, sort=sort, dir=dir))
+    return copy.deepcopy(result)
+
+
+def _contractors_list_json(db: Session, today: Optional[dt.date] = None,
+                           q: Optional[str] = None, project: Optional[str] = None,
+                           direction: Optional[str] = None,
+                           has_guarantees: Optional[bool] = None,
+                           status: Optional[str] = None,
+                           sort: Optional[str] = None, dir: str = 'asc') -> dict:
     # المشاريع المعروضة/المُصفّى عليها = لائحة party_projects المعيَّنة صراحةً ∪
     # المشاريع المستنتجة من حركات الدفتر — إسقاط الثاني كان يكسر التصفية لأي مقاول
     # وسمت حركاته مشروعاً دون أن يُعيَّن له صراحةً عبر نموذج التعديل بعد (الحالة
@@ -570,6 +593,8 @@ def contractor_detail_json(row: models.Contractor, today: Optional[dt.date] = No
     return dict(
         code=row.code, name=row.name, phone=row.phone or '', notes=row.notes or '',
         projects=projects,
+        #: الحالة الإدارية — كانت في سطر القائمة فقط؛ صفحة المقاول تحتاجها أيضاً
+        status=row.status or 'active', statusNote=row.status_note or '',
         defaultRetentionRate=row.default_retention_rate,
         defaultGuaranteeDays=row.default_guarantee_days,
         paymentTermDays=row.payment_term_days,

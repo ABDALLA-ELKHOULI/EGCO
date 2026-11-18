@@ -38,6 +38,14 @@ def _activity(db: Session, supplier_id: str):
     return min(dates).isoformat(), max(dates).isoformat()
 
 
+def _activity_of(p):
+    """نظير _activity من موقف محسوب سلفاً — بلا استعلام."""
+    dates = [i.date for i in p.invoices] + [x.date for x in p.payments]
+    if not dates:
+        return None, None
+    return min(dates).isoformat(), max(dates).isoformat()
+
+
 _VALID_STATUSES = ('awaiting_date', 'overdue', 'due_soon', 'open', 'clear')
 
 _VALID_DELAY = tuple(k for k, _, _ in DELAY_BUCKETS) + ('none',)
@@ -117,6 +125,8 @@ def list_suppliers(q: Optional[str] = Query(None),
     # التصفية بمشروع تعني «ينتمي إليه ضمن لائحته» لا «يساويه» — مورد على ثلاثة
     # مشاريع يجب أن يظهر تحت الثلاثة، لا تحت مشروعه الأساسي (project) فقط.
     ids_in_project = PP.parties_in_project(db, PP.SUPPLIER, project) if project else None
+    # كل مشاريع كل الموردين باستعلام واحد بدل استعلام لكل صف
+    projects_by_party = PP.projects_by_party(db, PP.SUPPLIER)
     for p in ps:
         st = PS.status_of(p)
         if status and st != status:
@@ -153,9 +163,11 @@ def list_suppliers(q: Optional[str] = Query(None),
             if has_movement != has_data:
                 continue
         sid = supplier_ids.get(p.supplier.account)
-        d = PS.position_json(p, projects=PP.projects_of(db, PP.SUPPLIER, sid) if sid else [])
+        d = PS.position_json(p, projects=projects_by_party.get(sid, []) if sid else [])
         d['status'] = st
-        first_act, last_act = _activity(db, sid) if sid else (None, None)
+        # أول/آخر حركة من حركات الموقف نفسه (غير المحذوفة — نفس ما كان يستعلمه
+        # _activity لكل مورد على حدة: استعلامان × كل مورد صارا صفراً).
+        first_act, last_act = _activity_of(p) if sid else (None, None)
         d['firstActivity'] = first_act
         d['lastActivity'] = last_act
         rows.append(d)
@@ -373,6 +385,16 @@ def delete_payment_allocation(account: str, payment_id: str,
         raise HTTPException(404, detail='لا توجد دفعة بهذا المعرف لهذا المورد')
     PS.clear_payment_allocation(db, payment_id)
     return dict(cleared=True)
+
+
+@router.get('/{account}/projects')
+def party_projects_with_amounts(account: str, db: Session = Depends(get_session)) -> list:
+    """م-٥٠ — مشاريع الطرف بمبالغ إسناده على كل مشروع."""
+    from app.services import project_registry_service as PR
+    out = PR.party_projects(db, PP.SUPPLIER, account)
+    if out is None:
+        raise HTTPException(404, detail='الطرف غير موجود')
+    return out
 
 
 @router.get('/{account}')

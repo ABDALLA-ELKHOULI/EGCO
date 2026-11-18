@@ -14,8 +14,10 @@ import datetime as dt
 import uuid
 from typing import List, Optional
 
-from sqlalchemy import (Date, DateTime, Float, ForeignKey, Integer, String, Text,
-                        UniqueConstraint)
+from decimal import Decimal, InvalidOperation
+
+from sqlalchemy import (Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text,
+                        TypeDecorator, UniqueConstraint)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -29,6 +31,31 @@ def _now() -> dt.datetime:
 
 class Base(DeclarativeBase):
     pass
+
+
+class MoneyText(TypeDecorator):
+    """مبلغ يُخزَّن نصاً Decimal («300000.50») ويُقرأ Decimal.
+
+    للأعمدة الجديدة فقط (م-٥٠ وما بعدها). الأعمدة القديمة Float وتبقى كذلك حتى هجرة
+    مدروسة (BACKEND-ANALYSIS §٢.٣)؛ لكن لا سبب لإضافة عمود Float جديد يعيد المشكلة:
+    مبلغ إسناد يُدخله المستخدم بيده يجب أن يُقرأ كما كُتب بالهللة.
+    """
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        try:
+            d = Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            raise ValueError('مبلغ غير صالح: %r' % (value,))
+        return str(d.quantize(Decimal('0.01')))
+
+    def process_result_value(self, value, dialect):
+        if value is None or value == '':
+            return None
+        return Decimal(value)
 
 
 class TimestampMixin:
@@ -57,6 +84,12 @@ class PartyProject(TimestampMixin, Base):
     project: Mapped[str] = mapped_column(String(120), index=True)
     #: ترتيب العرض — الأول هو الذي يُكتب في العمود المفرد
     position: Mapped[int] = mapped_column(Integer, default=0)
+    #: م-٥٠ — قيمة الإسناد/التعاقد لهذا الطرف على هذا المشروع. NULL = «لم تُدخل»
+    #: لا صفر: حكم «يكسب/يخسر» يجب أن يعرف الفرق بين «لا شيء مُسند» و«لا نعرف».
+    amount: Mapped[Optional[Decimal]] = mapped_column(MoneyText, nullable=True)
+    #: server_default ضروري: البذر في session.py يُدرج بـSQL خام بلا هذا العمود،
+    #: و«INSERT OR IGNORE» كان سيبتلع كل صف بصمت بسبب NOT NULL.
+    notes: Mapped[str] = mapped_column(Text, default='', server_default='')
 
 
 class Supplier(TimestampMixin, Base):
@@ -140,6 +173,10 @@ class Receivable(TimestampMixin, Base):
     notes: Mapped[str] = mapped_column(Text, default='')
     #: which ImportLog created this row — null for manual/pre-feature rows
     import_log_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    #: 'pending' معلّق | 'approved' معتمد — وسم إداري فقط، لا يدخل أي حساب
+    #: (المعلَّق ما زال تحصيلاً متوقّعاً). القائم 'approved' لأنه رُفع من ملف معتمد.
+    approval: Mapped[str] = mapped_column(String(20), default='approved',
+                                          server_default='approved')
 
 
 class Contractor(TimestampMixin, Base):
@@ -444,3 +481,110 @@ class ImportLog(TimestampMixin, Base):
     skipped: Mapped[int] = mapped_column(Integer, default=0)
     reconciled: Mapped[int] = mapped_column(Integer, default=0)
     issues: Mapped[str] = mapped_column(Text, default='[]')
+
+
+class ProjectRegistry(TimestampMixin, Base):
+    """سجل المشاريع — معرّف ثابت لكل مشروع فوق اسمه النصي.
+
+    المشروع في كل الجداول نصّ (Supplier.project، ContractorEntry.project…) والدمج
+    يعيد كتابة النص؛ الواجهة الجديدة تحتاج معرّفاً لا يتغيّر حين يُدمج «سدن» في
+    «السدن» — وإلا ضاع الرابط وقيمة العقد معه. `key` هو مفتاح المطابقة المطبَّع
+    (بلا «ال» ولا مسافات) فلا يُنشأ صفّان لنفس المشروع بإملاءين.
+    """
+    __tablename__ = 'project_registry'
+    name: Mapped[str] = mapped_column(String(120))
+    key: Mapped[str] = mapped_column(String(120), index=True)
+    #: قيمة عقد المشروع مع المالك — NULL = غير مُدخلة، فلا هامش يُحسب.
+    contract_value: Mapped[Optional[Decimal]] = mapped_column(MoneyText, nullable=True)
+    contract_value_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default='')
+
+
+class Event(Base):
+    """حدث/إشعار — «ماذا حدث» محفوظ لا مُعاد بناؤه نصاً عند كل طلب.
+
+    المعرّف عدد صحيح متزايد (لا uuid) لأنه يخدم `Last-Event-ID` في SSE: الواجهة
+    تقول «آخر ما رأيته ٤٢» فنعيد ما بعده بمقارنة بسيطة. `dedupe_key` فريد: المولّد
+    يُشغَّل عند كل إقلاع واستيراد، ونفس الفاتورة المتأخرة يجب أن تُبلَّغ مرة واحدة.
+    """
+    __tablename__ = 'events'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime, default=lambda: dt.datetime.now(), index=True)
+    kind: Mapped[str] = mapped_column(String(40), index=True)
+    #: 'danger' | 'warn' | 'ok' | 'info'
+    severity: Mapped[str] = mapped_column(String(10), default='info')
+    title: Mapped[str] = mapped_column(Text, default='')
+    detail: Mapped[str] = mapped_column(Text, default='')
+    link_view: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    #: JSON
+    link_params: Mapped[str] = mapped_column(Text, default='{}')
+    read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    dedupe_key: Mapped[Optional[str]] = mapped_column(String(160), nullable=True, unique=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+    deleted_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class ChangeSnapshot(TimestampMixin, Base):
+    """لقطة «قبل/بعد» لكل رفع ناجح — تغذّي «ماذا تغيّر» في الصفحة الرئيسية.
+
+    الإجماليات تُخزَّن JSON بمبالغ نصية Decimal: المقارنة بعد شهر يجب أن تعطي نفس
+    الفرق بالهللة، لا ما يقوله float بعد رحلة ذهاب وإياب.
+    """
+    __tablename__ = 'change_snapshots'
+    at: Mapped[dt.datetime] = mapped_column(DateTime, default=lambda: dt.datetime.now(), index=True)
+    file: Mapped[str] = mapped_column(Text, default='')
+    source: Mapped[str] = mapped_column(String(40), default='')
+    before_json: Mapped[str] = mapped_column(Text, default='{}')
+    after_json: Mapped[str] = mapped_column(Text, default='{}')
+    new_invoices: Mapped[int] = mapped_column(Integer, default=0)
+    paid_invoices: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class BudgetPlan(TimestampMixin, Base):
+    """الموازنة التقديرية لمشروع — الخطة الشهرية المتوقعة (لا الفعلي).
+
+    منفصلة عمداً عن `budget_snapshots`: تلك تحمل الفعلي من تقرير الانحراف، وصفّ
+    خطة بلا فعلي هناك سيُقرأ تأخراً ١٠٠٪. خطة واحدة حيّة لكل مشروع؛ إعادة رفع
+    الملف تحدّثها في مكانها (upsert) ولا تكرّرها.
+    """
+    __tablename__ = 'budget_plans'
+    __table_args__ = (UniqueConstraint('project', name='uq_budget_plan_project'),)
+
+    project: Mapped[str] = mapped_column(String(120), index=True)
+    title: Mapped[str] = mapped_column(Text, default='')
+    period_label: Mapped[str] = mapped_column(Text, default='')
+    start_month: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    end_month: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    contract_incl_vat: Mapped[Optional[Decimal]] = mapped_column(MoneyText, nullable=True)
+    contract_excl_vat: Mapped[Optional[Decimal]] = mapped_column(MoneyText, nullable=True)
+    duration_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    #: JSON — الفروض (دفعة مقدمة، فورمة، النسب) كما في الملف، أرقام نصية
+    assumptions: Mapped[str] = mapped_column(Text, default='{}')
+    #: JSON — [{key, label}] رؤوس أعمدة الجدول الشهري كما كُتبت في الملف
+    columns: Mapped[str] = mapped_column(Text, default='[]')
+    #: JSON — صف «الاجمالى» من الملف {key: "رقم نصي"}
+    totals: Mapped[str] = mapped_column(Text, default='{}')
+    source_path: Mapped[str] = mapped_column(Text, default='')
+    #: بصمة المحتوى المقروء — تطابقها = «مطابق مسبقاً»
+    content_hash: Mapped[str] = mapped_column(String(64), default='')
+
+
+class BudgetPlanMonth(TimestampMixin, Base):
+    """شهر واحد من الخطة التقديرية — مفتاحه (المشروع، الشهر)."""
+    __tablename__ = 'budget_plan_months'
+    __table_args__ = (UniqueConstraint('project', 'month', name='uq_budget_plan_month'),)
+
+    plan_id: Mapped[str] = mapped_column(String(36), index=True)
+    project: Mapped[str] = mapped_column(String(120), index=True)
+    #: أول يوم في الشهر
+    month: Mapped[dt.date] = mapped_column(Date)
+    seq: Mapped[int] = mapped_column(Integer, default=0)
+    label: Mapped[str] = mapped_column(String(60), default='')
+    #: نسبة الإنجاز المتوقعة كسراً (0.0556) — نص Decimal لا Float
+    completion_pct: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    planned_excl_vat: Mapped[Optional[Decimal]] = mapped_column(MoneyText, nullable=True)
+    planned_incl_vat: Mapped[Optional[Decimal]] = mapped_column(MoneyText, nullable=True)
+    net_transfer: Mapped[Optional[Decimal]] = mapped_column(MoneyText, nullable=True)
+    #: JSON — كل أعمدة الصف {key: "رقم نصي"}
+    values_json: Mapped[str] = mapped_column(Text, default='{}')
