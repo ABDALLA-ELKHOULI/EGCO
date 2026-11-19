@@ -23,7 +23,11 @@ let pdf = '';
 test.beforeAll(() => {
   const dir = fs.mkdtempSync(path.join(process.env.E2E_TMP_ROOT || os.tmpdir(), 'egco-bundle-'));
   pdf = path.join(dir, FILE);
-  execFileSync(py, [path.join(here, '..', 'fixtures', 'make_bundle_pdf.py'), pdf, ...ACC]);
+  // ملف مُولَّد مسبقاً (بخط Arial Unicode على ماك) ومُلتزَم في المستودع: نفس البايتات على كل
+  // منصة. التوليد على ويندوز يستعمل خط Arial آخر فيختلف النص المستخرج ويتغيّر عدد المطابق.
+  const fixed = path.join(here, '..', 'fixtures', 'bundle-3-suppliers.pdf');
+  if (fs.existsSync(fixed)) fs.copyFileSync(fixed, pdf);
+  else execFileSync(py, [path.join(here, '..', 'fixtures', 'make_bundle_pdf.py'), pdf, ...ACC]);
 });
 
 test.afterEach(async ({ request }) => {

@@ -76,7 +76,8 @@ def main(out, a1, a2, a3):
                 p.insert_text((x, y), s, fontsize=9, fontname='ar', fontfile=font)
                 x += f.text_length(s, fontsize=9)
             y += 13
-    doc.save(out)
+    doc.subset_fonts()  # يضمّن الحروف المستعملة فقط بدل الخط كاملاً (~٢٣ م.ب)
+    doc.save(out, garbage=4, deflate=True)
 
 
 if __name__ == '__main__':
