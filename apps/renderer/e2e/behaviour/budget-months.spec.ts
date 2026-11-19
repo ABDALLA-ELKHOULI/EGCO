@@ -28,7 +28,13 @@ test('إضافة شهر ثم تعديله ثم حذفه', async ({ page, request
   const manage = page.getByRole('dialog').first();
   await manage.getByRole('button', { name: 'إضافة شهر' }).click();
   const form = page.getByRole('dialog').last();
-  await form.getByLabel('الشهر').fill(MONTH);
+  // ui/fit.ts يعرض حقل الشهر الفارغ نصاً (عنصر نائب عربي) ويعيده type=month عند التركيز —
+  // يُنتظر التحويل قبل الكتابة وإلا يسبق fill التحويلَ فتضيع القيمة.
+  const monthInput = form.getByLabel('الشهر');
+  await monthInput.focus();
+  await expect(monthInput).toHaveAttribute('type', 'month');
+  await monthInput.fill(MONTH);
+  await expect(monthInput).toHaveValue(MONTH);
   await form.getByLabel(/الفعلي للشهر/).fill('1234');
   await form.getByLabel(/المخطط للشهر/).fill('4321');
   await form.getByRole('button', { name: 'حفظ' }).click();

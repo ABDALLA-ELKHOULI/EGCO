@@ -106,6 +106,8 @@ main{min-width:0;padding:0 32px 120px;position:relative}
 /* وميض تغيّر الرقم */
 .chg{position:relative;isolation:isolate}
 .chg::before{content:"";position:absolute;inset:-2px -8px;border-radius:var(--r-control);background:var(--warn-bg);opacity:0;z-index:-1}
+/* داخل قيمة KPI (overflow:hidden) يُحسب الامتداد الأفقي −8px في scrollWidth فيظنّه ui/fit.ts فيضاناً ويصغّر الرقم إلى 14px — الوميض يبقى داخل العرض */
+.kpi.chg::before{inset:-2px 0}
 .chg.flash-bad::before{background:var(--danger-bg);animation:flash var(--d-flash) var(--ease-out)}
 .chg.flash-good::before{background:var(--ok-bg);animation:flash var(--d-flash) var(--ease-out)}
 

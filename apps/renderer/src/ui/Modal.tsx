@@ -91,6 +91,8 @@ function ModalInner(p: ModalProps & { leaving: boolean }) {
     pushLayer(layer); lockScroll(true);
     const t = setTimeout(() => {
       const d = dlg.current; if (!d) return;
+      // المستخدم ركّز حقلاً بنفسه خلال الـ30ms — لا يُسرق تركيزه (كان يكتب في الحقل الأول بدل ما اختاره)
+      if (d.contains(document.activeElement)) return;
       const f = d.querySelector<HTMLElement>('.m-body input:not([type=hidden]):not([type=checkbox]),.m-body select,.m-body textarea')
         || d.querySelector<HTMLElement>('.m-foot .btn.primary') || d.querySelector<HTMLElement>(FOCUSABLE);
       f?.focus({ preventScroll: true });

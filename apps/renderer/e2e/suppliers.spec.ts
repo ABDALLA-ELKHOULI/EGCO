@@ -1,6 +1,10 @@
 /** إضافة مورد → يظهر → حذف → يختفي → في السلّة → استرجاع → يعود. */
 import { test, expect } from '@playwright/test';
-import { API_BASE, collectErrors, gotoHash } from './helpers';
+import { API_BASE, collectErrors, gotoHash, R, tid } from './helpers';
+
+/** زر الإضافة في رأس «الموردون» (كان «إضافة مورد» وصار «+ مورد»). */
+const addSupplierButton = (page: import('@playwright/test').Page) =>
+  tid(page, 'supplier-add', page.getByRole('button', { name: /^(إضافة مورد|\+ مورد)$/ }));
 
 const ACCOUNT = '2119999';
 const NAME = 'مورد اختبار الواجهة';
@@ -14,10 +18,10 @@ test.afterEach(async ({ request }) => {
 
 test('دورة حياة المورد: إضافة ثم حذف ثم استرجاع من السلّة', async ({ page }) => {
   const errors = collectErrors(page);
-  await gotoHash(page, '/suppliers');
+  await gotoHash(page, '/parties/suppliers');
 
   // إضافة
-  await page.getByRole('button', { name: 'إضافة مورد' }).click();
+  await addSupplierButton(page).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('heading', { name: 'إضافة مورد' })).toBeVisible();
   await dialog.locator('label', { hasText: 'رقم الحساب' }).locator('input').fill(ACCOUNT);
@@ -25,6 +29,10 @@ test('دورة حياة المورد: إضافة ثم حذف ثم استرجاع
   await dialog.locator('label', { hasText: 'مدة السداد' }).locator('input').fill('30 يوم');
   await dialog.getByRole('button', { name: 'حفظ' }).click();
   await expect(dialog).toHaveCount(0);
+  // التصميم الجديد يفتح صفحة المورد الجديد مباشرة بعد الحفظ، ثم نعود للقائمة
+  await expect(page).toHaveURL(new RegExp(`#/parties/suppliers/${ACCOUNT}$`));
+  await expect(page.getByText(NAME).first()).toBeVisible();
+  await gotoHash(page, '/parties/suppliers');
   const row = page.locator('tbody tr', { hasText: NAME });
   await expect(row).toHaveCount(1);
 
@@ -37,7 +45,7 @@ test('دورة حياة المورد: إضافة ثم حذف ثم استرجاع
   await expect(page.locator('tbody tr', { hasText: NAME })).toHaveCount(0);
 
   // في السلّة
-  await gotoHash(page, '/settings/trash');
+  await gotoHash(page, R.trash);
   const trashRow = page.locator('tbody tr', { hasText: NAME });
   await expect(trashRow).toHaveCount(1);
   await expect(trashRow).toContainText('مورد');
@@ -46,7 +54,7 @@ test('دورة حياة المورد: إضافة ثم حذف ثم استرجاع
   await trashRow.getByRole('button', { name: 'استرجاع' }).click();
   await expect(page.locator('tbody tr', { hasText: NAME })).toHaveCount(0);
 
-  await gotoHash(page, '/suppliers');
+  await gotoHash(page, '/parties/suppliers');
   await expect(page.locator('tbody tr', { hasText: NAME })).toHaveCount(1);
 
   expect(errors).toEqual([]);

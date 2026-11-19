@@ -1,8 +1,11 @@
-/** كل مسار في App.tsx يفتح بلا خطأ كونسول وبلا شاشة «تعذّر الاتصال». */
+/**
+ * كل مسار قديم (ما قبل «أرخبيل») ما زال يفتح عبر تحويله إلى القسم الجديد بلا خطأ كونسول
+ * وبلا شاشة «تعذّر الاتصال»/«تعذّر عرض الصفحة». المسارات الجديدة نفسها في behaviour/sections-smoke.
+ */
 import { test, expect } from '@playwright/test';
 import { collectErrors, gotoHash, SEED } from './helpers';
 
-// نفس القائمة في apps/renderer/src/app/App.tsx — المسارات ذات المعاملات تُملأ من البذرة.
+// المسارات القديمة (روابط محفوظة/إشارات) — المسارات ذات المعاملات تُملأ من البذرة.
 const ROUTES = [
   '/', '/payables', '/suppliers', `/suppliers/${SEED.supplierAccount}`,
   '/contractors', `/contractors/${SEED.contractorCode}`, '/guarantees', '/budget',
@@ -15,9 +18,10 @@ for (const route of ROUTES) {
   test(`المسار ${route} يفتح بلا أخطاء`, async ({ page }) => {
     const errors = collectErrors(page);
     await gotoHash(page, route);
-    await expect(page.locator('main.main')).toBeVisible();
+    await expect(page.locator('main#main')).toBeVisible();
     await expect(page.getByText('تعذّر الاتصال')).toHaveCount(0);
     await expect(page.getByText('حدث خطأ غير متوقع')).toHaveCount(0);
+    await expect(page.getByText('تعذّر عرض الصفحة')).toHaveCount(0);
     expect(errors, `أخطاء الكونسول في ${route}`).toEqual([]);
   });
 }
