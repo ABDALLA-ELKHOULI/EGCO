@@ -17,6 +17,8 @@ test.afterEach(async ({ request }) => {
 });
 
 test('دورة حياة المورد: إضافة ثم حذف ثم استرجاع من السلّة', async ({ page }) => {
+  // سلسلة طويلة (إضافة ← صفحة المورد ← حذف ← السلّة ← استرجاع): مشغّل ويندوز في CI أبطأ بنحو ٤ أضعاف
+  test.setTimeout(120_000);
   const errors = collectErrors(page);
   await gotoHash(page, '/parties/suppliers');
 

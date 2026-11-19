@@ -8,6 +8,7 @@
 
   python make_bundle_pdf.py <out.pdf> <account1> <account2> <account3>
 """
+import os
 import re
 import sys
 
@@ -38,7 +39,12 @@ def footer(d, c, closing):
 
 FONTS = ['/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
          '/Library/Fonts/Arial Unicode.ttf',
-         '/System/Library/Fonts/Supplemental/Arial.ttf']
+         '/System/Library/Fonts/Supplemental/Arial.ttf',
+         # ويندوز (مشغّل CI windows-latest): خطوط النظام تدعم العربية
+         os.path.join(os.environ.get('WINDIR', r'C:\Windows'), 'Fonts', 'arial.ttf'),
+         os.path.join(os.environ.get('WINDIR', r'C:\Windows'), 'Fonts', 'tahoma.ttf'),
+         # لينكس
+         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf']
 
 
 def main(out, a1, a2, a3):
