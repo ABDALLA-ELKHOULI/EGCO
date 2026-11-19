@@ -17,6 +17,9 @@ design/samples/statements-batch/
 design/samples/*.pdf
 design/samples/*.xlsx
 data/
+# ‏استثناء: مجلدات شيفرة اسمها data وليست بيانات (طبقة البيانات وقسم «البيانات» في الواجهة)
+!apps/renderer/src/data/
+!apps/renderer/src/sections/data/
 ai-settings.json
 
 # مخرجات تشغيل الاختبارات في CI — لا تُتتبَّع
